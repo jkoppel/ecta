@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9f34b34f1ab577e7dac0c892c5aa99d9b3621cf9df78a1968d06fce59a596fda
+-- hash: 3e79ef9d645f23927269b152e4470532d4cb38072fc35dbae1e5123ec9d62f9b
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       ECDFTA
+      TermSearch
   other-modules:
       Paths_compact_coupled_terms
   hs-source-dirs:
@@ -40,6 +41,7 @@ library
     , intern
     , lens
     , mtl
+    , pretty-simple
     , text
   default-language: Haskell2010
 

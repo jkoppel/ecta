@@ -1,24 +1,35 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Equality-constrained deterministic finite tree automata
 --
 -- Specialized to DAGs
 
 module ECDFTA (
     Symbol
+  , Term(..)
   , Path
   , path
+  , Pathable(..)
   , EqConstraint(EqConstraint)
   , Edge(Edge)
   , Node(Node, StartNode, EmptyNode)
 
   -- * Operations
+  , nodeCount
+  , edgeCount
+  , union
+  , intersect
   , denotation
   ) where
 
 import Control.Monad ( guard )
+import Control.Monad.State ( evalState, State, MonadState(..), modify )
 import Data.List ( sort, nub, intercalate )
-import Data.Map ( Map )
+import           Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Maybe ( catMaybes )
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 import Data.String (IsString(..) )
 import qualified Data.Text as Text
 
@@ -96,7 +107,9 @@ class Pathable t t' | t -> t' where
 
 instance Pathable Term Term where
   getPath EmptyPath       t           = t
-  getPath (ConsPath p ps) (Term _ ts) = getPath ps (ts !! p)
+  getPath (ConsPath p ps) (Term _ ts) = case ts ^? ix p of
+                                          Nothing -> Term "" [] -- TODO: this doesn't work
+                                          Just t  -> getPath ps t
 
   modifyAtPath f EmptyPath       t           = f t
   modifyAtPath f (ConsPath p ps) (Term s ts) = Term s (ts & ix p %~ modifyAtPath f ps)
@@ -232,6 +245,39 @@ removeEmptyEdges = filter (not . isEmptyEdge)
 isEmptyEdge :: Edge -> Bool
 isEmptyEdge e@(Edge _ ns _) = any (== EmptyNode) ns
 
+
+------------
+------ Size operations
+------------
+
+nodeCount :: Node -> Int
+nodeCount n = evalState (go n) Set.empty
+  where
+    go :: Node -> State (Set Id) Int
+    go EmptyNode   = return 0
+    go n@(Node es) = do
+      seen <- get
+      let nId = nodeIdentity n
+      if Set.member nId seen then
+        return 0
+       else do
+        modify (Set.insert nId)
+        (+1) <$> sum <$> mapM (\(Edge _ ns _) -> sum <$> mapM go ns) es
+
+edgeCount :: Node -> Int
+edgeCount n = evalState (go n) Set.empty
+  where
+    go :: Node -> State (Set Id) Int
+    go EmptyNode   = return 0
+    go n@(Node es) = do
+      seen <- get
+      let nId = nodeIdentity n
+      if Set.member nId seen then
+        return 0
+       else do
+        modify (Set.insert nId)
+        (+ (length es)) <$> sum <$> mapM (\(Edge _ ns _) -> sum <$> mapM go ns) es
+
 -----------------------
 ------ Interning intersections
 -----------------------
@@ -264,7 +310,9 @@ intersectionCache = mkCache
 ------------
 
 intersect :: Node -> Node -> Node
-intersect n1 n2 = runIntersect $ intern (DoIntersect n1 n2)
+intersect EmptyNode _         = EmptyNode
+intersect _         EmptyNode = EmptyNode
+intersect n1        n2        = runIntersect $ intern (DoIntersect n1 n2)
 
 -- | TODO: Think through the reductions for the equality constraints added
 doIntersect :: Node -> Node -> Node
@@ -310,7 +358,9 @@ instance Pathable Node Node where
 
 instance Pathable [Node] Node where
   getPath EmptyPath       ns = union ns
-  getPath (ConsPath p ps) ns = getPath ps (ns !! p)
+  getPath (ConsPath p ps) ns = case ns ^? ix p of
+                                 Nothing -> EmptyNode
+                                 Just n  -> getPath ps n
 
   modifyAtPath f EmptyPath       ns = ns
   modifyAtPath f (ConsPath p ps) ns = ns & ix p %~ modifyAtPath f ps

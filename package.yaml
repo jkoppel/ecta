@@ -54,6 +54,7 @@ library:
     - intern
     - lens
     - mtl
+    - pretty-simple
     - text
 
 executables:
