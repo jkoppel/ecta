@@ -6,6 +6,7 @@ module ECDFTASpec ( spec ) where
 import Test.Hspec
 
 import ECDFTA
+import TermSearch
 
 -----------------------------------------------------------------
 
@@ -18,6 +19,9 @@ ex1 = Node [Edge "f" [constTerms ["1", "2"], Node [Edge "g" [constTerms ["1", "2
 
 ex2 :: Node
 ex2 = Node [Edge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]] []]] [EqConstraint (path [0]) (path [1,0])]]
+
+testBigNode :: Node
+testBigNode = any4
 
 --------------------------
 ------ Main
@@ -32,3 +36,6 @@ spec = do
 
     it "reduces paths constrained by equality constraints" $
         ex1 `shouldBe` ex2
+
+    it "has already performed all normalizations" $
+        refreshNode testBigNode `shouldBe` testBigNode

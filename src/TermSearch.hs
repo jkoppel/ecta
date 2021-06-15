@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module TermSearch (
-
+    any4
   ) where
 
 import ECDFTA
@@ -72,3 +72,9 @@ prettyTerm (Term "app" [_, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
 prettyTerm (Term "filter" [_, a])    = prettyTerm a
 prettyTerm (Term s [_]) = Term s []
 
+dropTypes :: Node -> Node
+dropTypes (Node es) = Node (map dropEdgeTypes es)
+  where
+    dropEdgeTypes (Edge "app"    [_, _, a, b] _) = Edge "app" [dropTypes a, dropTypes b] []
+    dropEdgeTypes (Edge "filter" [_, a]       _) = Edge "filter" [dropTypes a] []
+    dropEdgeTypes (Edge s        [_]          _) = Edge s [] []

@@ -20,6 +20,11 @@ module ECDFTA (
   , union
   , intersect
   , denotation
+
+  -- * Visualization / debugging
+  , toDot
+  , refreshNode
+  , refreshEdge
   ) where
 
 import Control.Monad ( guard )
@@ -28,21 +33,42 @@ import Data.List ( sort, nub, intercalate )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Maybe ( catMaybes )
+import Data.Monoid ( Monoid(..), Sum(..) )
+import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 import Data.String (IsString(..) )
+import Data.Text ( Text )
 import qualified Data.Text as Text
 
 import GHC.Generics ( Generic )
 
 import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
+import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable )
 import Data.Interned ( Interned(..), intern, unintern, Id, Cache, mkCache )
 import Data.Interned.Text ( InternedText )
+import Data.List.Index ( imap )
+
+import qualified Language.Dot.Syntax as Dot
 
 -------------------------------------------------------------------------------
 
+
+---------------------------------------------------------------
+---------------------- Misc / general -------------------------
+---------------------------------------------------------------
+
+fix :: (Eq a) => (a -> a) -> a -> a
+fix f x = let x' = f x in
+          if x' == x then
+            x
+          else
+            fix f x'
+
+class Pretty a where
+  pretty :: a -> Text
 
 ---------------------------------------------------------------
 -------------- Terms, the things being represented ------------
@@ -51,6 +77,9 @@ import Data.Interned.Text ( InternedText )
 
 data Symbol = Symbol {-# UNPACK #-} !InternedText
   deriving ( Eq, Ord, Generic )
+
+instance Pretty Symbol where
+  pretty (Symbol internedText) = unintern internedText
 
 instance Show Symbol where
   show (Symbol internedText) = Text.unpack $ unintern internedText
@@ -96,6 +125,9 @@ pathHeadUnsafe (Path ps) = head ps
 pathTailUnsafe :: Path -> Path
 pathTailUnsafe (Path ps) = Path (tail ps)
 
+instance Pretty Path where
+  pretty (Path ps) = Text.intercalate "." (map (Text.pack . show) ps)
+
 ---------------------
 ------ Term ops
 ---------------------
@@ -118,8 +150,6 @@ instance Pathable Term Term where
 ------------------- Data type and interning -------------------
 ---------------------------------------------------------------
 
-
-
 data EqConstraint = EqConstraint' !Path !Path
   deriving (Eq, Ord, Show, Generic)
 
@@ -128,6 +158,9 @@ instance Hashable EqConstraint
 pattern EqConstraint :: Path -> Path -> EqConstraint
 pattern EqConstraint p1 p2 <- EqConstraint' p1 p2 where
   EqConstraint p1 p2 = EqConstraint' (min p1 p2) (max p1 p2)
+
+instance Pretty EqConstraint where
+  pretty (EqConstraint p1 p2) = Text.concat [pretty p1, "=", pretty p2]
 
 data Edge = Edge' !Symbol ![Node] ![EqConstraint]
   deriving ( Eq, Ord, Show, Generic)
@@ -217,7 +250,8 @@ ecdftaCache = mkCache
 
 pattern Edge :: Symbol -> [Node] -> [EqConstraint] -> Edge
 pattern Edge s ns ecs <- (Edge' s ns ecs) where
-  Edge s ns ecs = Edge' s (foldr reduceEqConstraint ns ecs) (sort ecs) -- TODO: Reduce redundant work from multiple calls here
+  -- TODO: Reduce redundant work
+  Edge s ns ecs = Edge' s (fix (\ns' -> foldr reduceEqConstraint ns' (sort ecs)) ns) (sort ecs)
 
 {-# COMPLETE Node, StartNode, EmptyNode #-}
 
@@ -236,6 +270,28 @@ collapseEmptyEdge e@(Edge _ ns _) = if any (== EmptyNode) ns then Nothing else J
 ---------------------------------------------------------------
 
 -----------------------
+------ Traversal
+-----------------------
+
+-- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
+-- combinators in the KURE and compstrat libraries.
+--
+-- Although m is only constrained to be a monoid, crush makes no guarantees about ordering.
+crush :: forall m. (Monoid m) => (Node -> m) -> Node -> m
+crush f n = evalState (go n) Set.empty
+  where
+    go :: (Monoid m) => Node -> State (Set Id) m
+    go EmptyNode = return mempty
+    go n@(Node es) = do
+      seen <- get
+      let nId = nodeIdentity n
+      if Set.member nId seen then
+        return mempty
+       else do
+        modify (Set.insert nId)
+        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns _) -> mconcat <$> mapM go ns) es)
+
+-----------------------
 ------ Edge operations
 -----------------------
 
@@ -251,32 +307,10 @@ isEmptyEdge e@(Edge _ ns _) = any (== EmptyNode) ns
 ------------
 
 nodeCount :: Node -> Int
-nodeCount n = evalState (go n) Set.empty
-  where
-    go :: Node -> State (Set Id) Int
-    go EmptyNode   = return 0
-    go n@(Node es) = do
-      seen <- get
-      let nId = nodeIdentity n
-      if Set.member nId seen then
-        return 0
-       else do
-        modify (Set.insert nId)
-        (+1) <$> sum <$> mapM (\(Edge _ ns _) -> sum <$> mapM go ns) es
+nodeCount = getSum . crush (const $ Sum 1)
 
 edgeCount :: Node -> Int
-edgeCount n = evalState (go n) Set.empty
-  where
-    go :: Node -> State (Set Id) Int
-    go EmptyNode   = return 0
-    go n@(Node es) = do
-      seen <- get
-      let nId = nodeIdentity n
-      if Set.member nId seen then
-        return 0
-       else do
-        modify (Set.insert nId)
-        (+ (length es)) <$> sum <$> mapM (\(Edge _ ns _) -> sum <$> mapM go ns) es
+edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 
 -----------------------
 ------ Interning intersections
@@ -343,14 +377,26 @@ union ns = case filter (/= EmptyNode) ns of
 ------ Path operations
 ----------------------
 
+requirePath :: Path -> Node -> Node
+requirePath EmptyPath       n         = n
+requirePath _               EmptyNode = EmptyNode
+requirePath (ConsPath p ps) (Node es) = Node $ map (\(Edge s ns ecs) -> Edge s (requirePathList (ConsPath p ps) ns) ecs)
+                                                $ filter (\(Edge _ ns _) -> length ns > p) es
+
+requirePathList :: Path -> [Node] -> [Node]
+requirePathList EmptyPath       ns = ns
+requirePathList (ConsPath p ps) ns = ns & ix p %~ requirePath ps
+
 instance Pathable Node Node where
-  getPath EmptyPath        n        = n
-  getPath (ConsPath p ps) (Node es) = union $ map (getPath ps) (catMaybes (map goEdge es))
+  getPath _                EmptyNode = EmptyNode
+  getPath EmptyPath        n         = n
+  getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
       goEdge (Edge _ ns _) = ns ^? ix p
 
   modifyAtPath f EmptyPath       n         = f n
+  modifyAtPath _ _               EmptyNode = EmptyNode
   modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
     where
       goEdge :: Edge -> Edge
@@ -374,6 +420,8 @@ instance Pathable [Node] Node where
 reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
 reduceEqConstraint (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
                                              modifyAtPath (intersect n2) p1 $
+                                             requirePathList p1 $
+                                             requirePathList p2 $
                                              ns
   where
     n1 = getPath p1 ns
@@ -409,3 +457,86 @@ denotation n = go n
 
 
 
+
+---------------------------------------------------------------
+----------------------- Visualization -------------------------
+---------------------------------------------------------------
+
+
+data FglNodeLabel = IdLabel Id | TransitionLabel Symbol [EqConstraint]
+  deriving ( Eq, Ord, Show )
+
+toFgl :: Node -> Fgl.Gr FglNodeLabel ()
+toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges ++ transitionToNodeEdges)
+  where
+    maxNodeOutdegree :: Int
+    maxNodeOutdegree = getMax $ crush (\(Node es) -> Max (length es)) root
+
+    fglNodeId :: Node -> Fgl.Node
+    fglNodeId n = nodeIdentity n * (maxNodeOutdegree + 1)
+
+    fglTransitionId :: Node -> Int -> Fgl.Node
+    fglTransitionId n i = nodeIdentity n * (maxNodeOutdegree + 1) + (i + 1)
+
+    nodeNodes, transitionNodes :: [Fgl.LNode FglNodeLabel]
+    nodeNodes       = crush (\n@(Node _)  -> [(fglNodeId n, IdLabel $ nodeIdentity n)]) root
+    transitionNodes = crush (\n@(Node es) -> imap (\i (Edge s _ ecs) -> (fglTransitionId n i, TransitionLabel s ecs)) es) root
+
+    nodeToTransitionEdges, transitionToNodeEdges :: [Fgl.LEdge ()]
+    nodeToTransitionEdges = crush (\n@(Node es) -> imap (\i _ -> (fglNodeId n, fglTransitionId n i, ())) es) root
+    transitionToNodeEdges = crush (\n@(Node es) -> concat $
+                                                     imap (\i (Edge _ ns _) ->
+                                                              map (\n' -> (fglTransitionId n i, fglNodeId n', ())) ns
+                                                           )
+                                                           es)
+                                  root
+
+fglToDot :: Fgl.Gr FglNodeLabel () -> Dot.Graph
+fglToDot g = Dot.Graph Dot.StrictGraph Dot.DirectedGraph Nothing (nodeStmts ++ edgeStmts)
+  where
+    nodeStmts :: [Dot.Statement]
+    nodeStmts = map renderNode  $ Fgl.labNodes g
+
+    edgeStmts :: [Dot.Statement]
+    edgeStmts = map renderEdge $ Fgl.labEdges g
+
+    renderNode :: Fgl.LNode FglNodeLabel -> Dot.Statement
+    renderNode (fglId, l) = Dot.NodeStatement (Dot.NodeId (Dot.IntegerId $ toInteger fglId) Nothing)
+                                              [ Dot.AttributeSetValue (Dot.NameId "label") (renderNodeLabel l)
+                                              , Dot.AttributeSetValue (Dot.NameId "shape")
+                                                                      (case l of
+                                                                        IdLabel _           -> Dot.StringId "ellipse"
+                                                                        TransitionLabel _ _ -> Dot.StringId "box")
+                                              ]
+
+    renderEdge :: Fgl.LEdge () -> Dot.Statement
+    renderEdge (a, b, _) = Dot.EdgeStatement [ea, eb] []
+      where
+        ea = Dot.ENodeId Dot.NoEdge       (Dot.NodeId (Dot.IntegerId $ toInteger a) Nothing)
+        eb = Dot.ENodeId Dot.DirectedEdge (Dot.NodeId (Dot.IntegerId $ toInteger b) Nothing)
+
+    renderNodeLabel :: FglNodeLabel -> Dot.Id
+    renderNodeLabel (IdLabel l)             = Dot.StringId ("q" ++ show l)
+    renderNodeLabel (TransitionLabel s ecs) = Dot.StringId (Text.unpack (pretty s)
+                                                            ++ Text.unpack (Text.concat $ map (Text.append "," . pretty) ecs))
+
+-- | To visualize an FTA:
+-- 1) Call `prettyPrintDot $ toDot fta` from GHCI
+-- 2) Copy the output to viz-js.jom or another GraphViz implementation
+toDot :: Node -> Dot.Graph
+toDot = fglToDot . toFgl
+
+
+---------------------------------------------------------------
+------------------------- Debugging ---------------------------
+---------------------------------------------------------------
+
+
+-- | This should be the identity operation. If not, something has gone wrong.
+refreshNode :: Node -> Node
+refreshNode EmptyNode = EmptyNode
+refreshNode (Node es) = Node (map refreshEdge es)
+
+-- | This should be the identity operation. If not, something has gone wrong.
+refreshEdge :: Edge -> Edge
+refreshEdge (Edge s ns ecs) = Edge s (map refreshNode ns) ecs

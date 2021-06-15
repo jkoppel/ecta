@@ -50,8 +50,11 @@ library:
   source-dirs: src
   dependencies:
     - containers
+    - fgl
     - hashable
+    - ilist
     - intern
+    - language-dot
     - lens
     - mtl
     - pretty-simple
