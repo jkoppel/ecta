@@ -28,9 +28,9 @@ constFunc s t = Edge s [t] []
 
 app :: Node -> Node -> Node
 app n1 n2 = Node [Edge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
-                             [ EqConstraint (path [1]) (path [2, 0, 0])
+                             [ EqConstraint (path [1])      (path [2, 0, 0])
                              , EqConstraint (path [2,0, 1]) (path [3, 0])
-                             , EqConstraint (path [0]) (path [2, 0, 2])]
+                             , EqConstraint (path [0])      (path [2, 0, 2])]
                  ]
 
 f1, f2, f3, f4, f5, f6, f7 :: Edge
