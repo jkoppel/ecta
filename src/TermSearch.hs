@@ -9,28 +9,28 @@ import ECDFTA
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = Node [Edge "tau" [] []]
+tau = Node [Edge "tau" []]
 
 maybeType :: Node -> Node
-maybeType n = Node [Edge "Maybe" [n] []]
+maybeType n = Node [Edge "Maybe" [n]]
 
 listType :: Node -> Node
-listType n = Node [Edge "[]" [n] []]
+listType n = Node [Edge "[]" [n]]
 
 theArrowNode :: Node
-theArrowNode = Node [Edge "(->)" [] []]
+theArrowNode = Node [Edge "(->)" []]
 
 arrowType :: Node -> Node -> Node
-arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2] []]
+arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 
 constFunc :: Symbol -> Node -> Edge
-constFunc s t = Edge s [t] []
+constFunc s t = Edge s [t]
 
 app :: Node -> Node -> Node
-app n1 n2 = Node [Edge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
-                             [ EqConstraint (path [1])      (path [2, 0, 0])
-                             , EqConstraint (path [2,0, 1]) (path [3, 0])
-                             , EqConstraint (path [0])      (path [2, 0, 2])]
+app n1 n2 = Node [mkEdge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
+                               [ EqConstraint (path [1])      (path [2, 0, 0])
+                               , EqConstraint (path [2,0, 1]) (path [3, 0])
+                               , EqConstraint (path [0])      (path [2, 0, 2])]
                  ]
 
 f1, f2, f3, f4, f5, f6, f7 :: Edge
@@ -73,7 +73,7 @@ uptoDepth4 :: Node
 uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 
 filterType :: Node -> Node -> Node
-filterType n t = Node [Edge "filter" [t, n] [EqConstraint (path [0]) (path [1, 0])]]
+filterType n t = Node [mkEdge "filter" [t, n] [EqConstraint (path [0]) (path [1, 0])]]
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" [_, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
@@ -83,6 +83,6 @@ prettyTerm (Term s [_]) = Term s []
 dropTypes :: Node -> Node
 dropTypes (Node es) = Node (map dropEdgeTypes es)
   where
-    dropEdgeTypes (Edge "app"    [_, _, a, b] _) = Edge "app" [dropTypes a, dropTypes b] []
-    dropEdgeTypes (Edge "filter" [_, a]       _) = Edge "filter" [dropTypes a] []
-    dropEdgeTypes (Edge s        [_]          _) = Edge s [] []
+    dropEdgeTypes (Edge "app"    [_, _, a, b]) = Edge "app" [dropTypes a, dropTypes b]
+    dropEdgeTypes (Edge "filter" [_, a]      ) = Edge "filter" [dropTypes a]
+    dropEdgeTypes (Edge s        [_]         ) = Edge s []

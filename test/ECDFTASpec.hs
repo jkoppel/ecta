@@ -12,13 +12,13 @@ import TermSearch
 
 
 constTerms :: [Symbol] -> Node
-constTerms ss = Node (map (\s -> Edge s [] []) ss)
+constTerms ss = Node (map (\s -> Edge s []) ss)
 
 ex1 :: Node
-ex1 = Node [Edge "f" [constTerms ["1", "2"], Node [Edge "g" [constTerms ["1", "2"]] []]] [EqConstraint (path [0]) (path [1,0])]]
+ex1 = Node [mkEdge "f" [constTerms ["1", "2"], Node [Edge "g" [constTerms ["1", "2"]]]] [EqConstraint (path [0]) (path [1,0])]]
 
 ex2 :: Node
-ex2 = Node [Edge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]] []]] [EqConstraint (path [0]) (path [1,0])]]
+ex2 = Node [mkEdge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]]]] [EqConstraint (path [0]) (path [1,0])]]
 
 testBigNode :: Node
 testBigNode = uptoDepth4
@@ -35,7 +35,7 @@ spec = do
         denotation ex1 `shouldSatisfy` ((== 2) . length)
 
     it "reduces paths constrained by equality constraints" $
-        ex1 `shouldBe` ex2
+        reducePartially ex2 `shouldBe` reducePartially ex1
 
     it "has already performed all normalizations" $
         refreshNode testBigNode `shouldBe` testBigNode

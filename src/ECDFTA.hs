@@ -12,6 +12,7 @@ module ECDFTA (
   , Pathable(..)
   , EqConstraint(EqConstraint)
   , Edge(Edge)
+  , mkEdge
   , Node(Node, StartNode, EmptyNode)
 
   -- * Operations
@@ -20,6 +21,8 @@ module ECDFTA (
   , union
   , intersect
   , denotation
+
+  , reducePartially
 
   -- * Visualization / debugging
   , toDot
@@ -150,6 +153,10 @@ instance Pathable Term Term where
 ------------------- Data type and interning -------------------
 ---------------------------------------------------------------
 
+----------------------
+----- Edges
+----------------------
+
 data EqConstraint = EqConstraint' !Path !Path
   deriving (Eq, Ord, Show, Generic)
 
@@ -162,10 +169,45 @@ pattern EqConstraint p1 p2 <- EqConstraint' p1 p2 where
 instance Pretty EqConstraint where
   pretty (EqConstraint p1 p2) = Text.concat [pretty p1, "=", pretty p2]
 
-data Edge = Edge' !Symbol ![Node] ![EqConstraint]
+-- | Levels of equality-constraint reduction
+-- 1) Unreduced: The FTA is identical in shape to what it would be if this constraint
+--               were not present. To iterate through valid terms, one must
+--               generate possible subterms and filter out equals.
+--
+-- 2) Leaf-reduced: Each node pointed to by the left path of the construct
+--                  has been intersected with the union of all nodes pointed
+--                  to by the right path. A filter is still required
+--                  to find valid terms, but fewer invalid terms will be generated.
+--
+-- 3) Multiplied: Duplicates have been made of the hyperedge, and intersections performed, so that
+--                it is guaranteed that, for each choice of term and the end of the left path,
+--                there will be an equal term possible at the right edge. This enables
+--                both efficient generation and counting.
+--
+-- The constraints being reduced is a property of the entire hyperedge, not of the individual constraints.
+-- This is because reducing one constraint may result in another constraint becoming unreduced,
+-- similar to how, in classic constraint propagation, one cannot process all constraints in a fixed linear order.
+--
+-- Example: Consider the hyperedge with children [{1,2,3}, {2,3,4}, {3,4,5}] and constraints
+-- .0=.1, .1=.2. Reducing them in left-to-right order yields [{2, 3}, {3}, {3}]. The first
+-- constraint would then need to be processed again to yield the fully-reduced edge [{3}, {3}, {3}].
+data ECReduction = ECUnreduced | ECLeafReduced | ECMultiplied
+  deriving (Eq, Ord, Show, Generic)
+
+instance Hashable ECReduction
+
+data Edge = Edge' { edgeSymbol    :: !Symbol
+                  , edgeChildren  :: ![Node]
+                  , edgeEcs       :: ![EqConstraint]
+                  , edgeReduction :: !ECReduction
+                  }
   deriving ( Eq, Ord, Show, Generic)
 
 instance Hashable Edge
+
+----------------------
+----- Nodes
+----------------------
 
 -- | Something's wrong. The StartNode doesn't really exist. Instead, there are edges with no children
 --   These can be seen as implicit edges to the unique StartNode.
@@ -191,19 +233,19 @@ instance Ord Node where
 instance Hashable Node
 
 
--------------
------- Getters
--------------
+----------------------
+------ Getters and setters
+----------------------
 
 nodeIdentity :: Node -> Id
 nodeIdentity (InternedNode n _) = n
 
-edgeSymbol :: Edge -> Symbol
-edgeSymbol (Edge s _ _) = s
-
 nodeEdges :: Node -> [Edge]
 nodeEdges (Node es) = es
 nodeEdges _         = []
+
+setChildren :: Edge -> [Node] -> Edge
+setChildren e ns = e {edgeChildren = ns, edgeReduction = ECUnreduced}
 
 -------------
 ------ Interning
@@ -214,7 +256,7 @@ data UninternedNode = UninternedNode ![Edge]
                     | UninternedStartNode
                     | UninternedEmptyNode
 
-data DEdge = DEdge !Symbol ![Id] ![EqConstraint]
+data DEdge = DEdge !Symbol ![Id] ![EqConstraint] !ECReduction
   deriving ( Eq, Ord, Generic )
 
 instance Hashable DEdge
@@ -228,7 +270,7 @@ instance Interned Node where
 
   describe (UninternedNode es) = DNode (map describeEdge es)
     where
-      describeEdge (Edge s children constrs) = DEdge s (map nodeIdentity children) constrs
+      describeEdge (Edge' s children constrs r) = DEdge s (map nodeIdentity children) constrs r
   describe UninternedStartNode = DStartNode
   describe UninternedEmptyNode = DEmptyNode
 
@@ -248,10 +290,12 @@ ecdftaCache = mkCache
 ------ Smart constructors
 ---------------------
 
-pattern Edge :: Symbol -> [Node] -> [EqConstraint] -> Edge
-pattern Edge s ns ecs <- (Edge' s ns ecs) where
-  -- TODO: Reduce redundant work
-  Edge s ns ecs = Edge' s (fix (\ns' -> foldr reduceEqConstraint ns' (sort ecs)) ns) (sort ecs)
+pattern Edge :: Symbol -> [Node] -> Edge
+pattern Edge s ns <- (Edge' s ns _ _) where
+  Edge s ns = Edge' s ns [] ECUnreduced
+
+mkEdge :: Symbol -> [Node] -> [EqConstraint] -> Edge
+mkEdge s ns ecs = Edge' s ns ecs ECUnreduced
 
 {-# COMPLETE Node, StartNode, EmptyNode #-}
 
@@ -263,7 +307,7 @@ pattern Node es <- (InternedNode _ es) where
 
 
 collapseEmptyEdge :: Edge -> Maybe Edge
-collapseEmptyEdge e@(Edge _ ns _) = if any (== EmptyNode) ns then Nothing else Just e
+collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Just e
 
 ---------------------------------------------------------------
 ------------------------- Operations --------------------------
@@ -289,7 +333,7 @@ crush f n = evalState (go n) Set.empty
         return mempty
        else do
         modify (Set.insert nId)
-        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns _) -> mconcat <$> mapM go ns) es)
+        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
 
 -----------------------
 ------ Edge operations
@@ -299,7 +343,7 @@ removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 isEmptyEdge :: Edge -> Bool
-isEmptyEdge e@(Edge _ ns _) = any (== EmptyNode) ns
+isEmptyEdge e@(Edge _ ns) = any (== EmptyNode) ns
 
 
 ------------
@@ -357,11 +401,14 @@ doIntersect n1@(Node es1) n2@(Node es2)
                                             es -> Node es
   where
     intersectEdge :: Edge -> Edge -> Maybe Edge
-    intersectEdge (Edge s1 _ _) (Edge s2 _ _)
-      | s1 /= s2                                                  = Nothing
-    intersectEdge (Edge s children1 ecs1) (Edge _ children2 ecs2)
-      | length children1 /= length children2                      = error ("Different lengths encountered for children of symbol " ++ show s)
-    intersectEdge (Edge s children1 ecs1) (Edge _ children2 ecs2) = Just $ Edge s (zipWith intersect children1 children2) (ecs1 ++ ecs2)
+    intersectEdge (Edge s1 _) (Edge s2 _)
+      | s1 /= s2                                        = Nothing
+    intersectEdge (Edge s children1) (Edge _ children2)
+      | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
+    intersectEdge e1                 e2                 =
+        Just $ mkEdge (edgeSymbol e1)
+                      (zipWith intersect (edgeChildren e1) (edgeChildren e2))
+                      (edgeEcs e1 ++ edgeEcs e2)
 
 
 ------------
@@ -380,8 +427,9 @@ union ns = case filter (/= EmptyNode) ns of
 requirePath :: Path -> Node -> Node
 requirePath EmptyPath       n         = n
 requirePath _               EmptyNode = EmptyNode
-requirePath (ConsPath p ps) (Node es) = Node $ map (\(Edge s ns ecs) -> Edge s (requirePathList (ConsPath p ps) ns) ecs)
-                                                $ filter (\(Edge _ ns _) -> length ns > p) es
+requirePath (ConsPath p ps) (Node es) = Node $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
+                                             $ filter (\e -> length (edgeChildren e) > p)
+                                                      es
 
 requirePathList :: Path -> [Node] -> [Node]
 requirePathList EmptyPath       ns = ns
@@ -393,14 +441,14 @@ instance Pathable Node Node where
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
-      goEdge (Edge _ ns _) = ns ^? ix p
+      goEdge (Edge _ ns) = ns ^? ix p
 
   modifyAtPath f EmptyPath       n         = f n
   modifyAtPath _ _               EmptyNode = EmptyNode
   modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
     where
       goEdge :: Edge -> Edge
-      goEdge (Edge s ns ecs) = Edge s (ns & ix p %~ modifyAtPath f ps) ecs
+      goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
 
 instance Pathable [Node] Node where
   getPath EmptyPath       ns = union ns
@@ -417,6 +465,25 @@ instance Pathable [Node] Node where
 ------ Reducing equality constraints
 ------------------------------------
 
+reducePartially :: Node -> Node
+reducePartially = reduce ECLeafReduced
+
+-- | TODO: Does reducing top-down result in a properly reduced FTA? Must one
+--   reapply the top constraints? Top down is faster than bottom-up, right?
+reduce :: ECReduction -> Node -> Node
+reduce _   EmptyNode = EmptyNode
+reduce ecr (Node es) = Node $ map (\e -> e {edgeChildren = map (reduce ecr) (edgeChildren e)})
+                            $ map (reduceEdgeTo ecr) es
+
+reduceEdgeTo :: ECReduction -> Edge -> Edge
+reduceEdgeTo ECUnreduced   e = e
+reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
+reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
+
+reduceEdgeIntersection :: Edge -> Edge
+reduceEdgeIntersection (Edge' s ns ecs ECUnreduced) = Edge' s (fix (\ns' -> foldr reduceEqConstraint ns' (sort ecs)) ns) ecs ECLeafReduced
+reduceEdgeIntersection e                            = e
+
 reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
 reduceEqConstraint (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
                                              modifyAtPath (intersect n2) p1 $
@@ -427,6 +494,8 @@ reduceEqConstraint (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
     n1 = getPath p1 ns
     n2 = getPath p2 ns
 
+reduceEdgeMultiply :: Edge -> Edge
+reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"
 
 ------------------------------------
 ------ Denotation
@@ -446,13 +515,13 @@ denotation n = go n
     go n = case n of
              EmptyNode -> []
              Node es -> do
-               Edge s ns ecs <- es
+               e <- es
 
                -- Very inefficient here, but easy to code
-               children <- sequence $ map go ns
+               children <- sequence $ map go (edgeChildren e)
 
-               let res = Term s children
-               guard (all (ecSatisfied res) ecs)
+               let res = Term (edgeSymbol e) children
+               guard (all (ecSatisfied res) (edgeEcs e))
                return res
 
 
@@ -480,13 +549,13 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
 
     nodeNodes, transitionNodes :: [Fgl.LNode FglNodeLabel]
     nodeNodes       = crush (\n@(Node _)  -> [(fglNodeId n, IdLabel $ nodeIdentity n)]) root
-    transitionNodes = crush (\n@(Node es) -> imap (\i (Edge s _ ecs) -> (fglTransitionId n i, TransitionLabel s ecs)) es) root
+    transitionNodes = crush (\n@(Node es) -> imap (\i e -> (fglTransitionId n i, TransitionLabel (edgeSymbol e) (edgeEcs e))) es) root
 
     nodeToTransitionEdges, transitionToNodeEdges :: [Fgl.LEdge ()]
     nodeToTransitionEdges = crush (\n@(Node es) -> imap (\i _ -> (fglNodeId n, fglTransitionId n i, ())) es) root
     transitionToNodeEdges = crush (\n@(Node es) -> concat $
-                                                     imap (\i (Edge _ ns _) ->
-                                                              map (\n' -> (fglTransitionId n i, fglNodeId n', ())) ns
+                                                     imap (\i e ->
+                                                              map (\n' -> (fglTransitionId n i, fglNodeId n', ())) (edgeChildren e)
                                                            )
                                                            es)
                                   root
@@ -539,4 +608,4 @@ refreshNode (Node es) = Node (map refreshEdge es)
 
 -- | This should be the identity operation. If not, something has gone wrong.
 refreshEdge :: Edge -> Edge
-refreshEdge (Edge s ns ecs) = Edge s (map refreshNode ns) ecs
+refreshEdge e = reduceEdgeTo (edgeReduction e) $ setChildren e (map refreshNode (edgeChildren e))
