@@ -21,7 +21,7 @@ ex2 :: Node
 ex2 = Node [Edge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]] []]] [EqConstraint (path [0]) (path [1,0])]]
 
 testBigNode :: Node
-testBigNode = any4
+testBigNode = uptoDepth4
 
 --------------------------
 ------ Main

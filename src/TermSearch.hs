@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module TermSearch (
-    any4
+    uptoDepth4
   ) where
 
 import ECDFTA
@@ -52,17 +52,25 @@ anyArg = Node [arg1, arg2]
 anyFunc :: Node
 anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
 
-any1 :: Node
-any1 = union [anyArg, anyFunc]
+size1, size2, size3, size4, size5, size6 :: Node
+size1 = union [anyArg, anyFunc]
+size2 = app size1 size1
+size3 = union [app size2 size1, app size1 size2]
+size4 = union [app size3 size1, app size2 size2, app size1 size3]
+size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1 size4]
+size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1 size5]
 
-any2 :: Node
-any2 = union [any1, app any1 any1]
+uptoSize6UniqueRep :: Node
+uptoSize6UniqueRep = union [size1, size2, size3, size4, size5, size6]
 
-any3 :: Node
-any3 = union [any2, app any2 any2]
+uptoDepth2 :: Node
+uptoDepth2 = union [size1, app size1 size1]
 
-any4 :: Node
-any4 = union [any3, app any3 any3]
+uptoDepth3 :: Node
+uptoDepth3 = union [uptoDepth2, app uptoDepth2 uptoDepth2]
+
+uptoDepth4 :: Node
+uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 
 filterType :: Node -> Node -> Node
 filterType n t = Node [Edge "filter" [t, n] [EqConstraint (path [0]) (path [1, 0])]]
