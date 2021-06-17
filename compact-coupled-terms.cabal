@@ -1,10 +1,9 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 39b692c00e8a3b3989e024bbd66fcb469ad8c58a729a4c68b0b77e21a20c558f
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -29,6 +28,7 @@ library
   exposed-modules:
       ECDFTA
       TermSearch
+      DbOpt
   other-modules:
       Paths_compact_coupled_terms
   hs-source-dirs:

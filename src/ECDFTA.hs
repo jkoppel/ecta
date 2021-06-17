@@ -21,6 +21,8 @@ module ECDFTA (
   , union
   , intersect
   , denotation
+  , nodeEdges
+  , crush
 
   , reducePartially
 
