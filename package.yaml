@@ -58,8 +58,8 @@ library:
     - lens
     - mtl
     - pretty-simple
-    - text
     - raw-strings-qq
+    - text
 
 executables:
   compact-coupled-terms-exe:
