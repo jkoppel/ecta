@@ -5,6 +5,7 @@ module DbOpt where
 import ECDFTA
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
+import qualified Language.Dot.Pretty as Dot
 
 binary :: Symbol -> Node -> Node -> Node
 binary name x y = Node [Edge name [x, y]]
@@ -21,12 +22,13 @@ eq = binary "eq"
 dot = binary "dot"
 name = const'
 relation = const'
-scope = const'
+scope = const' "k"
 hidx x y z = func "hidx" [x, y, z]
 
 data Pattern =
   App Symbol [Pattern]
   | Var Int
+  | NodePat Node
   deriving ( Eq, Ord, Show )
 
 data PatternMatch = PatternMatch { root :: Node
@@ -49,6 +51,7 @@ matchRoot p n =
           List.filter (\(Edge sym' _) -> sym == sym') $
           nodeEdges n
         (Var idx) -> [[(idx, n)]]
+        (NodePat n') -> if n == n' then [[]] else []
 
 match :: Pattern -> Node -> [PatternMatch]
 match p = crush (matchRoot p)
@@ -59,18 +62,18 @@ atNode n n' f =
     Node (List.map (\(Edge sym args) -> Edge sym $ List.map (\n -> atNode n n' f) args) es)
     where (Node es) = n
 
-rewrite :: PatternMatch -> Pattern -> Node -> Node
-rewrite PatternMatch { root, subst } pat n =
+rewriteMatch :: PatternMatch -> Pattern -> Node -> Node
+rewriteMatch PatternMatch { root, subst } pat n =
   atNode n root (\(Node ns) -> Node (ns ++ ns'))
   where
     liftPat subst pat =
       case pat of
         (App sym args) -> func sym $ List.map (liftPat subst) args
         (Var idx) -> Maybe.fromJust $ List.lookup idx subst
+        (NodePat n) -> n
     (Node ns') = liftPat subst pat
 
-testTerm = filter' (eq (name "x") (name "x'")) (relation "test")
-testPat = App "filter" [App "eq" [Var 0, Var 1], Var 2]
+testTerm = filter' (binary "and" (eq (name "x") (name "x'")) (name "y")) (relation "test")
 
 data Rule = Rule { lhs :: Pattern
                  , rhs :: Pattern
@@ -78,8 +81,37 @@ data Rule = Rule { lhs :: Pattern
                  }
   deriving ( Show )
 
-filterToHidx = (lhs, rhs, constrs)
+rewriteFirst :: Rule -> Node -> Node
+rewriteFirst Rule {lhs, rhs, constrs} node =
+  case match lhs node of
+    (match : _) -> rewriteMatch match rhs node
+    [] -> node
+
+filterToHidx = Rule {lhs, rhs, constrs}
   where
     lhs = App "filter" [App "eq" [Var 0, Var 1], Var 2]
-    rhs = App "hidx" [App "select" [Var 0, Var 2], scope, App "filter" [App "eq" [Var 0, App "dot" [scope, Var 0]], Var 2, Var 1]]
+    rhs = App "hidx" [App "select" [Var 0, Var 2], NodePat scope, App "filter" [App "eq" [Var 0, App "dot" [NodePat scope, Var 0]], Var 2, Var 1]]
     constrs = []
+
+splitFilter = Rule {lhs, rhs, constrs}
+  where
+    lhs = App "filter" [App "and" [Var 0, Var 1], Var 2]
+    rhs = App "filter" [Var 0, App "filter" [Var 1, Var 2]]
+    constrs = []
+
+mergeFilter = Rule {lhs, rhs, constrs}
+  where
+    lhs = App "filter" [Var 0, App "filter" [Var 1, Var 2]]
+    rhs = App "filter" [App "and" [Var 0, Var 1], Var 2]
+    constrs = []
+
+flipBinop op = Rule {lhs, rhs, constrs}
+  where
+    lhs = App op [Var 0, Var 1]
+    rhs = App op [Var 1, Var 0]
+    constrs = []
+
+flipEq = flipBinop "eq"
+flipAnd = flipBinop "and"
+
+dumpDot x = Dot.prettyPrintDot $ toDot x
