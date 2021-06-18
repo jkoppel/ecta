@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4b2dc4b9bcac87c000086cca6eaa8f20e78a5d008aecf5821a22a7e3ddaca58e
+-- hash: 39b692c00e8a3b3989e024bbd66fcb469ad8c58a729a4c68b0b77e21a20c558f
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -45,6 +45,7 @@ library
     , lens
     , mtl
     , pretty-simple
+    , raw-strings-qq
     , text
   default-language: Haskell2010
 

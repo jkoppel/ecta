@@ -59,6 +59,7 @@ library:
     - mtl
     - pretty-simple
     - text
+    - raw-strings-qq
 
 executables:
   compact-coupled-terms-exe:

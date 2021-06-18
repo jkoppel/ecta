@@ -5,7 +5,7 @@
 -- Specialized to DAGs
 
 module ECDFTA (
-    Symbol
+    Symbol(Symbol)
   , Term(..)
   , Path
   , path
@@ -78,14 +78,18 @@ class Pretty a where
 ---------------------------------------------------------------
 
 
-data Symbol = Symbol {-# UNPACK #-} !InternedText
+data Symbol = Symbol' {-# UNPACK #-} !InternedText
   deriving ( Eq, Ord, Generic )
 
+pattern Symbol :: Text -> Symbol
+pattern Symbol t <- Symbol' (unintern -> t) where
+  Symbol t = Symbol' (intern t)
+
 instance Pretty Symbol where
-  pretty (Symbol internedText) = unintern internedText
+  pretty (Symbol t) = t
 
 instance Show Symbol where
-  show (Symbol internedText) = Text.unpack $ unintern internedText
+  show = Text.unpack . pretty
 
 instance Hashable Symbol
 
@@ -196,6 +200,9 @@ data ECReduction = ECUnreduced | ECLeafReduced | ECMultiplied
 
 instance Hashable ECReduction
 
+-- | This design has a violation of the representable/valid principle: If one constructs an FTA
+-- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
+-- all edges the same. They will not be equal, even though the graph is identical.
 data Edge = Edge' { edgeSymbol    :: !Symbol
                   , edgeChildren  :: ![Node]
                   , edgeEcs       :: ![EqConstraint]
@@ -363,19 +370,27 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 data IntersectedNode = IntersectedNode { intersectionId :: {-# UNPACK #-} !Id
                                        , runIntersect   :: !Node
                                        }
+  deriving ( Eq, Ord, Show )
 
-data DoIntersect = DoIntersect !Node !Node
+data DoIntersect = DoIntersect' !Node !Node deriving ( Show )
+
+pattern DoIntersect :: Node -> Node -> DoIntersect
+pattern DoIntersect n1 n2 <- DoIntersect' n1 n2 where
+  DoIntersect n1 n2 = DoIntersect' (min n1 n2) (max n1 n2)
 
 instance Interned IntersectedNode where
   type Uninterned  IntersectedNode = DoIntersect
   data Description IntersectedNode = DIntersect !Id !Id
-    deriving ( Eq, Ord, Generic )
+    deriving ( Eq, Ord, Show, Generic )
 
   describe (DoIntersect n1 n2) = DIntersect (nodeIdentity n1) (nodeIdentity n2)
 
   identify i (DoIntersect n1 n2) = IntersectedNode i (doIntersect n1 n2)
 
   cache = intersectionCache
+
+  -- Temporary hack around cyclic thunks created by recursion that hits same cache slot
+  cacheWidth _ = 791903
 
 instance Hashable (Description IntersectedNode)
 
@@ -391,6 +406,7 @@ intersect :: Node -> Node -> Node
 intersect EmptyNode _         = EmptyNode
 intersect _         EmptyNode = EmptyNode
 intersect n1        n2        = runIntersect $ intern (DoIntersect n1 n2)
+
 
 -- | TODO: Think through the reductions for the equality constraints added
 doIntersect :: Node -> Node -> Node
