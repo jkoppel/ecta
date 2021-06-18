@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DbOpt where
-  
+
 import ECDFTA
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
@@ -81,11 +81,37 @@ data Rule = Rule { lhs :: Pattern
                  }
   deriving ( Show )
 
-rewriteFirst :: Rule -> Node -> Node
-rewriteFirst Rule {lhs, rhs, constrs} node =
-  case match lhs node of
-    (match : _) -> rewriteMatch match rhs node
-    [] -> node
+findMap :: (a -> Maybe b) -> [a] -> Maybe b
+findMap f [] = Nothing
+findMap f (x : xs) = case f x of
+                       Just x' -> Just x'
+                       Nothing -> findMap f xs
+
+rewriteFirst :: Rule -> Node -> Maybe Node
+rewriteFirst Rule {lhs, rhs, constrs} root =
+  findMap (\m ->
+             let root' = rewriteMatch m rhs root in
+              if root == root' then Nothing else Just root')
+  $ match lhs root
+
+try :: (Node -> Maybe Node) -> Node -> Maybe Node
+try r n =
+  case r n of
+    Just n' -> Just n'
+    Nothing -> Just n
+
+andThen :: (Node -> Maybe Node) -> (Node -> Maybe Node) -> Node -> Maybe Node
+andThen r r' n =
+  case r n of
+    Just n' -> r' n'
+    Nothing -> Nothing
+
+repeat' :: Int -> (Node -> Maybe Node) -> Node -> Maybe Node
+repeat' i r n =
+  if i <= 0 then Just n else
+  case r n of
+    Nothing -> Just n
+    Just n' -> repeat' (i - 1) r n'
 
 filterToHidx = Rule {lhs, rhs, constrs}
   where
@@ -114,4 +140,9 @@ flipBinop op = Rule {lhs, rhs, constrs}
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
 
-dumpDot x = Dot.prettyPrintDot $ toDot x
+rewrite = repeat' 20
+          $ andThen (try $ rewriteFirst splitFilter)
+          $ andThen (try $ rewriteFirst mergeFilter)
+          $ (try $ rewriteFirst filterToHidx)
+          
+dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
