@@ -13,7 +13,7 @@ module ECDFTA (
   , EqConstraint(EqConstraint)
   , Edge(Edge)
   , mkEdge
-  , Node(Node, StartNode, EmptyNode)
+  , Node(Node, EmptyNode)
 
   -- * Operations
   , nodeCount
@@ -241,26 +241,21 @@ instance Hashable Edge where
 ----- Nodes
 ----------------------
 
--- | Something's wrong. The StartNode doesn't really exist. Instead, there are edges with no children
---   These can be seen as implicit edges to the unique StartNode.
 data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
-          | StartNode
           | EmptyNode
   deriving ( Show )
 
 instance Eq Node where
   (InternedNode n1 _) == (InternedNode n2 _) = n1 == n2
-  StartNode           == StartNode           = True
   EmptyNode           == EmptyNode           = True
   _                   == _                   = False
 
 instance Ord Node where
   compare n1 n2 = compare (dropEdges n1) (dropEdges n2)
     where
-      dropEdges :: Node -> Either Id Int
-      dropEdges (InternedNode n _) = Left n
-      dropEdges StartNode          = Right 0
-      dropEdges EmptyNode          = Right 1
+      dropEdges :: Node -> Maybe Id
+      dropEdges (InternedNode n _) = Just n
+      dropEdges EmptyNode          = Nothing
 
 instance Hashable Node where
   hashWithSalt s EmptyNode = s `hashWithSalt` (-1 :: Int)
@@ -286,7 +281,6 @@ setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
 -------------
 
 data UninternedNode = UninternedNode ![Edge]
-                    | UninternedStartNode
                     | UninternedEmptyNode
   deriving ( Eq, Generic )
 
@@ -300,7 +294,6 @@ instance Interned Node where
   describe = DNode
 
   identify i (UninternedNode es) = InternedNode i es
-  identify _ UninternedStartNode = StartNode
   identify _ UninternedEmptyNode = EmptyNode
 
   cache = nodeCache
@@ -352,7 +345,7 @@ pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _ _)) where
 mkEdge :: Symbol -> [Node] -> [EqConstraint] -> Edge
 mkEdge s ns ecs = intern $ UninternedEdge s ns ecs ECUnreduced
 
-{-# COMPLETE Node, StartNode, EmptyNode #-}
+{-# COMPLETE Node, EmptyNode #-}
 
 pattern Node :: [Edge] -> Node
 pattern Node es <- (InternedNode _ es) where
