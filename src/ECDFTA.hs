@@ -32,6 +32,7 @@ module ECDFTA (
 
 import Control.Monad ( guard )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
+import Data.Function ( on )
 import Data.List ( sort, nub, intercalate )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
@@ -49,9 +50,9 @@ import GHC.Generics ( Generic )
 import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
 import qualified Data.Graph.Inductive as Fgl
-import Data.Hashable ( Hashable )
+import Data.Hashable ( Hashable, hashWithSalt )
 import Data.Interned ( Interned(..), intern, unintern, Id, Cache, mkCache )
-import Data.Interned.Text ( InternedText )
+import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
@@ -79,7 +80,7 @@ class Pretty a where
 
 
 data Symbol = Symbol' {-# UNPACK #-} !InternedText
-  deriving ( Eq, Ord, Generic )
+  deriving ( Eq, Ord )
 
 pattern Symbol :: Text -> Symbol
 pattern Symbol t <- Symbol' (unintern -> t) where
@@ -91,7 +92,8 @@ instance Pretty Symbol where
 instance Show Symbol where
   show = Text.unpack . pretty
 
-instance Hashable Symbol
+instance Hashable Symbol where
+  hashWithSalt s (Symbol' t) = s `hashWithSalt` (internedTextId t)
 
 instance IsString Symbol where
   fromString = Symbol . fromString
@@ -203,14 +205,23 @@ instance Hashable ECReduction
 -- | This design has a violation of the representable/valid principle: If one constructs an FTA
 -- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
 -- all edges the same. They will not be equal, even though the graph is identical.
-data Edge = Edge' { edgeSymbol    :: !Symbol
-                  , edgeChildren  :: ![Node]
-                  , edgeEcs       :: ![EqConstraint]
-                  , edgeReduction :: !ECReduction
-                  }
-  deriving ( Eq, Ord, Show, Generic)
+data Edge = InternedEdge { edgeId        ::  !Id
+                         , edgeSymbol    :: !Symbol
+                         , edgeChildren  :: ![Node]
+                         , edgeEcs       :: ![EqConstraint]
+                         , edgeReduction :: !ECReduction
+                         }
+  deriving ( Show )
 
-instance Hashable Edge
+
+instance Eq Edge where
+  (InternedEdge {edgeId = n1}) == (InternedEdge {edgeId = n2}) = n1 == n2
+
+instance Ord Edge where
+  compare = compare `on` edgeId
+
+instance Hashable Edge where
+  hashWithSalt s e = s `hashWithSalt` (edgeId e)
 
 ----------------------
 ----- Nodes
@@ -221,7 +232,7 @@ instance Hashable Edge
 data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | StartNode
           | EmptyNode
-  deriving ( Show, Generic )
+  deriving ( Show )
 
 instance Eq Node where
   (InternedNode n1 _) == (InternedNode n2 _) = n1 == n2
@@ -237,7 +248,9 @@ instance Ord Node where
       dropEdges StartNode          = Right 0
       dropEdges EmptyNode          = Right 1
 
-instance Hashable Node
+instance Hashable Node where
+  hashWithSalt s EmptyNode = s `hashWithSalt` (-1 :: Int)
+  hashWithSalt s (InternedNode n _) = s `hashWithSalt` n
 
 
 ----------------------
@@ -252,57 +265,78 @@ nodeEdges (Node es) = es
 nodeEdges _         = []
 
 setChildren :: Edge -> [Node] -> Edge
-setChildren e ns = e {edgeChildren = ns, edgeReduction = ECUnreduced}
+setChildren e ns =  mkEdge (edgeSymbol e) (edgeChildren e) (edgeEcs e)
 
 -------------
------- Interning
+------ Interning nodes
 -------------
-
 
 data UninternedNode = UninternedNode ![Edge]
                     | UninternedStartNode
                     | UninternedEmptyNode
+  deriving ( Eq, Generic )
 
-data DEdge = DEdge !Symbol ![Id] ![EqConstraint] !ECReduction
-  deriving ( Eq, Ord, Generic )
-
-instance Hashable DEdge
+instance Hashable UninternedNode
 
 instance Interned Node where
   type Uninterned  Node = UninternedNode
-  data Description Node = DNode ![DEdge]
-                        | DStartNode
-                        | DEmptyNode
-    deriving ( Eq, Ord, Generic )
+  data Description Node = DNode !UninternedNode
+    deriving ( Eq, Generic )
 
-  describe (UninternedNode es) = DNode (map describeEdge es)
-    where
-      describeEdge (Edge' s children constrs r) = DEdge s (map nodeIdentity children) constrs r
-  describe UninternedStartNode = DStartNode
-  describe UninternedEmptyNode = DEmptyNode
+  describe = DNode
 
   identify i (UninternedNode es) = InternedNode i es
   identify _ UninternedStartNode = StartNode
   identify _ UninternedEmptyNode = EmptyNode
 
-  cache = ecdftaCache
+  cache = nodeCache
 
 instance Hashable (Description Node)
 
-ecdftaCache :: Cache Node
-ecdftaCache = mkCache
-{-# NOINLINE ecdftaCache #-}
+nodeCache :: Cache Node
+nodeCache = mkCache
+{-# NOINLINE nodeCache #-}
+
+-------------
+------ Interning edges
+-------------
+
+data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
+                                     , uEdgeChildren  :: ![Node]
+                                     , uEdgeEcs       :: ![EqConstraint]
+                                     , uEdgeReduction :: !ECReduction
+                                     }
+  deriving ( Eq, Generic )
+
+instance Hashable UninternedEdge
+
+instance Interned Edge where
+  type Uninterned  Edge = UninternedEdge
+  data Description Edge = DEdge {-# UNPACK #-} !UninternedEdge
+    deriving ( Eq, Generic )
+
+  describe = DEdge
+
+  identify i e = InternedEdge i (uEdgeSymbol e) (uEdgeChildren e) (uEdgeEcs e) (uEdgeReduction e)
+
+  cache = edgeCache
+
+instance Hashable (Description Edge)
+
+edgeCache :: Cache Edge
+edgeCache = mkCache
+{-# NOINLINE edgeCache #-}
 
 ---------------------
 ------ Smart constructors
 ---------------------
 
 pattern Edge :: Symbol -> [Node] -> Edge
-pattern Edge s ns <- (Edge' s ns _ _) where
-  Edge s ns = Edge' s ns [] ECUnreduced
+pattern Edge s ns <- (InternedEdge _ s ns _ _) where
+  Edge s ns = intern $ UninternedEdge s ns [] ECUnreduced
 
 mkEdge :: Symbol -> [Node] -> [EqConstraint] -> Edge
-mkEdge s ns ecs = Edge' s ns ecs ECUnreduced
+mkEdge s ns ecs = intern $ UninternedEdge s ns ecs ECUnreduced
 
 {-# COMPLETE Node, StartNode, EmptyNode #-}
 
@@ -481,6 +515,14 @@ instance Pathable [Node] Node where
 ------ Reducing equality constraints
 ------------------------------------
 
+
+--memo2 :: (Ord a, Ord b) => (a -> b -> c) -> a -> b -> c
+--memo2 f = memo (memo . f)
+
+---------------
+--- Reduction
+---------------
+
 reducePartially :: Node -> Node
 reducePartially = reduce ECLeafReduced
 
@@ -497,15 +539,21 @@ reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
 reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection (Edge' s ns ecs ECUnreduced) = Edge' s (fix (\ns' -> foldr reduceEqConstraint ns' (sort ecs)) ns) ecs ECLeafReduced
-reduceEdgeIntersection e                            = e
+reduceEdgeIntersection e@(InternedEdge {edgeReduction = ECUnreduced}) = intern $ UninternedEdge (edgeSymbol e)
+                                                                                                (fix (\ns' -> foldr reduceEqConstraint ns' (sort (edgeEcs e))) (edgeChildren e))
+                                                                                                (edgeEcs e)
+                                                                                                ECLeafReduced
+reduceEdgeIntersection e                                              = e
 
 reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
-reduceEqConstraint (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
-                                             modifyAtPath (intersect n2) p1 $
-                                             requirePathList p1 $
-                                             requirePathList p2 $
-                                             ns
+reduceEqConstraint =  reduceEqConstraint'
+
+reduceEqConstraint' :: EqConstraint -> [Node] -> [Node]
+reduceEqConstraint' (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
+                                              modifyAtPath (intersect n2) p1 $
+                                              requirePathList p1 $
+                                              requirePathList p2 $
+                                              ns
   where
     n1 = getPath p1 ns
     n2 = getPath p2 ns

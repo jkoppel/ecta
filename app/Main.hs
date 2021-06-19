@@ -8,4 +8,4 @@ import TermSearch
 ----------------------------------------------------------
 
 main :: IO ()
-main = print $ length $ denotation $ reducePartially $ filterType uptoSize6UniqueRep tau
+main = print $ length $ denotation $ reducePartially $ filterType size2 tau
