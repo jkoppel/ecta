@@ -51,7 +51,8 @@ import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
 import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable, hashWithSalt )
-import Data.Interned ( Interned(..), intern, unintern, Id, Cache, mkCache )
+import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Index ( imap )
 

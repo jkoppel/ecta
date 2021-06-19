@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4a311f32f168d9853c4c5e20874cf9505ac5dc673beb9d2c5f25175b05d78871
+-- hash: bd2d028805b5f78f5f1e972a690eca57d92d720e03fb60f4597c3139efb9e25f
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.Interned.Extended.SingleThreaded
       ECDFTA
       TermSearch
   other-modules:
@@ -35,7 +36,8 @@ library
       src
   default-extensions: ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
   build-depends:
-      base >=4.7 && <5
+      array
+    , base >=4.7 && <5
     , containers
     , fgl
     , hashable
@@ -47,6 +49,7 @@ library
     , pretty-simple
     , raw-strings-qq
     , text
+    , unordered-containers
   default-language: Haskell2010
 
 executable compact-coupled-terms-exe

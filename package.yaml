@@ -49,6 +49,7 @@ default-extensions:
 library:
   source-dirs: src
   dependencies:
+    - array
     - containers
     - fgl
     - hashable
@@ -60,6 +61,7 @@ library:
     - pretty-simple
     - raw-strings-qq
     - text
+    - unordered-containers
 
 executables:
   compact-coupled-terms-exe:
