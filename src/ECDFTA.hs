@@ -206,12 +206,21 @@ instance Hashable ECReduction
 -- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
 -- all edges the same. They will not be equal, even though the graph is identical.
 data Edge = InternedEdge { edgeId        ::  !Id
-                         , edgeSymbol    :: !Symbol
-                         , edgeChildren  :: ![Node]
-                         , edgeEcs       :: ![EqConstraint]
-                         , edgeReduction :: !ECReduction
+                         , uninternedEdge :: !UninternedEdge
                          }
   deriving ( Show )
+
+edgeSymbol :: Edge -> Symbol
+edgeSymbol = uEdgeSymbol . uninternedEdge
+
+edgeChildren :: Edge -> [Node]
+edgeChildren = uEdgeChildren . uninternedEdge
+
+edgeEcs :: Edge -> [EqConstraint]
+edgeEcs = uEdgeEcs . uninternedEdge
+
+edgeReduction :: Edge -> ECReduction
+edgeReduction = uEdgeReduction . uninternedEdge
 
 
 instance Eq Edge where
@@ -306,7 +315,7 @@ data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
                                      , uEdgeEcs       :: ![EqConstraint]
                                      , uEdgeReduction :: !ECReduction
                                      }
-  deriving ( Eq, Generic )
+  deriving ( Eq, Show, Generic )
 
 instance Hashable UninternedEdge
 
@@ -317,7 +326,7 @@ instance Interned Edge where
 
   describe = DEdge
 
-  identify i e = InternedEdge i (uEdgeSymbol e) (uEdgeChildren e) (uEdgeEcs e) (uEdgeReduction e)
+  identify i e = InternedEdge i e
 
   cache = edgeCache
 
@@ -332,7 +341,7 @@ edgeCache = mkCache
 ---------------------
 
 pattern Edge :: Symbol -> [Node] -> Edge
-pattern Edge s ns <- (InternedEdge _ s ns _ _) where
+pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _ _)) where
   Edge s ns = intern $ UninternedEdge s ns [] ECUnreduced
 
 mkEdge :: Symbol -> [Node] -> [EqConstraint] -> Edge
@@ -530,7 +539,7 @@ reducePartially = reduce ECLeafReduced
 --   reapply the top constraints? Top down is faster than bottom-up, right?
 reduce :: ECReduction -> Node -> Node
 reduce _   EmptyNode = EmptyNode
-reduce ecr (Node es) = Node $ map (\e -> e {edgeChildren = map (reduce ecr) (edgeChildren e)})
+reduce ecr (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map (reduce ecr) (edgeChildren e)})
                             $ map (reduceEdgeTo ecr) es
 
 reduceEdgeTo :: ECReduction -> Edge -> Edge
@@ -539,11 +548,11 @@ reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
 reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection e@(InternedEdge {edgeReduction = ECUnreduced}) = intern $ UninternedEdge (edgeSymbol e)
-                                                                                                (fix (\ns' -> foldr reduceEqConstraint ns' (sort (edgeEcs e))) (edgeChildren e))
-                                                                                                (edgeEcs e)
-                                                                                                ECLeafReduced
-reduceEdgeIntersection e                                              = e
+reduceEdgeIntersection e | edgeReduction e == ECUnreduced = intern $ UninternedEdge (edgeSymbol e)
+                                                                                    (fix (\ns' -> foldr reduceEqConstraint ns' (sort (edgeEcs e))) (edgeChildren e))
+                                                                                    (edgeEcs e)
+                                                                                    ECLeafReduced
+reduceEdgeIntersection e                                  = e
 
 reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
 reduceEqConstraint =  reduceEqConstraint'
