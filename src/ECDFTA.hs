@@ -52,11 +52,13 @@ import Control.Lens ( (&), ix, _1, (^?), (%~) )
 import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable, hashWithSalt )
 import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
-import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
+
+import Data.Interned.Extended.SingleThreaded ( intern )
+import Memo ( memo2 )
 
 -------------------------------------------------------------------------------
 
@@ -527,10 +529,6 @@ instance Pathable [Node] Node where
 ------ Reducing equality constraints
 ------------------------------------
 
-
---memo2 :: (Ord a, Ord b) => (a -> b -> c) -> a -> b -> c
---memo2 f = memo (memo . f)
-
 ---------------
 --- Reduction
 ---------------
@@ -558,7 +556,7 @@ reduceEdgeIntersection e | edgeReduction e == ECUnreduced = intern $ UninternedE
 reduceEdgeIntersection e                                  = e
 
 reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
-reduceEqConstraint =  reduceEqConstraint'
+reduceEqConstraint =  memo2 reduceEqConstraint'
 
 reduceEqConstraint' :: EqConstraint -> [Node] -> [Node]
 reduceEqConstraint' (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
