@@ -411,53 +411,30 @@ nodeCount = getSum . crush (const $ Sum 1)
 edgeCount :: Node -> Int
 edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 
------------------------
------- Interning intersections
------------------------
-
-data IntersectedNode = IntersectedNode { intersectionId :: {-# UNPACK #-} !Id
-                                       , runIntersect   :: !Node
-                                       }
-  deriving ( Eq, Ord, Show )
-
-data DoIntersect = DoIntersect' !Node !Node deriving ( Show )
-
-pattern DoIntersect :: Node -> Node -> DoIntersect
-pattern DoIntersect n1 n2 <- DoIntersect' n1 n2 where
-  DoIntersect n1 n2 = DoIntersect' (min n1 n2) (max n1 n2)
-
-instance Interned IntersectedNode where
-  type Uninterned  IntersectedNode = DoIntersect
-  data Description IntersectedNode = DIntersect !Id !Id
-    deriving ( Eq, Ord, Show, Generic )
-
-  describe (DoIntersect n1 n2) = DIntersect (nodeIdentity n1) (nodeIdentity n2)
-
-  identify i (DoIntersect n1 n2) = IntersectedNode i (doIntersect n1 n2)
-
-  cache = intersectionCache
-
-  -- Temporary hack around cyclic thunks created by recursion that hits same cache slot
-  cacheWidth _ = 791903
-
-instance Hashable (Description IntersectedNode)
-
-intersectionCache :: Cache IntersectedNode
-intersectionCache = mkCache
-{-# NOINLINE intersectionCache #-}
-
 ------------
 ------ Intersect
 ------------
 
+-- | NOTE: I believe there is an infinite loop lurking in this memoization, and am surprised
+--   it has not yet manifested. An earlier implementation which abused the intern library
+--   for memoization very much did experience this infinite loop.
+--
+-- The problem is in this code in memoIO:
+--
+--     let r = f x
+--     writeIORef v (HashMap.insert x r m)
+--
+-- This puts the thunk "f x" as a value of the IORef v.
+-- The problem is that "f x" in this case is doIntersect, which contains a recursive call to
+-- intersect, which contains an unsafePerformIO of something that reads from this very same IORef.
+-- There is hence an unwanted cycle in the reduction graph.
+
 intersect :: Node -> Node -> Node
-intersect EmptyNode _         = EmptyNode
-intersect _         EmptyNode = EmptyNode
-intersect n1        n2        = runIntersect $ intern (DoIntersect n1 n2)
+intersect = memo2 doIntersect
 
-
--- | TODO: Think through the reductions for the equality constraints added
 doIntersect :: Node -> Node -> Node
+doIntersect EmptyNode _         = EmptyNode
+doIntersect _         EmptyNode = EmptyNode
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
