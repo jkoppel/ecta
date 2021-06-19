@@ -208,7 +208,9 @@ instance Hashable ECReduction
 data Edge = InternedEdge { edgeId        ::  !Id
                          , uninternedEdge :: !UninternedEdge
                          }
-  deriving ( Show )
+
+instance Show Edge where
+  show e = "InternedEdge " ++ show (edgeId e) ++ " " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ " " ++ show (edgeReduction e)
 
 edgeSymbol :: Edge -> Symbol
 edgeSymbol = uEdgeSymbol . uninternedEdge
@@ -274,7 +276,7 @@ nodeEdges (Node es) = es
 nodeEdges _         = []
 
 setChildren :: Edge -> [Node] -> Edge
-setChildren e ns =  mkEdge (edgeSymbol e) (edgeChildren e) (edgeEcs e)
+setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
 
 -------------
 ------ Interning nodes

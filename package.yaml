@@ -85,3 +85,4 @@ tests:
       - compact-coupled-terms
       - hashable
       - hspec
+      - text
