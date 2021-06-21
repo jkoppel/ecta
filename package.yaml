@@ -91,3 +91,17 @@ tests:
       - hashable
       - hspec
       - text
+
+benchmarks:
+  mainbench:
+    main: Benchmarks.hs
+    source-dirs: benchmarks
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    dependencies:
+      - base
+      - compact-coupled-terms
+      - criterion

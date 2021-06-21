@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9d48d8ca0ec38d3386cf582e7201e5fb23e4021a708b6507dd2c4ad62b5788ce
+-- hash: 5860f114ca1e6c055a88e18d2bc5bddce83752e23091ce1ccfea0147fa451f61
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -87,4 +87,19 @@ test-suite unit-tests
     , hashable
     , hspec
     , text
+  default-language: Haskell2010
+
+benchmark mainbench
+  type: exitcode-stdio-1.0
+  main-is: Benchmarks.hs
+  other-modules:
+      Paths_compact_coupled_terms
+  hs-source-dirs:
+      benchmarks
+  default-extensions: ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
+  build-depends:
+      base
+    , compact-coupled-terms
+    , criterion
   default-language: Haskell2010
