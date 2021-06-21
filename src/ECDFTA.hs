@@ -51,13 +51,15 @@ import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
 import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable, hashWithSalt )
-import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import qualified Data.Interned as OrigInterned
 import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
 
-import Data.Interned.Extended.SingleThreaded ( intern )
+--import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.HashTableBased
+--import Data.Interned.Extended.SingleThreaded ( intern )
 import Memo ( memo2 )
 
 -------------------------------------------------------------------------------
@@ -86,8 +88,8 @@ data Symbol = Symbol' {-# UNPACK #-} !InternedText
   deriving ( Eq, Ord )
 
 pattern Symbol :: Text -> Symbol
-pattern Symbol t <- Symbol' (unintern -> t) where
-  Symbol t = Symbol' (intern t)
+pattern Symbol t <- Symbol' (OrigInterned.unintern -> t) where
+  Symbol t = Symbol' (OrigInterned.intern t)
 
 instance Pretty Symbol where
   pretty (Symbol t) = t

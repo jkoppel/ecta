@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f5dbd1650206a1d88297d6c90dfd88bb194f247dcd5e2a9fcc72e5609c36f3c6
+-- hash: fdc249ef52eeebb5319797f04de914f4231cc5dc471252532eaaa1b065abf72f
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
       ECDFTA
       Memo
@@ -42,6 +43,7 @@ library
     , containers
     , fgl
     , hashable
+    , hashtables
     , ilist
     , intern
     , language-dot

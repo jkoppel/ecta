@@ -8,18 +8,18 @@ module Memo (
 
 import Data.IORef ( newIORef, readIORef, writeIORef )
 import Data.Hashable ( Hashable )
-import qualified Data.HashMap.Strict as HashMap
 import System.IO.Unsafe (unsafePerformIO)
+import qualified Data.HashTable.IO as HT
 
 -----------------------------------------------------------------
 
-memoIO :: (Eq a, Hashable a) => (a -> b) -> IO (a -> IO b)
+memoIO :: forall a b. (Eq a, Hashable a) => (a -> b) -> IO (a -> IO b)
 memoIO f = do
-    v <- newIORef HashMap.empty
-    let f' x = do m <- readIORef v
-                  case HashMap.lookup x m of
+    ht :: HT.BasicHashTable a b <- HT.new
+    let f' x = do v <- HT.lookup ht x
+                  case v of
                     Nothing -> do let r = f x
-                                  writeIORef v (HashMap.insert x r m)
+                                  HT.insert ht x r
                                   return r
 
                     Just r  -> return r

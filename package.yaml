@@ -53,6 +53,7 @@ library:
     - containers
     - fgl
     - hashable
+    - hashtables
     - ilist
     - intern
     - language-dot
