@@ -51,6 +51,7 @@ library:
   dependencies:
     - array
     - containers
+    - equivalence
     - fgl
     - hashable
     - hashtables
@@ -74,6 +75,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - compact-coupled-terms
+    - language-dot
 
 tests:
   unit-tests:

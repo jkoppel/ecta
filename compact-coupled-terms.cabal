@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fdc249ef52eeebb5319797f04de914f4231cc5dc471252532eaaa1b065abf72f
+-- hash: 9d48d8ca0ec38d3386cf582e7201e5fb23e4021a708b6507dd2c4ad62b5788ce
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
       ECDFTA
+      Equivalence
       Memo
       TermSearch
   other-modules:
@@ -41,6 +42,7 @@ library
       array
     , base >=4.7 && <5
     , containers
+    , equivalence
     , fgl
     , hashable
     , hashtables
@@ -66,6 +68,7 @@ executable compact-coupled-terms-exe
   build-depends:
       base >=4.7 && <5
     , compact-coupled-terms
+    , language-dot
   default-language: Haskell2010
 
 test-suite unit-tests

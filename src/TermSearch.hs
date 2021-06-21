@@ -5,6 +5,7 @@ module TermSearch where
 
 import ECDFTA
 
+import Data.List ( nub )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
 
@@ -19,22 +20,34 @@ import Data.List hiding (union)
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = Node [Edge "tau" []]
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . constructorToEdge n) allConstructors))
+  where
+    constructorToEdge :: Node -> (Text, Int) -> Edge
+    constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
+
+--tau :: Node
+--tau = Node [Edge "tau" []]
+
+baseType :: Node
+baseType = Node [Edge "baseType" []]
 
 typeConst :: Text -> Node
 typeConst s = Node [Edge (Symbol s) []]
 
-constrType :: Text -> Node -> Node
-constrType s n = Node [Edge (Symbol s) [n]]
+constrType0 :: Text -> Node
+constrType0 s = Node [Edge (Symbol s) []]
+
+constrType1 :: Text -> Node -> Node
+constrType1 s n = Node [Edge (Symbol s) [n]]
 
 constrType2 :: Text -> Node -> Node -> Node
 constrType2 s n1 n2 = Node [Edge (Symbol s) [n1, n2]]
 
 maybeType :: Node -> Node
-maybeType = constrType "Maybe"
+maybeType = constrType1 "Maybe"
 
 listType :: Node -> Node
-listType = constrType "[]"
+listType = constrType1 "List"
 
 theArrowNode :: Node
 theArrowNode = Node [Edge "(->)" []]
@@ -53,25 +66,56 @@ app n1 n2 = Node [mkEdge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
                                ]
                  ]
 
+var1, var2, var3, var4 :: Node
+var1 = Node [Edge "var1" []]
+var2 = Node [Edge "var2" []]
+var3 = Node [Edge "var3" []]
+var4 = Node [Edge "var4" []]
+
+-- | TODO: Also constraint children to be (->) nodes
+generalize :: Node -> Node
+generalize n@(Node [_]) = Node [mkEdge s ns' (concatMap constraintsForVar vars)]
+  where
+    vars = [var1, var2, var3, var4]
+    nWithVarsRemoved = mapNodes (\x -> if elem x vars then tau else x) n
+    (Node [Edge s ns']) = nWithVarsRemoved
+
+    pathsForVar :: Node -> [Path]
+    pathsForVar v = pathsMatching (==v) n
+
+    constraintsForVar :: Node -> [EqConstraint]
+    constraintsForVar v = zipWith EqConstraint vPaths (tail vPaths)
+      where
+        vPaths = pathsForVar v
+
 f1, f2, f3, f4, f5, f6, f7 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
-f2 = constFunc "Just" (arrowType tau (maybeType tau))
-f3 = constFunc "fromMaybe" (arrowType tau (arrowType (maybeType tau) tau))
-f4 = constFunc "listToMaybe" (arrowType (listType tau) (maybeType tau))
-f5 = constFunc "maybeToList" (arrowType (maybeType tau) (listType tau))
-f6 = constFunc "catMaybes" (arrowType (listType (maybeType tau)) (listType tau))
-f7 = constFunc "mapMaybe" (arrowType (arrowType tau (maybeType tau)) (arrowType (listType tau) (listType tau)))
+f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
+f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
+f4 = constFunc "listToMaybe" (generalize $ arrowType (listType var1) (maybeType var1))
+f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType var1))
+f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
+f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
+f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
+f9 = constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+f10 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+f11 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
 
 arg1, arg2 :: Edge
-arg1 = constFunc "def" tau
-arg2 = constFunc "mbs" (listType (maybeType tau))
+arg1 = constFunc "def" baseType
+arg2 = constFunc "mbs" (listType (maybeType baseType))
+arg3 = constFunc "g" (arrowType baseType baseType)
+arg4 = constFunc "x" baseType
+arg5 = constFunc "n" (constrType0 "Int")
 
 anyArg :: Node
 anyArg = Node [arg1, arg2]
+--anyArg = Node [arg3, arg4, arg5]
 
 anyFunc :: Node
-anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ Map.toList hoogleComponents
+anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 180 $ Map.toList hoogleComponents
 --anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
+--anyFunc = Node [f9, f10, f11]
 
 size1, size2, size3, size4, size5, size6 :: Node
 size1 = union [anyArg, anyFunc]
@@ -121,16 +165,29 @@ data ExportType = ExportVar Text
   deriving ( Eq, Ord, Show, Read )
 
 exportTypeToFta :: ExportType -> Node
-exportTypeToFta (ExportVar v) = tau -- This will need to change for real polymorphism
+exportTypeToFta (ExportVar "a") = var1
+exportTypeToFta (ExportVar "b") = var2
+exportTypeToFta (ExportVar "c") = var3
+exportTypeToFta (ExportVar "d") = var4
+exportTypeToFta (ExportVar _)   = error "Current implementation only supports function signatures with type variables a, b, c, and d"
 exportTypeToFta (ExportFun t1 t2) = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
 exportTypeToFta (ExportCons s [])  = typeConst s
 exportTypeToFta (ExportCons "Fun" [t1, t2])  = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons s [t]) = constrType s (exportTypeToFta t)
+exportTypeToFta (ExportCons s [t]) = constrType1 s (exportTypeToFta t)
 exportTypeToFta (ExportCons s [t1, t2]) = constrType2 s (exportTypeToFta t1) (exportTypeToFta t2)
 exportTypeToFta (ExportForall _ t) = exportTypeToFta t
 
+allConstructors :: [(Text, Int)]
+allConstructors = (nub $ concat $ map getConstructors (Map.elems hoogleComponents)) \\ [("Fun", 2)]
+  where
+    getConstructors :: ExportType -> [(Text, Int)]
+    getConstructors (ExportVar _) = []
+    getConstructors (ExportFun t1 t2) = getConstructors t1 ++ getConstructors t2
+    getConstructors (ExportCons nm ts) = [(nm, length ts)] ++ concat (map getConstructors ts)
+    getConstructors (ExportForall _ t) = getConstructors t
+
 parseHoogleComponent :: Text -> ExportType -> Edge
-parseHoogleComponent name t = Edge (Symbol name) [exportTypeToFta t]
+parseHoogleComponent name t = Edge (Symbol name) [generalize $ exportTypeToFta t]
 
 hoogleComponents :: Map Text ExportType
 hoogleComponents = read rawHooglePlusExport
