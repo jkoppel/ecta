@@ -41,6 +41,10 @@ packages:
 #
 extra-deps:
 - language-dot-0.1.1
+- git: https://github.com/jkoppel/equivalence.git
+  commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
+- git: https://github.com/jkoppel/hashtables.git
+  commit: 2568cad3ea1d3924a80980c4b543878b3becafe1
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
