@@ -11,18 +11,16 @@ module Data.Interned.Extended.HashTableBased
   , intern
   ) where
 
-import Control.Monad.ST ( stToIO )
 import Data.Hashable
-import qualified Data.HashTable.ST.Basic as HTBasic
 import qualified Data.HashTable.IO as HT
 import Data.IORef
 import GHC.IO (unsafeDupablePerformIO, unsafePerformIO)
 
 
-newtype Cache t = Cache { content :: HT.BasicHashTable (Description t) t }
+data Cache t = Cache { fresh :: !(IORef Id), content :: !(HT.BasicHashTable (Description t) t) }
 
 mkCache :: Interned t => Cache t
-mkCache = unsafePerformIO $ (Cache <$> HT.new)
+mkCache = unsafePerformIO $ (Cache <$> newIORef 0 <*> HT.new)
 
 type Id = Int
 
@@ -37,12 +35,13 @@ class ( Eq (Description t)
 
 intern :: Interned t => Uninterned t -> t
 intern !bt = unsafeDupablePerformIO $ do
-    let Cache ht = cache
+    let Cache refI ht = cache
     v <- HT.lookup ht dt
     case v of
-      Nothing -> do i <- stToIO $ HTBasic.size ht
+      Nothing -> do i <- readIORef refI
                     let t = identify i bt
                     HT.insert ht dt t
+                    writeIORef refI (i+1)
                     return t
       Just t  -> return t
   where
