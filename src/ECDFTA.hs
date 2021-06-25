@@ -7,10 +7,6 @@
 module ECDFTA (
     Symbol(Symbol)
   , Term(..)
-  , Path
-  , path
-  , Pathable(..)
-  , EqConstraint(EqConstraint)
   , Edge(Edge)
   , mkEdge
   , Node(Node, EmptyNode)
@@ -32,28 +28,16 @@ module ECDFTA (
   , toDot
   , refreshNode
   , refreshEdge
-
-  , fix
-  , reduce
-  , reduceEdgeIntersection
-  , reduceEqConstraint
-  , reduceEdgeTo
-  , ECReduction(..)
-  , edgeEcs
-  , intern
-  , uninternedEdge
-  , UninternedEdge(..)
-  , edgeChildren
   ) where
 
 import Control.Monad ( guard )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
 import Data.Function ( on )
-import Data.List ( sort, nub, intercalate )
+import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Maybe ( catMaybes, fromJust, maybeToList )
-import Data.Monoid ( Monoid(..), Sum(..), First(..), Any(..) )
+import Data.Monoid ( Monoid(..), Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
@@ -78,8 +62,10 @@ import qualified Language.Dot.Syntax as Dot
 import Data.Interned.Extended.HashTableBased
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
-import Equivalence
 import Memo ( memo2 )
+import Paths
+import Pretty
+import Utilities
 
 -------------------------------------------------------------------------------
 
@@ -88,19 +74,8 @@ import Memo ( memo2 )
 ---------------------- Misc / general -------------------------
 ---------------------------------------------------------------
 
-fix :: (Eq a) => Int -> (a -> a) -> a -> a
-fix 0        _ _ = error "fix: Exceeded maxIters"
-fix maxIters f x = let x' = f x in
-                   if x' == x then
-                     x
-                   else
-                     fix (maxIters - 1) f x'
-
 square :: (Num a) => a -> a
 square x = x * x
-
-class Pretty a where
-  pretty :: a -> Text
 
 ---------------------------------------------------------------
 -------------- Terms, the things being represented ------------
@@ -136,49 +111,8 @@ instance Show Term where
   show (Term s ts) = show s ++ "(" ++ (intercalate "," $ map show ts) ++ ")"
 
 ---------------------
------- Paths
----------------------
-
-data Path = Path { unPath :: ![Int] }
-  deriving (Eq, Ord, Show, Generic)
-
-instance Hashable Path
-
-path :: [Int] -> Path
-path = Path
-
-{-# COMPLETE EmptyPath, ConsPath #-}
-
-pattern EmptyPath :: Path
-pattern EmptyPath = Path []
-
-pattern ConsPath :: Int -> Path -> Path
-pattern ConsPath p ps <- Path (p : (Path -> ps)) where
-  ConsPath p (Path ps) = Path (p : ps)
-
-pathHeadUnsafe :: Path -> Int
-pathHeadUnsafe (Path ps) = head ps
-
-pathTailUnsafe :: Path -> Path
-pathTailUnsafe (Path ps) = Path (tail ps)
-
-instance Pretty Path where
-  pretty (Path ps) = Text.intercalate "." (map (Text.pack . show) ps)
-
-isSubpath :: Path -> Path -> Bool
-isSubpath EmptyPath         _                 = True
-isSubpath (ConsPath p1 ps1) (ConsPath p2 ps2)
-          | p1 == p2                          = isSubpath ps1 ps2
-isSubpath _                 _                 = False
-
----------------------
 ------ Term ops
 ---------------------
-
--- | Really I think paths should be treated as a lens-library Traversal
-class Pathable t t' | t -> t' where
-  getPath      :: Path -> t -> t'
-  modifyAtPath :: (t' -> t') -> Path -> t -> t
 
 instance Pathable Term Term where
   getPath EmptyPath       t           = t
@@ -197,17 +131,6 @@ instance Pathable Term Term where
 ----- Edges
 ----------------------
 
-data EqConstraint = EqConstraint' !Path !Path
-  deriving (Eq, Ord, Show, Generic)
-
-instance Hashable EqConstraint
-
-pattern EqConstraint :: Path -> Path -> EqConstraint
-pattern EqConstraint p1 p2 <- EqConstraint' p1 p2 where
-  EqConstraint p1 p2 = EqConstraint' (min p1 p2) (max p1 p2)
-
-instance Pretty EqConstraint where
-  pretty (EqConstraint p1 p2) = Text.concat [pretty p1, "=", pretty p2]
 
 -- | Levels of equality-constraint reduction
 -- 1) Unreduced: The FTA is identical in shape to what it would be if this constraint
@@ -252,7 +175,7 @@ edgeSymbol = uEdgeSymbol . uninternedEdge
 edgeChildren :: Edge -> [Node]
 edgeChildren = uEdgeChildren . uninternedEdge
 
-edgeEcs :: Edge -> [EqConstraint]
+edgeEcs :: Edge -> EqConstraints
 edgeEcs = uEdgeEcs . uninternedEdge
 
 edgeReduction :: Edge -> ECReduction
@@ -360,7 +283,7 @@ nodeCache = mkCache
 
 data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
                                      , uEdgeChildren  :: ![Node]
-                                     , uEdgeEcs       :: ![EqConstraint]
+                                     , uEdgeEcs       :: !EqConstraints
                                      , uEdgeReduction :: !ECReduction
                                      }
   deriving ( Eq, Show, Generic )
@@ -390,16 +313,16 @@ edgeCache = mkCache
 
 pattern Edge :: Symbol -> [Node] -> Edge
 pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _ _)) where
-  Edge s ns = intern $ UninternedEdge s ns [] ECUnreduced
+  Edge s ns = intern $ UninternedEdge s ns EmptyConstraints ECUnreduced
 
 emptyEdge :: Edge
 emptyEdge = Edge "" [EmptyNode]
 
-mkEdge :: Symbol -> [Node] -> [EqConstraint] -> Edge
+mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
 mkEdge s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-   | otherwise                       = intern $ UninternedEdge s ns (nub $ sort ecs) ECUnreduced -- | TODO: Reduce work on nub/sort
+   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced -- | TODO: Reduce work on nub/sort
 
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
@@ -475,19 +398,7 @@ isEmptyEdge e@(Edge _ ns) = any (== EmptyNode) ns
 
 edgeSubsumed :: Edge -> Edge -> Bool
 edgeSubsumed e1 e2 =    (dropEcs e1 == dropEcs e2)
-                     && HashSet.isSubsetOf (HashSet.fromList $ edgeEcs e2) (HashSet.fromList $ edgeEcs e1)
-
-
--- | Constraints are contradictory if they require that one path be equal to a subpath of itself
---   I think this is an iff, but not certain
-constraintsAreContradictory :: [EqConstraint] -> Bool
-constraintsAreContradictory ecs = any hasSubsumingPath components
-  where
-    components :: [[Path]]
-    components = eclasses (map (\(EqConstraint p1 p2) -> (p1, p2)) ecs)
-
-    hasSubsumingPath :: [Path] -> Bool
-    hasSubsumingPath ps = getAny $ mconcat [Any (p1 /= p2 && isSubpath p1 p2) | p1 <- ps, p2 <- ps]
+                     && constraintsImply (edgeEcs e1) (edgeEcs e2)
 
 
 ------------
@@ -519,7 +430,7 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 -- There is hence an unwanted cycle in the reduction graph.
 
 intersect :: Node -> Node -> Node
-intersect = doIntersect
+intersect = memo2 doIntersect
 
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
@@ -541,11 +452,15 @@ doIntersect n1@(Node es1) n2@(Node es2)
     intersectEdge e1                 e2                 =
         Just $ mkEdge (edgeSymbol e1)
                       (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-                      (edgeEcs e1 ++ edgeEcs e2)
+                      (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
 
     dropRedundantEdges :: [Edge] -> [Edge]
+    -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
+    -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
+    -- then ecs1 < ecs2
     dropRedundantEdges es = dropRedundantEdges' $ reverse $ sort es
       where
+        -- Optimization idea: Some of these equality checks are already done in sort
         dropRedundantEdges' (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
                                        dropRedundantEdges es
                                      else
@@ -633,28 +548,40 @@ reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection e | edgeReduction e == ECUnreduced = intern $ UninternedEdge (edgeSymbol e)
-                                                                                    -- This max-iters bound is made up and unprincipled.
-                                                                                    -- But eventually we will get rid of this fix operation
-                                                                                    -- entirely and will thence not need to come up with the right bound
-                                                                                    (fix (square $ length (edgeChildren e) + 1)
-                                                                                         (\ns' -> foldr reduceEqConstraint ns' (sort (edgeEcs e)))
-                                                                                         (edgeChildren e))
+                                                                                    (reduceEqConstraints (edgeEcs e) (edgeChildren e))
                                                                                     (edgeEcs e)
                                                                                     ECLeafReduced
 reduceEdgeIntersection e                                  = e
 
-reduceEqConstraint :: EqConstraint -> [Node] -> [Node]
-reduceEqConstraint = memo2 reduceEqConstraint'
-
-reduceEqConstraint' :: EqConstraint -> [Node] -> [Node]
-reduceEqConstraint' (EqConstraint p1 p2) ns = modifyAtPath (intersect n1) p2 $
-                                              modifyAtPath (intersect n2) p1 $
-                                              requirePathList p1 $
-                                              requirePathList p2 $
-                                              ns
+reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
+reduceEqConstraints = memo2 go
   where
-    n1 = getPath p1 ns
-    n2 = getPath p2 ns
+    go :: EqConstraints -> [Node] -> [Node]
+    go ecs origNs = foldr reduceEClass withNeededChildren eclasses
+      where
+        eclasses = unsafeSubsumptionOrderedEclasses ecs
+
+        withNeededChildren = foldr requirePathList origNs (concatMap unPathEClass eclasses)
+
+        intersectList :: [Node] -> Node
+        intersectList ns = foldr intersect (head ns) (tail ns)
+
+        atPaths :: [Node] -> [Path] -> [Node]
+        atPaths ns ps = map (\p -> getPath p ns) ps
+
+        reduceEClass :: PathEClass -> [Node] -> [Node]
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+                                    ns
+                                    (zip ps (toIntersect ns ps))
+          where
+            ps = unPathEClass pec
+
+        toIntersect :: [Node] -> [Path] -> [Node]
+        toIntersect ns ps = map intersectList $ dropOnes $ map (flip getPath ns) ps
+
+        -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
+        dropOnes :: [a] -> [[a]]
+        dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
 
 reduceEdgeMultiply :: Edge -> Edge
 reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"
@@ -670,8 +597,9 @@ denotation n = go n
     descendMap :: Map Path Term -> Int -> Map Path Term
     descendMap mp p = Map.fromList $ map (_1 %~ pathTailUnsafe) $ filter ((== p) . pathHeadUnsafe . fst) $ Map.toList mp
 
-    ecSatisfied :: Term -> EqConstraint -> Bool
-    ecSatisfied t (EqConstraint p1 p2) = getPath p1 t == getPath p2 t
+    ecsSatisfied :: Term -> EqConstraints -> Bool
+    ecsSatisfied t ecs = all (\ps -> all (\p' -> getPath (head ps) t == getPath p' t) ps)
+                             (map unPathEClass $ unsafeGetEclasses ecs)
 
     go :: Node -> [Term]
     go n = case n of
@@ -684,7 +612,7 @@ denotation n = go n
                children <- sequence $ map go (edgeChildren e)
 
                let res = Term (edgeSymbol e) children
-               guard (all (ecSatisfied res) (edgeEcs e))
+               guard $ ecsSatisfied res (edgeEcs e)
                return res
 
 
@@ -695,7 +623,7 @@ denotation n = go n
 ---------------------------------------------------------------
 
 
-data FglNodeLabel = IdLabel Id | TransitionLabel Symbol [EqConstraint]
+data FglNodeLabel = IdLabel Id | TransitionLabel Symbol EqConstraints
   deriving ( Eq, Ord, Show )
 
 toFgl :: Node -> Fgl.Gr FglNodeLabel ()
@@ -772,7 +700,7 @@ fglToDot g = Dot.Graph Dot.StrictGraph Dot.DirectedGraph Nothing (nodeStmts ++ e
     renderNodeLabel :: FglNodeLabel -> Dot.Id
     renderNodeLabel (IdLabel l)             = Dot.StringId ("q" ++ show l)
     renderNodeLabel (TransitionLabel s ecs) = Dot.StringId (Text.unpack (pretty s)
-                                                            ++ Text.unpack (Text.concat $ map (Text.append "," . pretty) ecs))
+                                                            ++ show ecs)
 
 -- | To visualize an FTA:
 -- 1) Call `prettyPrintDot $ toDot fta` from GHCI
@@ -790,6 +718,8 @@ toDot = fglToDot . toFgl
 refreshNode :: Node -> Node
 refreshNode EmptyNode = EmptyNode
 refreshNode (Node es) = Node (map refreshEdge es)
+refreshNode (Mu n)    = Mu (refreshNode n)
+refreshNode Rec       = Rec
 
 -- | This should be the identity operation. If not, something has gone wrong.
 refreshEdge :: Edge -> Edge

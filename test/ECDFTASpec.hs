@@ -7,6 +7,7 @@ import qualified Data.Text as Text
 import Test.Hspec
 
 import ECDFTA
+import Paths
 import TermSearch
 
 -----------------------------------------------------------------
@@ -16,10 +17,10 @@ constTerms :: [Symbol] -> Node
 constTerms ss = Node (map (\s -> Edge s []) ss)
 
 ex1 :: Node
-ex1 = Node [mkEdge "f" [constTerms ["1", "2"], Node [Edge "g" [constTerms ["1", "2"]]]] [EqConstraint (path [0]) (path [1,0])]]
+ex1 = Node [mkEdge "f" [constTerms ["1", "2"], Node [Edge "g" [constTerms ["1", "2"]]]] (mkEqConstraints [[path [0], path [1,0]]])]
 
 ex2 :: Node
-ex2 = Node [mkEdge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]]]] [EqConstraint (path [0]) (path [1,0])]]
+ex2 = Node [mkEdge "f" [constTerms ["1", "2", "3"], Node [Edge "g" [constTerms ["1", "2", "4"]]]] (mkEqConstraints [[path [0], path [1,0]]])]
 
 ex3 :: Node
 ex3 = Node [Edge "f" [Node [Edge "g" [constTerms ["1", "2"]]]], Edge "h" [Node [Edge "i" [constTerms ["3", "4"]]]]]

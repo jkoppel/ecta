@@ -90,6 +90,7 @@ tests:
       - compact-coupled-terms
       - hashable
       - hspec
+      - QuickCheck
       - text
 
 benchmarks:

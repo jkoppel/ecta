@@ -3,8 +3,6 @@
 
 module TermSearch where
 
-import ECDFTA
-
 import Data.List ( nub )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
@@ -17,13 +15,19 @@ import Debug.Trace
 import Data.Function
 import Data.List hiding (union)
 
+import ECDFTA
+import Paths
+
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . constructorToEdge n) allConstructors))
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
+
+    --usedConstructors = allConstructors
+    usedConstructors = [("Maybe", 1), ("List", 1)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -60,33 +64,29 @@ constFunc s t = Edge s [t]
 
 app :: Node -> Node -> Node
 app n1 n2 = Node [mkEdge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
-                               [ EqConstraint (path [1])      (path [2, 0, 0])
-                               , EqConstraint (path [2,0, 1]) (path [3, 0])
-                               , EqConstraint (path [0])      (path [2, 0, 2])
-                               ]
+                               (mkEqConstraints $ [ [path [1],      path [2, 0, 0]]
+                                                  , [path [2,0, 1], path [3, 0]]
+                                                  , [path [0],      path [2, 0, 2]]
+                                                  ])
                  ]
 
-var1, var2, var3, var4 :: Node
-var1 = Node [Edge "var1" []]
-var2 = Node [Edge "var2" []]
-var3 = Node [Edge "var3" []]
-var4 = Node [Edge "var4" []]
+var1, var2, var3, var4, varAcc :: Node
+var1   = Node [Edge "var1" []]
+var2   = Node [Edge "var2" []]
+var3   = Node [Edge "var3" []]
+var4   = Node [Edge "var4" []]
+varAcc = Node [Edge "acc" []]
 
 -- | TODO: Also constraint children to be (->) nodes
 generalize :: Node -> Node
-generalize n@(Node [_]) = Node [mkEdge s ns' (concatMap constraintsForVar vars)]
+generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
   where
-    vars = [var1, var2, var3, var4]
+    vars = [var1, var2, var3, var4, varAcc]
     nWithVarsRemoved = mapNodes (\x -> if elem x vars then tau else x) n
     (Node [Edge s ns']) = nWithVarsRemoved
 
     pathsForVar :: Node -> [Path]
     pathsForVar v = pathsMatching (==v) n
-
-    constraintsForVar :: Node -> [EqConstraint]
-    constraintsForVar v = zipWith EqConstraint vPaths (tail vPaths)
-      where
-        vPaths = pathsForVar v
 
 f1, f2, f3, f4, f5, f6, f7 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
@@ -109,13 +109,13 @@ arg4 = constFunc "x" baseType
 arg5 = constFunc "n" (constrType0 "Int")
 
 anyArg :: Node
-anyArg = Node [arg1, arg2]
---anyArg = Node [arg3, arg4, arg5]
+--anyArg = Node [arg1, arg2]
+anyArg = Node [arg3, arg4, arg5]
 
 anyFunc :: Node
-anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 180 $ Map.toList hoogleComponents
+--anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 180 $ Map.toList hoogleComponents
 --anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
---anyFunc = Node [f9, f10, f11]
+anyFunc = Node [f9, f10, f11]
 
 size1, size2, size3, size4, size5, size6 :: Node
 size1 = union [anyArg, anyFunc]
@@ -138,7 +138,7 @@ uptoDepth4 :: Node
 uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 
 filterType :: Node -> Node -> Node
-filterType n t = Node [mkEdge "filter" [t, n] [EqConstraint (path [0]) (path [1, 0])]]
+filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" [_, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
@@ -165,11 +165,12 @@ data ExportType = ExportVar Text
   deriving ( Eq, Ord, Show, Read )
 
 exportTypeToFta :: ExportType -> Node
-exportTypeToFta (ExportVar "a") = var1
-exportTypeToFta (ExportVar "b") = var2
-exportTypeToFta (ExportVar "c") = var3
-exportTypeToFta (ExportVar "d") = var4
-exportTypeToFta (ExportVar _)   = error "Current implementation only supports function signatures with type variables a, b, c, and d"
+exportTypeToFta (ExportVar "a")   = var1
+exportTypeToFta (ExportVar "b")   = var2
+exportTypeToFta (ExportVar "c")   = var3
+exportTypeToFta (ExportVar "d")   = var4
+exportTypeToFta (ExportVar "acc") = varAcc
+exportTypeToFta (ExportVar v)     = error $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got " ++ show v
 exportTypeToFta (ExportFun t1 t2) = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
 exportTypeToFta (ExportCons s [])  = typeConst s
 exportTypeToFta (ExportCons "Fun" [t1, t2])  = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
