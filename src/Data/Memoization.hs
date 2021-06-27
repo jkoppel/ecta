@@ -132,7 +132,7 @@ resetAllCaches :: IO ()
 #ifdef PROFILE_CACHES
 resetAllCaches = HT.mapM_ (\(_, c) -> resetCache c) memoCaches
 #else
-reetALlCache = return ()
+resetAllCaches = return ()
 #endif
 
 #ifdef PROFILE_CACHES

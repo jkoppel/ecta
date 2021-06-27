@@ -20,7 +20,12 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/githubuser/compact-coupled-terms#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+- base
+- containers
+- hashable
+- language-dot
+- text
+- unordered-containers
 default-extensions:
   - BangPatterns
   - ConstraintKinds
@@ -59,20 +64,16 @@ library:
   source-dirs: src
   dependencies:
     - array
-    - containers
     - equivalence
     - fgl
-    - hashable
     - hashtables
     - ilist
     - intern
-    - language-dot
     - lens
     - mtl
     - pretty-simple
     - raw-strings-qq
     - text
-    - unordered-containers
 
 executables:
   compact-coupled-terms-exe:
@@ -84,7 +85,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - compact-coupled-terms
-    - language-dot
 
 tests:
   unit-tests:
@@ -95,12 +95,9 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-      - base
       - compact-coupled-terms
-      - hashable
       - hspec
       - QuickCheck
-      - text
 
 benchmarks:
   mainbench:
@@ -112,6 +109,5 @@ benchmarks:
     - -with-rtsopts=-N
     - -O2
     dependencies:
-      - base
       - compact-coupled-terms
       - criterion

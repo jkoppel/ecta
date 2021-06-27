@@ -9,7 +9,9 @@ module ECDFTA (
   , Term(..)
   , Edge(Edge)
   , mkEdge
+  , edgeChildren
   , Node(Node, EmptyNode)
+  , nodeEdges
   , createGloballyUniqueMu
 
   -- * Operations
