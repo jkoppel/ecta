@@ -93,10 +93,12 @@ isStrictSubpath (ConsPath p1 ps1) (ConsPath p2 ps2)
 isStrictSubpath _                 _                 = False
 
 
--- | `substSubpath replacement toReplace target` takes `toReplace`, a prefix of target,
---   and returns a new path in which `toReplace` has been replaced by `replacement`.
+-- | Read `substSubpath p1 p2 p3` as `[p1/p2]p3`
 --
---   Undefined if toReplace is not a prefix of target
+-- `substSubpath replacement toReplace target` takes `toReplace`, a prefix of target,
+--  and returns a new path in which `toReplace` has been replaced by `replacement`.
+--
+--  Undefined if toReplace is not a prefix of target
 substSubpath :: Path -> Path -> Path -> Path
 substSubpath replacement toReplace target = Path $ (unPath replacement) ++ drop (length $ unPath toReplace) (unPath target)
 

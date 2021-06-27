@@ -62,7 +62,7 @@ import qualified Language.Dot.Syntax as Dot
 import Data.Interned.Extended.HashTableBased
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
-import Memo ( memo2 )
+import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Paths
 import Pretty
 import Utilities
@@ -430,7 +430,7 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 -- There is hence an unwanted cycle in the reduction graph.
 
 intersect :: Node -> Node -> Node
-intersect = memo2 doIntersect
+intersect = memo2 (NameTag "intersect") doIntersect
 
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
@@ -548,13 +548,13 @@ reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection e | edgeReduction e == ECUnreduced = intern $ UninternedEdge (edgeSymbol e)
-                                                                                    (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                                                                                    (fix 3 (reduceEqConstraints (edgeEcs e)) (edgeChildren e))
                                                                                     (edgeEcs e)
                                                                                     ECLeafReduced
 reduceEdgeIntersection e                                  = e
 
 reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
-reduceEqConstraints = memo2 go
+reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
   where
     go :: EqConstraints -> [Node] -> [Node]
     go ecs origNs = foldr reduceEClass withNeededChildren eclasses

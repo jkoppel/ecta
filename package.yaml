@@ -22,6 +22,7 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 default-extensions:
+  - BangPatterns
   - ConstraintKinds
   - DataKinds
   - DefaultSignatures
@@ -35,6 +36,7 @@ default-extensions:
   - GADTs
   - GeneralizedNewtypeDeriving
   - KindSignatures
+  - LambdaCase
   - MultiParamTypeClasses
   - NamedFieldPuns
   - PatternGuards
@@ -46,6 +48,13 @@ default-extensions:
   - TypeFamilies
   - TypeOperators
   - ViewPatterns
+flags:
+  profile-caches:
+    manual: true
+    default: false
+when:
+    condition: flag(profile-caches)
+    cpp-options: -D PROFILE_CACHES
 library:
   source-dirs: src
   dependencies:
