@@ -427,20 +427,6 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 ------ Intersect
 ------------
 
--- | NOTE: I believe there is an infinite loop lurking in this memoization, and am surprised
---   it has not yet manifested. An earlier implementation which abused the intern library
---   for memoization very much did experience this infinite loop.
---
--- The problem is in this code in memoIO:
---
---     let r = f x
---     writeIORef v (HashMap.insert x r m)
---
--- This puts the thunk "f x" as a value of the IORef v.
--- The problem is that "f x" in this case is doIntersect, which contains a recursive call to
--- intersect, which contains an unsafePerformIO of something that reads from this very same IORef.
--- There is hence an unwanted cycle in the reduction graph.
-
 intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
 
