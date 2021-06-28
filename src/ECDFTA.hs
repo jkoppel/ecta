@@ -13,6 +13,8 @@ module ECDFTA (
   , EqConstraint(EqConstraint)
   , Edge(Edge)
   , mkEdge
+  , edgeSymbol
+  , edgeChildren
   , Node(Node, EmptyNode)
 
   -- * Operations

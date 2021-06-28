@@ -62,24 +62,25 @@ atNode n n' f =
     Node (List.map (\(Edge sym args) -> Edge sym $ List.map (\n -> atNode n n' f) args) es)
     where (Node es) = n
 
-rewriteMatch :: PatternMatch -> Pattern -> Node -> Node
-rewriteMatch PatternMatch { root, subst } pat n =
-  atNode n root (\(Node ns) -> Node (ns ++ ns'))
+data Rule = Rule { lhs :: Pattern
+                 , rhs :: Pattern
+                 , constrs :: [EqConstraint]
+                 }
+  deriving ( Show )
+
+rewriteMatch :: PatternMatch -> Rule -> Node -> Node
+rewriteMatch PatternMatch { root, subst } rule n =
+  atNode n root (\(Node ns) -> Node (ns ++ ns''))
   where
     liftPat subst pat =
       case pat of
         (App sym args) -> func sym $ List.map (liftPat subst) args
         (Var idx) -> Maybe.fromJust $ List.lookup idx subst
         (NodePat n) -> n
-    (Node ns') = liftPat subst pat
+    (Node ns') = liftPat subst (rhs rule)
+    ns'' = List.map (\e -> mkEdge (edgeSymbol e) (edgeChildren e) (constrs rule)) ns'
 
 testTerm = filter' (binary "and" (eq (name "x") (name "x'")) (name "y")) (relation "test")
-
-data Rule = Rule { lhs :: Pattern
-                 , rhs :: Pattern
-                 , constrs :: [EqConstraint]
-                 }
-  deriving ( Show )
 
 findMap :: (a -> Maybe b) -> [a] -> Maybe b
 findMap f [] = Nothing
@@ -88,11 +89,11 @@ findMap f (x : xs) = case f x of
                        Nothing -> findMap f xs
 
 rewriteFirst :: Rule -> Node -> Maybe Node
-rewriteFirst Rule {lhs, rhs, constrs} root =
+rewriteFirst rule root =
   findMap (\m ->
-             let root' = rewriteMatch m rhs root in
+             let root' = rewriteMatch m rule root in
               if root == root' then Nothing else Just root')
-  $ match lhs root
+  $ match (lhs rule) root
 
 try :: (Node -> Maybe Node) -> Node -> Maybe Node
 try r n =
@@ -113,11 +114,14 @@ repeat' i r n =
     Nothing -> Just n
     Just n' -> repeat' (i - 1) r n'
 
+eqConstr p p' =
+  EqConstraint (path p) (path p')
+
 filterToHidx = Rule {lhs, rhs, constrs}
   where
     lhs = App "filter" [App "eq" [Var 0, Var 1], Var 2]
     rhs = App "hidx" [App "select" [Var 0, Var 2], NodePat scope, App "filter" [App "eq" [Var 0, App "dot" [NodePat scope, Var 0]], Var 2, Var 1]]
-    constrs = []
+    constrs = [ eqConstr [0, 1] [2, 0, 1, 0] ]
 
 splitFilter = Rule {lhs, rhs, constrs}
   where
