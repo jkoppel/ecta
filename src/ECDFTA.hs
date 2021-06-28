@@ -15,6 +15,7 @@ module ECDFTA (
   , mkEdge
   , edgeSymbol
   , edgeChildren
+  , edgeEcs
   , Node(Node, EmptyNode)
 
   -- * Operations

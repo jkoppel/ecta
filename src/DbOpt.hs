@@ -7,6 +7,9 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Language.Dot.Pretty as Dot
 
+trinary :: Symbol -> Node -> Node -> Node -> Node
+trinary name x y z = Node [Edge name [x, y, z]]
+
 binary :: Symbol -> Node -> Node -> Node
 binary name x y = Node [Edge name [x, y]]
 
@@ -14,15 +17,18 @@ unary :: Symbol -> Node -> Node
 unary name x = Node [Edge name [x]]
 
 const' name = Node [Edge name []]
+consts names = Node $ List.map (\n -> Edge n []) names
 
 func name xs = Node [Edge name xs]
 
 filter' = binary "filter"
+join = trinary "join"
 eq = binary "eq"
+lt = binary "lt"
 dot = binary "dot"
 name = const'
 relation = const'
-scope = const' "k"
+scope = consts ["k1", "k2", "k3"]
 hidx x y z = func "hidx" [x, y, z]
 
 data Pattern =
@@ -59,7 +65,7 @@ match p = crush (matchRoot p)
 atNode :: Node -> Node -> (Node -> Node) -> Node
 atNode n n' f =
   if n == n' then f n else
-    Node (List.map (\(Edge sym args) -> Edge sym $ List.map (\n -> atNode n n' f) args) es)
+    Node (List.map (\e -> mkEdge (edgeSymbol e) (List.map (\n -> atNode n n' f) $ edgeChildren e) (edgeEcs e)) es)
     where (Node es) = n
 
 data Rule = Rule { lhs :: Pattern
@@ -121,7 +127,13 @@ filterToHidx = Rule {lhs, rhs, constrs}
   where
     lhs = App "filter" [App "eq" [Var 0, Var 1], Var 2]
     rhs = App "hidx" [App "select" [Var 0, Var 2], NodePat scope, App "filter" [App "eq" [Var 0, App "dot" [NodePat scope, Var 0]], Var 2, Var 1]]
-    constrs = [ eqConstr [0, 1] [2, 0, 1, 0] ]
+    constrs = [ eqConstr [1] [2, 0, 1, 0] ]
+
+filterToOidx = Rule {lhs, rhs, constrs}
+  where
+    lhs = App "filter" [App "eq" [Var 0, Var 1], Var 2]
+    rhs = App "oidx" [App "select" [Var 0, Var 2], NodePat scope, App "filter" [App "eq" [Var 0, App "dot" [NodePat scope, Var 0]], Var 2, Var 1]]
+    constrs = [ eqConstr [1] [2, 0, 1, 0] ]
 
 splitFilter = Rule {lhs, rhs, constrs}
   where
@@ -148,5 +160,11 @@ rewrite = repeat' 20
           $ andThen (try $ rewriteFirst splitFilter)
           $ andThen (try $ rewriteFirst mergeFilter)
           $ (try $ rewriteFirst filterToHidx)
+
+tpch3 = join (eq (name "c_custkey") (name "o_custkey")) 
+        (join (eq (name "l_orderkey") (name "o_orderkey")) 
+          (filter' (lt (name "o_orderdate") (name "param1")) (relation "orders"))
+          (filter' (lt (name "param1") (name "l_shipdate")) (relation "lineitem")))
+        (filter' (eq (name "c_mktsegment") (name "param0")) (relation "customer"))
           
 dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
