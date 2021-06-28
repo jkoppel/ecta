@@ -2,7 +2,7 @@ module Main where
 
 import Criterion.Main
 
-import ECDFTA
+import ECTA
 import TermSearch
 
 -----------------------------------------------------------------------

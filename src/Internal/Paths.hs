@@ -108,8 +108,13 @@ substSubpath replacement toReplace target = Path $ (unPath replacement) ++ drop 
 --------------------------------------------------------------------------
 
 -- | TODO: Should this be redone as a lens-library traversal?
+-- | TODO: I am unhappy about this Emptyable design; makes one question whether
+--         this should be a typeclass at all. (Terms/ECTAs differ in that
+--         there is always an ECTA Node that represents the value at a path)
 class Pathable t t' | t -> t' where
-  getPath      :: Path -> t -> t'
+  type Emptyable t'
+  getPath      :: Path -> t -> Emptyable t'
+  getAllAtPath :: Path -> t -> [t']
   modifyAtPath :: (t' -> t') -> Path -> t -> t
 
 --------------------------------------------------------------------------

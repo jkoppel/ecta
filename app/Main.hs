@@ -4,7 +4,7 @@ import Data.List ( nub )
 
 import Data.Interned.Extended.HashTableBased
 import Data.Memoization
-import ECDFTA
+import ECTA
 import TermSearch
 
 import Language.Dot

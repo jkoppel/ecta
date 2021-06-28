@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: aaf1bed0a9e15e9a4484ceba99ac10f3b5f2a0339ff881abc30597093e56b1dc
+-- hash: bb2204ccb49c77282d7f405f1c1248f1ddbe0bcd1ae2f1afc0971e82ea6dd9e9
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -35,7 +35,8 @@ library
       Data.Interned.Extended.SingleThreaded
       Data.Memoization
       Data.Memoization.Metrics
-      ECDFTA
+      ECTA
+      Internal.ECTA
       Internal.Paths
       Paths
       Pretty
@@ -91,7 +92,7 @@ test-suite unit-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      ECDFTASpec
+      ECTASpec
       PathsSpec
       Paths_compact_coupled_terms
   hs-source-dirs:

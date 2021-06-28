@@ -15,7 +15,7 @@ import Debug.Trace
 import Data.Function
 import Data.List hiding (union)
 
-import ECDFTA
+import ECTA
 import Paths
 
 ------------------------------------------------------------------------------

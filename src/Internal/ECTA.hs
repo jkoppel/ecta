@@ -1,16 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Equality-constrained deterministic finite tree automata
---
--- Specialized to DAGs
+module Internal.ECTA (
+    Symbol(.., Symbol)
 
-module ECDFTA (
-    Symbol(Symbol)
   , Term(..)
-  , Edge(Edge)
+
+  , Edge(.., Edge)
   , mkEdge
+  , emptyEdge
   , edgeChildren
-  , Node(Node, EmptyNode)
+  , edgeEcs
+
+  , Node(.., Node)
   , nodeEdges
   , createGloballyUniqueMu
 
@@ -22,9 +23,14 @@ module ECDFTA (
   , edgeCount
   , union
   , intersect
+  , intersectEdge
   , denotation
 
   , reducePartially
+  , reduce
+  , reduceEdgeTo
+  , reduceEdgeIntersection
+  , reduceEqConstraints
 
   -- * Visualization / debugging
   , toDot
@@ -38,7 +44,7 @@ import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
-import Data.Maybe ( catMaybes, fromJust, maybeToList )
+import Data.Maybe ( catMaybes, isJust, fromJust, maybeToList )
 import Data.Monoid ( Monoid(..), Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
@@ -117,10 +123,14 @@ instance Show Term where
 ---------------------
 
 instance Pathable Term Term where
-  getPath EmptyPath       t           = t
+  type Emptyable Term = Maybe Term
+
+  getPath EmptyPath       t           = Just t
   getPath (ConsPath p ps) (Term _ ts) = case ts ^? ix p of
-                                          Nothing -> Term "" [] -- TODO: this doesn't work
+                                          Nothing -> Nothing
                                           Just t  -> getPath ps t
+
+  getAllAtPath p t = maybeToList $ getPath p t
 
   modifyAtPath f EmptyPath       t           = f t
   modifyAtPath f (ConsPath p ps) (Term s ts) = Term s (ts & ix p %~ modifyAtPath f ps)
@@ -446,16 +456,6 @@ doIntersect n1@(Node es1) n2@(Node es2)
                                             [] -> EmptyNode
                                             es -> Node $ dropRedundantEdges es
   where
-    intersectEdge :: Edge -> Edge -> Maybe Edge
-    intersectEdge (Edge s1 _) (Edge s2 _)
-      | s1 /= s2                                        = Nothing
-    intersectEdge (Edge s children1) (Edge _ children2)
-      | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
-    intersectEdge e1                 e2                 =
-        Just $ mkEdge (edgeSymbol e1)
-                      (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-                      (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
-
     dropRedundantEdges :: [Edge] -> [Edge]
     -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
     -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
@@ -470,6 +470,17 @@ doIntersect n1@(Node es1) n2@(Node es2)
         dropRedundantEdges' []     = []
 
 doIntersect n1 n2 = error ("Unexpected " ++ show n1 ++ " " ++ show n2)
+
+
+intersectEdge :: Edge -> Edge -> Maybe Edge
+intersectEdge (Edge s1 _) (Edge s2 _)
+  | s1 /= s2                                        = Nothing
+intersectEdge (Edge s children1) (Edge _ children2)
+  | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
+intersectEdge e1                 e2                 =
+    Just $ mkEdge (edgeSymbol e1)
+                  (zipWith intersect (edgeChildren e1) (edgeChildren e2))
+                  (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
 
 ------------
 ------ Union
@@ -497,10 +508,20 @@ requirePathList EmptyPath       ns = ns
 requirePathList (ConsPath p ps) ns = ns & ix p %~ requirePath ps
 
 instance Pathable Node Node where
+  type Emptyable Node = Node
+
   getPath _                EmptyNode = EmptyNode
   getPath p                (Mu n)    = getPath p (unfoldRec n)
   getPath EmptyPath        n         = n
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
+    where
+      goEdge :: Edge -> Maybe Node
+      goEdge (Edge _ ns) = ns ^? ix p
+
+  getAllAtPath _               EmptyNode = []
+  getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
+  getAllAtPath EmptyPath       n         = [n]
+  getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
       goEdge (Edge _ ns) = ns ^? ix p
@@ -514,10 +535,17 @@ instance Pathable Node Node where
       goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
 
 instance Pathable [Node] Node where
+  type Emptyable Node = Node
+
   getPath EmptyPath       ns = union ns
   getPath (ConsPath p ps) ns = case ns ^? ix p of
                                  Nothing -> EmptyNode
                                  Just n  -> getPath ps n
+
+  getAllAtPath EmptyPath       ns = []
+  getAllAtPath (ConsPath p ps) ns = case ns ^? ix p of
+                                      Nothing -> []
+                                      Just n  -> getAllAtPath ps n
 
   modifyAtPath f EmptyPath       ns = ns
   modifyAtPath f (ConsPath p ps) ns = ns & ix p %~ modifyAtPath f ps
@@ -599,8 +627,10 @@ denotation n = go n
     descendMap :: Map Path Term -> Int -> Map Path Term
     descendMap mp p = Map.fromList $ map (_1 %~ pathTailUnsafe) $ filter ((== p) . pathHeadUnsafe . fst) $ Map.toList mp
 
+    -- | Note that this code uses the decision that f(a,a) does not satisfy the constraint 0.0=1.0 because those paths are empty.
+    --   It would be equally valid to say that it does.
     ecsSatisfied :: Term -> EqConstraints -> Bool
-    ecsSatisfied t ecs = all (\ps -> all (\p' -> getPath (head ps) t == getPath p' t) ps)
+    ecsSatisfied t ecs = all (\ps -> all (\p' -> isJust (getPath (head ps) t) && getPath (head ps) t == getPath p' t) ps)
                              (map unPathEClass $ unsafeGetEclasses ecs)
 
     go :: Node -> [Term]

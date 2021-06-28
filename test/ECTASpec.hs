@@ -1,18 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module ECDFTASpec ( spec ) where
+module ECTASpec ( spec ) where
 
 import Control.Monad ( replicateM )
 import qualified Data.HashSet as HashSet
 import Data.HashSet ( HashSet )
-import Data.List ( subsequences, (\\) )
+import Data.List ( and, subsequences, (\\) )
 import qualified Data.Text as Text
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
-import ECDFTA
+import Internal.ECTA
 import Paths
 import TermSearch
 
@@ -45,6 +45,9 @@ doubleNodeSymbols (Node es) = Node $ map doubleEdgeSymbol es
 
 testBigNode :: Node
 testBigNode = uptoDepth4
+
+testUnreducedConstraint :: Edge
+testUnreducedConstraint = mkEdge "foo" [Node [Edge "A" [], Edge "B" []], Node [Edge "B" [], Edge "C" []]] (mkEqConstraints [[path [0], path [1]]])
 
 
 --------------------------------------------------------------
@@ -101,7 +104,7 @@ instance Arbitrary Edge where
                    0 -> Edge <$> elements testConstants <*> pure []
                    _ -> do (sym, arity) <- elements testEdgeTypes
                            ns <- replicateM arity (resize (n-1) (arbitrary `suchThat` (/= EmptyNode)))
-                           numConstraintPairs <- elements [0,0,0,0,1,1,2,3]
+                           numConstraintPairs <- elements [0,0,1,1,2,3]
                            ps <- replicateM numConstraintPairs (randPathPair ns)
                            return $ mkEdge sym ns (mkEqConstraints ps)
 
@@ -119,8 +122,6 @@ dropEqConstraints = mapNodes go
 --------------------------------------------------------------
 ----------------------------- Main ---------------------------
 --------------------------------------------------------------
-
-
 
 
 spec :: Spec
@@ -156,3 +157,32 @@ spec = do
       property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (denotation $ intersect n1 n2)
                                                `shouldBe` HashSet.intersection (HashSet.fromList $ denotation n1)
                                                                                (HashSet.fromList $ denotation n2)
+
+  describe "reduction" $ do
+    it "reduction preserves denotation" $
+      property $ mapSize (min 3) $ \n -> HashSet.fromList (denotation n) `shouldBe` HashSet.fromList (denotation $ reducePartially n)
+
+    it "reducing a single constraint is idempotent 1" $
+      property $ \e -> let ns  = edgeChildren e
+                           ecs = edgeEcs e
+                           ns' = reduceEqConstraints ecs ns
+                       in  ns' == reduceEqConstraints ecs ns'
+
+    it "reducing a single constraint is idempotent 2" $
+      property $ \e1 e2 -> let maybeE'  = intersectEdge e1 e2
+                           in (maybeE' /= Nothing) ==>
+                                 let Just e' = maybeE'
+                                     ns  = edgeChildren e'
+                                     ecs = edgeEcs e'
+                                     ns' = reduceEqConstraints ecs ns
+                                 in  ns' == reduceEqConstraints ecs ns'
+
+    it "leaf reduction means, for everything at a path, there is something matching at the other paths" $
+      property $ \e -> let e' = reduceEdgeIntersection e
+                           ns = edgeChildren e' in
+                      (e' /= emptyEdge && edgeEcs e' /= EmptyConstraints) ==>
+                         and [intersect n1 n2 /= EmptyNode | ec <- unsafeGetEclasses (edgeEcs e')
+                                                           , p1 <- unPathEClass ec
+                                                           , p2 <- unPathEClass ec
+                                                           , n1 <- getAllAtPath p1 ns
+                                                           , let n2 = getPath p2 ns]
