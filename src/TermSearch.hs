@@ -1,13 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module TermSearch (
-    tau
-  , uptoSize6UniqueRep
-  , filterType
-  , prettyTerm
-  , dropTypes
-  ) where
+module TermSearch where
 
 import ECDFTA
 
