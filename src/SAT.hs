@@ -38,6 +38,7 @@ import Data.List.Index ( imap )
 import ECTA
 import Paths
 import Pretty
+import Utilities
 
 ----------------------------------------------------------------
 
@@ -194,15 +195,13 @@ negVarNode = Node [Edge "" [falseNode, bNode], Edge "" [trueNode, aNode]]
 --             x1/~x1 to be either true/false or false/true
 --
 -- formulaNode:
---  * One edge, having one child per clause, followed by a "1" node at index numClauses
---  * The (2*numVars)th child of each clause is 1/0 for whether the clause
---    is satisfied. Constrain each to be equal to the "1" node.
+--  * One edge, having one child per clause
 --
 -- Clause nodes:
 --  * One edge per literal in the clause, each corresponding to a choice of which variable
 --    makes the clause true.
 --  * Each edge has 2*numVars children containing a copy of the assnNode, followed by
---    a single child containing the truth value of the chosen literal
+--    a single child containing "1"
 --  * Constrain said final child to be equal to the truth value of the corresponding literal
 --    in those 2*numVars children which copy the assnNode
 --
@@ -235,9 +234,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
                     ]
 
     formulaNode :: Node
-    formulaNode = Node [mkEdge "clauses" (map mkClauseNode clauses ++ [trueNode])
-                                         (mkEqConstraints $ map (\i -> [path [i, 2*numVars], path [numClauses]]) [0..numClauses-1])
-                       ]
+    formulaNode = Node [Edge "clauses" (map mkClauseNode clauses)]
 
     mkClauseNode :: Clause -> Node
     mkClauseNode (Or lits) = Node (map mkLitChoiceEdge lits)
@@ -255,7 +252,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ denotation $ reducePartially $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ denotation $ fixUnbounded reducePartially $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula
@@ -291,4 +288,12 @@ ex1 = And [ Or [PosLit "x1", PosLit "x2", PosLit "x3"]
 ex2 :: CNF
 ex2 = And [ Or [PosLit "x1", PosLit "x2"]
           , Or [NegLit "x1", NegLit "x2"]
+          ]
+
+
+-- Partial reduction of the ECTA effectively performs unit propagation, solving this quickly.
+ex3 :: CNF
+ex3 = And [ Or [NegLit "x1"]
+          , Or [PosLit "x1", PosLit "x2"]
+          , Or [NegLit "x2", PosLit "x3"]
           ]
