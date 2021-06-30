@@ -41,9 +41,13 @@ packages:
 #
 extra-deps:
 - language-dot-0.1.1
+- git: https://github.com/jkoppel/equivalence.git
+  commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
 
-# Override default flag values for local packages and extra-deps
-# flags: {}
+# Turn on sse42 if you're insane. It brought a workload from 0.1918ms (avg across 12 trials) to 0.1911ms. Its price: lack of portability.
+#flags:
+#  hashtables:
+#    sse42: true
 
 # Extra package databases containing global packages
 # extra-package-dbs: []
