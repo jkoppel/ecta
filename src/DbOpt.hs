@@ -21,6 +21,8 @@ consts names = Node $ List.map (\n -> Edge n []) names
 
 func name xs = Node [Edge name xs]
 
+funcC name xs cs = Node [mkEdge name xs cs]
+
 none = const "none"
 filter' = binary "filter"
 join = trinary "join"
@@ -34,35 +36,39 @@ scope = consts ["k1", "k2", "k3"]
 hidx x y z = func "hidx" [x, y, z]
 meta = unary "meta"
 
-data Pattern =
-  App Symbol [Pattern]
+data Pattern p =
+  App Symbol [p]
   | Var Int
   | NodePat Node
   deriving ( Eq, Ord, Show )
 
+newtype ConstrPattern = ConstrPattern (Pattern ConstrPattern, [EqConstraint])
+  deriving ( Eq, Ord, Show )
+
 data PatternMatch = PatternMatch { root :: Node
-                                 , pat :: Pattern
+                                 , pat :: ConstrPattern
                                  , subst :: [(Int, Node)]
                                  }
   deriving ( Show )
 
-matchRoot :: Pattern -> Node -> [PatternMatch]
+matchRoot :: ConstrPattern -> Node -> [PatternMatch]
 matchRoot p n =
   List.map (\s -> PatternMatch { root = n, pat = p, subst = s }) $ matches p n
   where
-    matches :: Pattern -> Node -> [[(Int, Node)]]
-    matches p n =
+    matches :: ConstrPattern -> Node -> [[(Int, Node)]]
+    matches (ConstrPattern (p, eqs)) n =
       case p of
         (App sym args) ->
           List.concatMap (\pats ->
-                            (List.map concat $ mapM (uncurry matches) pats :: [[(Int, Node)]])) $
+                             (List.map concat $
+                              mapM (uncurry matches) pats :: [[(Int, Node)]])) $
           List.map (\(Edge _ nodes) -> zip args nodes) $
           List.filter (\(Edge sym' _) -> sym == sym') $
           nodeEdges n
         (Var idx) -> [[(idx, n)]]
         (NodePat n') -> if n == n' then [[]] else []
 
-match :: Pattern -> Node -> [PatternMatch]
+match :: ConstrPattern -> Node -> [PatternMatch]
 match p = crush (matchRoot p)
 
 atNode :: Node -> Node -> (Node -> Node) -> Node
@@ -71,26 +77,24 @@ atNode n n' f =
     Node (List.map (\e -> mkEdge (edgeSymbol e) (List.map (\n -> atNode n n' f) $ edgeChildren e) (edgeEcs e)) es)
     where (Node es) = n
 
-data Rule = Rule { lhs :: Pattern
-                 , rhs :: Pattern
+data Rule = Rule { lhs :: ConstrPattern
+                 , rhs :: ConstrPattern
                  , pred :: Node -> Bool
-                 , constrs :: [EqConstraint]
                  }
 
 instance Show Rule where
-  show Rule { lhs, rhs, constrs } = show (lhs, rhs, constrs)
+  show Rule { lhs, rhs } = show (lhs, rhs)
 
 rewriteMatch :: PatternMatch -> Rule -> Node -> Node
 rewriteMatch PatternMatch { root, subst } rule n =
-  atNode n root (\(Node ns) -> Node (ns ++ ns''))
+  atNode n root (\(Node ns) -> Node (ns ++ ns'))
   where
-    liftPat subst pat =
+    liftPat subst (ConstrPattern (pat, constrs)) =
       case pat of
-        (App sym args) -> func sym $ List.map (liftPat subst) args
+        (App sym args) -> funcC sym (List.map (liftPat subst) args) constrs
         (Var idx) -> Maybe.fromJust $ List.lookup idx subst
         (NodePat n) -> n
     (Node ns') = liftPat subst (rhs rule)
-    ns'' = List.map (\e -> mkEdge (edgeSymbol e) (edgeChildren e) (constrs rule)) ns'
 
 testTerm = filter' (binary "and" (eq (name "x") (name "x'")) (name "y")) (relation "test")
 
@@ -130,86 +134,84 @@ repeat' i r n =
 eqConstr p p' =
   EqConstraint (path p) (path p')
 
-alwaysRule lhs rhs constrs = Rule { lhs, rhs, DbOpt.pred = const True, constrs }
+alwaysRule lhs rhs = Rule { lhs, rhs, DbOpt.pred = const True }
 
-filterToHidx = alwaysRule lhs rhs constrs
+var x = ConstrPattern (Var x, [])
+app f xs = ConstrPattern (App f xs, [])
+appC f xs c = ConstrPattern (App f xs, c)
+nodePat n = ConstrPattern (NodePat n, [])
+
+filterToHidx = alwaysRule lhs rhs
   where
-    ckey = Var 0
-    rkey = Var 1
-    rel = Var 2
-    lhs = App "filter" [App "eq" [ckey, rkey], rel]
-    rhs = App "hidx" [App "select" [ckey, rel], NodePat scope, App "filter" [App "eq" [ckey, App "dot" [NodePat scope, ckey]], rel, rkey]]
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = app "filter" [app "eq" [ckey, rkey], rel]
+    rhs = appC "hidx" [app "select" [ckey, rel], nodePat scope, app "filter" [app "eq" [ckey, app "dot" [nodePat scope, ckey]], rel, rkey]] [ eqConstr [1] [2, 0, 1, 0] ]
+
+filterToOidx = alwaysRule lhs rhs 
+  where
+    ckey = var 0
+    rkey1 = var 1
+    rkey2 = var 2
+    rel = var 3
+    lhs = app "filter" [app "and" [app "lt" [rkey1, ckey], app "lt" [ckey, rkey2]], rel]
+    rhs = app "oidx" [ app "select" [ckey, rel],
+                       nodePat scope,
+                       app "filter" [app "eq" [ckey, app "dot" [nodePat scope, ckey]], rel, rkey1, rkey2]]
     constrs = [ eqConstr [1] [2, 0, 1, 0] ]
 
-filterToOidx = alwaysRule lhs rhs constrs
+filterToOidx1 = alwaysRule lhs rhs 
   where
-    ckey = Var 0
-    rkey1 = Var 1
-    rkey2 = Var 2
-    rel = Var 3
-    lhs = App "filter" [App "and" [App "lt" [rkey1, ckey], App "lt" [ckey, rkey2]], rel]
-    rhs = App "oidx" [ App "select" [ckey, rel],
-                       NodePat scope,
-                       App "filter" [App "eq" [ckey, App "dot" [NodePat scope, ckey]], rel, rkey1, rkey2]]
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = app "filter" [app "lt" [ckey, rkey], rel]
+    rhs = app "oidx" [ app "select" [ckey, rel],
+                       nodePat scope,
+                       app "filter" [app "eq" [ckey, app "dot" [nodePat scope, ckey]], rel, app "none" [], rkey]]
     constrs = [ eqConstr [1] [2, 0, 1, 0] ]
 
-filterToOidx1 = alwaysRule lhs rhs constrs
+filterToOidx2 = alwaysRule lhs rhs 
   where
-    ckey = Var 0
-    rkey = Var 1
-    rel = Var 2
-    lhs = App "filter" [App "lt" [ckey, rkey], rel]
-    rhs = App "oidx" [ App "select" [ckey, rel],
-                       NodePat scope,
-                       App "filter" [App "eq" [ckey, App "dot" [NodePat scope, ckey]], rel, App "none" [], rkey]]
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = app "filter" [app "lt" [rkey, ckey], rel]
+    rhs = app "oidx" [ app "select" [ckey, rel],
+                       nodePat scope,
+                       app "filter" [app "eq" [ckey, app "dot" [nodePat scope, ckey]], rel, rkey, app "none" []]]
     constrs = [ eqConstr [1] [2, 0, 1, 0] ]
 
-filterToOidx2 = alwaysRule lhs rhs constrs
+splitFilter = alwaysRule lhs rhs 
   where
-    ckey = Var 0
-    rkey = Var 1
-    rel = Var 2
-    lhs = App "filter" [App "lt" [rkey, ckey], rel]
-    rhs = App "oidx" [ App "select" [ckey, rel],
-                       NodePat scope,
-                       App "filter" [App "eq" [ckey, App "dot" [NodePat scope, ckey]], rel, rkey, App "none" []]]
-    constrs = [ eqConstr [1] [2, 0, 1, 0] ]
+    lhs = app "filter" [app "and" [var 0, var 1], var 2]
+    rhs = app "filter" [var 0, app "filter" [var 1, var 2]]
 
-splitFilter = alwaysRule lhs rhs constrs
+mergeFilter = alwaysRule lhs rhs 
   where
-    lhs = App "filter" [App "and" [Var 0, Var 1], Var 2]
-    rhs = App "filter" [Var 0, App "filter" [Var 1, Var 2]]
-    constrs = []
+    lhs = app "filter" [var 0, app "filter" [var 1, var 2]]
+    rhs = app "filter" [app "and" [var 0, var 1], var 2]
 
-mergeFilter = alwaysRule lhs rhs constrs
+hoistFilter = alwaysRule lhs rhs 
   where
-    lhs = App "filter" [Var 0, App "filter" [Var 1, Var 2]]
-    rhs = App "filter" [App "and" [Var 0, Var 1], Var 2]
-    constrs = []
+    lhs = app "join" [var 0, app "filter" [var 1, var 2], var 3]
+    rhs = app "filter" [var 1, app "join" [var 0, var 2, var 3]]
 
-hoistFilter = alwaysRule lhs rhs constrs
+toDepjoin = alwaysRule lhs rhs 
   where
-    lhs = App "join" [Var 0, App "filter" [Var 1, Var 2], Var 3]
-    rhs = App "filter" [Var 1, App "join" [Var 0, Var 2, Var 3]]
-    constrs = []
+    lhs = app "join" [var 0, var 1, var 2]
+    rhs = app "depjoin" [var 1, nodePat scope, app "filter" [var 0, var 2]]
 
-toDepjoin = alwaysRule lhs rhs constrs
+flipJoin = alwaysRule lhs rhs 
   where
-    lhs = App "join" [Var 0, Var 1, Var 2]
-    rhs = App "depjoin" [Var 1, NodePat scope, App "filter" [Var 0, Var 2]]
-    constrs = []
+    lhs = app "join" [var 0, var 1, var 2]
+    rhs = app "join" [var 0, var 2, var 1]
 
-flipJoin = alwaysRule lhs rhs constrs
+flipBinop op = alwaysRule lhs rhs
   where
-    lhs = App "join" [Var 0, Var 1, Var 2]
-    rhs = App "join" [Var 0, Var 2, Var 1]
-    constrs = []
-
-flipBinop op = alwaysRule lhs rhs constrs
-  where
-    lhs = App op [Var 0, Var 1]
-    rhs = App op [Var 1, Var 0]
-    constrs = []
+    lhs = app op [var 0, var 1]
+    rhs = app op [var 1, var 0]
 
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
