@@ -15,9 +15,9 @@ main :: IO ()
 main = do let g = reducePartially $ filterType uptoSize6UniqueRep baseType
           print $ nodeCount g
           print $ edgeCount g
-{-          print =<< getAllCacheMetrics
+{--          print =<< getAllCacheMetrics
           let c = cache @Edge
           print =<< getMetrics c
           let c = cache @Node
           print =<< getMetrics c
--}
+          -}

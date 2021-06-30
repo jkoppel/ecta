@@ -15,6 +15,8 @@ module ECTA (
   -- * Operations
   , pathsMatching
   , mapNodes
+  , refold
+  , unfoldBounded
   , crush
   , nodeCount
   , edgeCount

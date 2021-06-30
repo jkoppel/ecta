@@ -5,8 +5,11 @@ module ECTASpec ( spec ) where
 import Control.Monad ( replicateM )
 import qualified Data.HashSet as HashSet
 import Data.HashSet ( HashSet )
+import Data.IORef ( newIORef, readIORef, modifyIORef )
 import Data.List ( and, subsequences, (\\) )
 import qualified Data.Text as Text
+
+import System.IO.Unsafe ( unsafePerformIO )
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
@@ -192,7 +195,7 @@ spec = do
                                      ns' = reduceEqConstraints ecs ns
                                  in  ns' == reduceEqConstraints ecs ns'
 
-    -- | TODO (6/29/21): Need a better way to visualize the type nodes.
+    -- | TODO (6/29/21): Need a better way to visualize the type nodes. Cannot figure out why this fails.
     --   Reversing the order that eclasses are processed seems to make no difference.
     {-
     it "reducing a constraint is idempotent: buggy input 6/27/21" $
@@ -221,3 +224,17 @@ spec = do
           f    = \n -> Node [Edge "f" [n]]
       in (ns' == ns'') && ns' == [f $ f $ f $ f infiniteLineNode, f $ f $ f $ infiniteLineNode]
          `shouldBe` True
+
+
+  describe "folding" $
+    it "refold folds the simplest unrolled input" $
+      refold (Node [Edge "f" [infiniteLineNode]]) `shouldBe` infiniteLineNode
+
+  describe "traversals" $
+    it "mapNodes hits each node exactly once" $
+      -- Note: If the Arbitrary Node instance is changed to return empty or mu nodes, this will need to change
+      property $ \n -> unsafePerformIO $ do v <- newIORef 0
+                                            let n' = mapNodes (\m -> unsafePerformIO (modifyIORef v (+1) >> pure m)) n
+                                            let k = nodeCount n'
+                                            numInvocations <- k `seq` readIORef v
+                                            return $ k == numInvocations

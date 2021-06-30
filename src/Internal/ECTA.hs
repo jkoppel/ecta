@@ -20,6 +20,8 @@ module Internal.ECTA (
   -- * Operations
   , pathsMatching
   , mapNodes
+  , refold
+  , unfoldBounded
   , crush
   , nodeCount
   , edgeCount
@@ -74,7 +76,7 @@ import qualified Language.Dot.Syntax as Dot
 import Data.Interned.Extended.HashTableBased
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
-import Data.Memoization ( MemoCacheTag(..), memo2 )
+import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Paths
 import Pretty
 import Utilities
@@ -113,14 +115,14 @@ instance Hashable Symbol where
 instance IsString Symbol where
   fromString = Symbol . fromString
 
-data Term = Term Symbol [Term]
+data Term = Term !Symbol ![Term]
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable Term
 
 instance Pretty Term where
-  pretty (Term s []) = pretty s
-  pretty (Term s ts) = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
+  pretty (Term s [])            = pretty s
+  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
 
 ---------------------
 ------ Term ops
@@ -383,14 +385,19 @@ pathsMatching f n@(Node es) = (concat $ map pathsMatchingEdge es)
     pathsMatchingEdge :: Edge -> [Path]
     pathsMatchingEdge (Edge _ ns) = concat $ imap (\i x -> map (ConsPath i) $ pathsMatching f x) ns
 
-mapNodes :: (Node -> Node) -> Node -> Node
-mapNodes f EmptyNode = f EmptyNode
-mapNodes f (Node es) = f $ Node (map (\(Edge s ns) -> Edge s (map (mapNodes f) ns)) es)
-mapNodes f (Mu n)    = f (Mu (mapNodes f n))
-mapNodes f Rec       = f Rec
+mapNodes ::(Node -> Node) -> Node -> Node
+mapNodes f n = go n
+  where
+    -- | Memoized separately for each mapNodes invocation
+    go :: Node -> Node
+    go = memo (NameTag "mapNodes") (go' f)
+    {-# NOINLINE go #-}
 
-unfoldRec :: Node -> Node
-unfoldRec n = mapNodes (\x -> if x == Rec then Mu n else x) n
+    go' :: (Node -> Node) -> Node -> Node
+    go' f EmptyNode = EmptyNode
+    go' f (Node es) = f $ (Node $ map(\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' f (Mu n)    = f $ (Mu $ go n)
+    go' f Rec       = f Rec
 
 -- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
 -- combinators in the KURE and compstrat libraries.
@@ -402,7 +409,7 @@ crush f n = evalState (go n) Set.empty
     go :: (Monoid m) => Node -> State (Set Id) m
     go EmptyNode = return mempty
     go Rec       = return mempty
-    go (Mu n)    = go n
+    go (Mu n)    = mappend (f (Mu n)) <$> go n
     go n@(Node es) = do
       seen <- get
       let nId = nodeIdentity n
@@ -411,6 +418,32 @@ crush f n = evalState (go n) Set.empty
        else do
         modify (Set.insert nId)
         mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
+
+onNormalNodes :: (Monoid m) => (Node -> m) -> (Node -> m)
+onNormalNodes f n@(Node _) = f n
+onNormalNodes _ _          = mempty
+
+-----------------------
+------ Folding
+-----------------------
+
+unfoldRec :: Node -> Node
+unfoldRec n = mapNodes (\x -> if x == Rec then Mu n else x) n
+
+refold :: Node -> Node
+refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
+                                                _    -> First Nothing)
+                                         n
+           in case muNode of
+                Nothing     -> n
+                Just m -> let unfoldedNode = unfoldRec m
+                          in fixUnbounded (mapNodes (\x -> if x == unfoldedNode then Mu m else x)) n
+
+unfoldBounded :: Int -> Node -> Node
+unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
+                                  n    -> n)
+unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case Mu n -> unfoldRec n
+                                                        n    -> n)
 
 -----------------------
 ------ Edge operations
@@ -432,10 +465,34 @@ edgeSubsumed e1 e2 =    (dropEcs e1 == dropEcs e2)
 ------------
 
 nodeCount :: Node -> Int
-nodeCount = getSum . crush (const $ Sum 1)
+nodeCount = getSum . crush (onNormalNodes $ const $ Sum 1)
 
 edgeCount :: Node -> Int
-edgeCount = getSum . crush (\(Node es) -> Sum (length es))
+edgeCount = getSum . crush (onNormalNodes $ \(Node es) -> Sum (length es))
+
+------------
+------ Membership
+------------
+
+nodeRepresents :: Node -> Term -> Bool
+nodeRepresents EmptyNode _                      = False
+nodeRepresents (Node es) t                      = any (\e -> edgeRepresents e t) es
+nodeRepresents (Mu n)    t                      = nodeRepresents (unfoldRec n) t
+nodeRepresents _         _                      = False
+
+edgeRepresents :: Edge -> Term -> Bool
+edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
+                                 && and (zipWith nodeRepresents (edgeChildren e) ts)
+                                 && all (eclassSatisfied t) (unsafeGetEclasses $ edgeEcs e)
+  where
+    eclassSatisfied :: Term -> PathEClass -> Bool
+    eclassSatisfied t pec = allTheSame $ map (\p -> getPath p t) $ unPathEClass pec
+
+    allTheSame :: (Eq a) => [a] -> Bool
+    allTheSame [] = True
+    allTheSame ((!x):xs) = go x xs where
+        go !x [] = True
+        go !x (!y:ys) = (x == y) && (go x ys)
 
 ------------
 ------ Intersect
@@ -665,7 +722,7 @@ toFgl :: Node -> Fgl.Gr FglNodeLabel ()
 toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges ++ transitionToNodeEdges)
   where
     maxNodeOutdegree :: Int
-    maxNodeOutdegree = getMax $ crush (\(Node es) -> Max (length es)) root
+    maxNodeOutdegree = getMax $ crush (onNormalNodes $ \(Node es) -> Max (length es)) root
 
     fglNodeId :: Node -> Fgl.Node
     fglNodeId n = nodeIdentity n * (maxNodeOutdegree + 1)
@@ -682,13 +739,13 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
     onNormalNodes f _          = mempty
 
     nodeNodes, transitionNodes :: [Fgl.LNode FglNodeLabel]
-    nodeNodes       = crush (maybeToList . fglNodeLabel) root
+    nodeNodes       = crush (onNormalNodes $ (maybeToList . fglNodeLabel)) root
     transitionNodes = crush (onNormalNodes $ \n@(Node es) -> imap (\i e -> (fglTransitionId n i, TransitionLabel (edgeSymbol e) (edgeEcs e))) es) root
 
     -- | Uses the globally-unique mu node assumption
     -- Does not work if root is the mu node
     muNodeLabel :: Maybe Fgl.Node
-    muNodeLabel = getFirst $ crush (\(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
+    muNodeLabel = getFirst $ crush (onNormalNodes $ \(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
       where
         muNodeToLabel (Mu n) = First $ Just $ fglNodeId n
         muNodeToLabel _      = First Nothing

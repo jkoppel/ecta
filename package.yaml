@@ -24,6 +24,7 @@ dependencies:
 - containers
 - hashable
 - language-dot
+- mtl
 - text
 - unordered-containers
 default-extensions:
@@ -70,7 +71,6 @@ library:
     - ilist
     - intern
     - lens
-    - mtl
     - pretty-simple
     - raw-strings-qq
     - text

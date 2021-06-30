@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5a5628497e22b4cc0045039e0f8766163350bbc703b55a411209e94ffb644453
+-- hash: 6e594843ec725e33a4a5b5e072f0b1dbb4d0dd4a7f66f204f95ae87666bc72d4
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -83,6 +83,7 @@ executable compact-coupled-terms-exe
     , containers
     , hashable
     , language-dot
+    , mtl
     , text
     , unordered-containers
   if flag(profile-caches)
@@ -109,6 +110,7 @@ test-suite unit-tests
     , hashable
     , hspec
     , language-dot
+    , mtl
     , text
     , unordered-containers
   if flag(profile-caches)
@@ -131,6 +133,7 @@ benchmark mainbench
     , criterion
     , hashable
     , language-dot
+    , mtl
     , text
     , unordered-containers
   if flag(profile-caches)
