@@ -443,6 +443,7 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 
 intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
+{-# NOINLINE intersect #-}
 
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
@@ -613,6 +614,7 @@ reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
         dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
+{-# NOINLINE reduceEqConstraints #-}
 
 reduceEdgeMultiply :: Edge -> Edge
 reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"

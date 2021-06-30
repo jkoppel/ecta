@@ -167,8 +167,6 @@ memoIO tag f = do
 memo :: (Eq a, Hashable a) => MemoCacheTag -> (a -> b) -> (a -> b)
 memo tag f = let f' = unsafePerformIO (memoIO tag f)
              in \x -> unsafePerformIO (f' x)
-{-# NOINLINE memo #-}
-
 
 memo2 :: (Eq a, Hashable a, Eq b, Hashable b) => MemoCacheTag -> (a -> b -> c) -> a -> b -> c
 memo2 tag f = memo tag (memo (mkInnerTag tag) . f)
