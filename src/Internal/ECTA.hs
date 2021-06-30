@@ -10,6 +10,8 @@ module Internal.ECTA (
   , emptyEdge
   , edgeChildren
   , edgeEcs
+  , edgeSymbol
+  , setChildren
 
   , Node(.., Node)
   , nodeEdges
@@ -24,6 +26,8 @@ module Internal.ECTA (
   , union
   , intersect
   , intersectEdge
+  , requirePath
+  , requirePathList
   , denotation
 
   , reducePartially
@@ -101,7 +105,7 @@ instance Pretty Symbol where
   pretty (Symbol t) = t
 
 instance Show Symbol where
-  show = Text.unpack . pretty
+  show (Symbol it) = show it
 
 instance Hashable Symbol where
   hashWithSalt s (Symbol' t) = s `hashWithSalt` (internedTextId t)
@@ -110,13 +114,13 @@ instance IsString Symbol where
   fromString = Symbol . fromString
 
 data Term = Term Symbol [Term]
-  deriving ( Eq, Ord, Generic )
+  deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable Term
 
-instance Show Term where
-  show (Term s []) = show s
-  show (Term s ts) = show s ++ "(" ++ (intercalate "," $ map show ts) ++ ")"
+instance Pretty Term where
+  pretty (Term s []) = pretty s
+  pretty (Term s ts) = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
 
 ---------------------
 ------ Term ops
@@ -154,6 +158,11 @@ instance Pathable Term Term where
 --                  to by the right path. A filter is still required
 --                  to find valid terms, but fewer invalid terms will be generated.
 --
+--                  HOWEVER, this property is unstable, and reducing other equality
+--                  constraints on other nodes may make this property no longer hold.
+--                  (See Sat.hs for a prime example.) We hence do not do anything
+--                  with this level.
+--
 -- 3) Multiplied: Duplicates have been made of the hyperedge, and intersections performed, so that
 --                it is guaranteed that, for each choice of term and the end of the left path,
 --                there will be an equal term possible at the right edge. This enables
@@ -162,10 +171,6 @@ instance Pathable Term Term where
 -- The constraints being reduced is a property of the entire hyperedge, not of the individual constraints.
 -- This is because reducing one constraint may result in another constraint becoming unreduced,
 -- similar to how, in classic constraint propagation, one cannot process all constraints in a fixed linear order.
---
--- Example: Consider the hyperedge with children [{1,2,3}, {2,3,4}, {3,4,5}] and constraints
--- .0=.1, .1=.2. Reducing them in left-to-right order yields [{2, 3}, {3}, {3}]. The first
--- constraint would then need to be processed again to yield the fully-reduced edge [{3}, {3}, {3}].
 data ECReduction = ECUnreduced | ECLeafReduced | ECMultiplied
   deriving (Eq, Ord, Show, Generic)
 
@@ -179,7 +184,11 @@ data Edge = InternedEdge { edgeId        ::  !Id
                          }
 
 instance Show Edge where
-  show e = "InternedEdge " ++ show (edgeId e) ++ " " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ " " ++ show (edgeReduction e)
+  show e | edgeEcs e == EmptyConstraints = "(Edge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ ")"
+         | otherwise                     = "(mkEdge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ ")"
+
+--instance Show Edge where
+--  show e = "InternedEdge " ++ show (edgeId e) ++ " " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ " " ++ show (edgeReduction e)
 
 edgeSymbol :: Edge -> Symbol
 edgeSymbol = uEdgeSymbol . uninternedEdge
@@ -213,7 +222,6 @@ data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | EmptyNode
           | Mu Node
           | Rec
-  deriving ( Show )
 
 instance Eq Node where
   (InternedNode n1 _) == (InternedNode n2 _) = n1 == n2
@@ -221,6 +229,12 @@ instance Eq Node where
   Mu n1               == Mu n2               = True -- | And here I use the crazy globally unique Mu assumption
   Rec                 == Rec                 = True
   _                   == _                   = False
+
+instance Show Node where
+  show (InternedNode _ es) = "(Node " ++ show es ++ ")"
+  show EmptyNode           = "EmptyNode"
+  show (Mu n)              = "(Mu " ++ show n ++ ")"
+  show Rec                 = "Rec"
 
 instance Ord Node where
   compare n1 n2 = compare (dropEdges n1) (dropEdges n2)
@@ -563,17 +577,18 @@ reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
 reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection e | edgeReduction e == ECUnreduced = intern $ UninternedEdge (edgeSymbol e)
-                                                                                    (fix 3 (reduceEqConstraints (edgeEcs e)) (edgeChildren e))
-                                                                                    (edgeEcs e)
-                                                                                    ECLeafReduced
-reduceEdgeIntersection e                                  = e
+reduceEdgeIntersection e = mkEdge (edgeSymbol e)
+                                  (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                                  (edgeEcs e)
 
 reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
 reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
   where
+    propagateEmptyNodes :: [Node] -> [Node]
+    propagateEmptyNodes ns = if any (==EmptyNode) ns then map (const EmptyNode) ns else ns
+
     go :: EqConstraints -> [Node] -> [Node]
-    go ecs origNs = foldr reduceEClass withNeededChildren eclasses
+    go ecs origNs = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
@@ -717,8 +732,8 @@ fglToDot g = Dot.Graph Dot.StrictGraph Dot.DirectedGraph Nothing (nodeStmts ++ e
 
     renderNodeLabel :: FglNodeLabel -> Dot.Id
     renderNodeLabel (IdLabel l)             = Dot.StringId ("q" ++ show l)
-    renderNodeLabel (TransitionLabel s ecs) = Dot.StringId (Text.unpack (pretty s)
-                                                            ++ show ecs)
+    renderNodeLabel (TransitionLabel s ecs) =
+         Dot.StringId (Text.unpack $ pretty s <> " (" <> pretty ecs <> ")")
 
 -- | To visualize an FTA:
 -- 1) Call `prettyPrintDot $ toDot fta` from GHCI

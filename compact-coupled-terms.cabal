@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bb2204ccb49c77282d7f405f1c1248f1ddbe0bcd1ae2f1afc0971e82ea6dd9e9
+-- hash: 5a5628497e22b4cc0045039e0f8766163350bbc703b55a411209e94ffb644453
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -40,6 +40,7 @@ library
       Internal.Paths
       Paths
       Pretty
+      SAT
       TermSearch
       Utilities
   other-modules:
@@ -94,6 +95,7 @@ test-suite unit-tests
   other-modules:
       ECTASpec
       PathsSpec
+      SATSpec
       Paths_compact_coupled_terms
   hs-source-dirs:
       test

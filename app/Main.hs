@@ -12,7 +12,7 @@ import Language.Dot
 ----------------------------------------------------------
 
 main :: IO ()
-main = do let g = reducePartially $ filterType size4 baseType
+main = do let g = reducePartially $ filterType uptoSize6UniqueRep baseType
           print $ nodeCount g
           print $ edgeCount g
 {-          print =<< getAllCacheMetrics

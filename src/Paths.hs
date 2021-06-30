@@ -1,6 +1,7 @@
 module Paths (
     -- * Paths
     Path(EmptyPath, ConsPath)
+  , unPath
   , path
   , Pathable(..)
   , pathHeadUnsafe
@@ -8,6 +9,7 @@ module Paths (
   , isSubpath
 
   , PathEClass(..)
+  , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
 

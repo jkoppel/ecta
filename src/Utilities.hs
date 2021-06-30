@@ -4,10 +4,9 @@ module Utilities (
   , fixMaybe
   ) where
 
-
 --------------------------------------------------------------
 
-fix :: (Eq a) => Int -> (a -> a) -> a -> a
+fix :: (Show a, Eq a) => Int -> (a -> a) -> a -> a
 fix (-1)     _ _ = error "fix: Exceeded maxIters"
 fix maxIters f x = let x' = f x in
                    if x' == x then

@@ -105,7 +105,7 @@ data MemoCacheTag = NameTag Text
 instance Hashable MemoCacheTag
 
 mkInnerTag :: MemoCacheTag -> MemoCacheTag
-mkInnerTag (NameTag t) = NameTag (Text.append t "-inner")
+mkInnerTag (NameTag t) = NameTag (t <> "-inner")
 
 --------------
 ---- Global metrics store

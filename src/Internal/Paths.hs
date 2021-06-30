@@ -5,6 +5,7 @@
 
 module Internal.Paths (
     Path(.., EmptyPath, ConsPath)
+  , unPath
   , path
   , Pathable(..)
   , pathHeadUnsafe
@@ -14,6 +15,7 @@ module Internal.Paths (
   , substSubpath
 
   , PathEClass(..)
+  , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
 
@@ -48,15 +50,20 @@ import Utilities
 -------------------------------- Paths --------------------------------
 -----------------------------------------------------------------------
 
-data Path = Path { unPath :: ![Int] }
-  deriving (Eq, Ord, Generic)
+data Path = Path ![Int]
+  deriving (Eq, Ord, Show, Generic)
+
+unPath :: Path -> [Int]
+unPath (Path p) = p
 
 instance Hashable Path
 
+{-
 instance Show Path where
   showsPrec d (Path ps) =   showString "Path ["
                           . (appEndo $ mconcat $ map Endo $ intersperse (showString ".") $ map (showsPrec (d+1)) ps)
                           . showString "]"
+-}
 
 path :: [Int] -> Path
 path = Path
@@ -125,11 +132,17 @@ class Pathable t t' | t -> t' where
 ---------- Path E-classes
 ---------------------------
 
-newtype PathEClass = PathEClass { unPathEClass :: [Path] }
-  deriving ( Eq, Ord, Generic )
+newtype PathEClass = PathEClass [Path]
+  deriving ( Eq, Ord, Show, Generic )
 
-instance Show PathEClass where
-  showsPrec d = showsPrec d . unPathEClass
+unPathEClass :: PathEClass -> [Path]
+unPathEClass (PathEClass ps) = ps
+
+--instance Show PathEClass where
+--  showsPrec d = showsPrec d . unPathEClass
+
+instance Pretty PathEClass where
+  pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
 
 instance Hashable PathEClass
 
@@ -144,7 +157,12 @@ completedSubsumptionOrdering :: PathEClass -> PathEClass -> Ordering
 completedSubsumptionOrdering pec1 pec2
                        | hasSubsumingMember pec1 pec2 = LT
                        | hasSubsumingMember pec2 pec1 = GT
-                       | otherwise                    = compare pec1 pec2
+                       -- | This next line is some hacky magic. Basically, it means that for the
+                       --   Hoogle+/TermSearch workload, where there is no subsumption,
+                       --   constraints will be evaluated in left-to-right order (instead of the default
+                       --   right-to-left), which for that particular workload produces better
+                       --   constraint-propagation
+                       | otherwise                    = compare pec2 pec1
 
 --------------------------------
 ---------- Equality constraints
@@ -156,6 +174,9 @@ data EqConstraints = EqConstraints { getEclasses :: [PathEClass] -- | Must be so
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable EqConstraints
+
+instance Pretty EqConstraints where
+  pretty ecs = "{" <> (Text.intercalate "," $ map pretty (getEclasses ecs)) <> "}"
 
 --------- Destructors and patterns
 
