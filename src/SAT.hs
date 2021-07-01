@@ -70,7 +70,7 @@ varToNegSymbol v = Symbol ("~" <> unVar v)
 -------------------------------------------------------------------
 
 -- | Our construction generalizes to arbitrary NNF formulas,
---   and possible to arbitrary SAT,
+--   and possibly to arbitrary SAT,
 --   but we don't need to bother; just CNF is good enough
 
 data CNF = And [Clause]
@@ -189,9 +189,9 @@ negVarNode = Node [Edge "" [falseNode, bNode], Edge "" [trueNode, aNode]]
 -- assnNode:
 --  * One edge, with one child per literal (2*numVars total)
 --  * Each literal has two choices, true or false
---  * Use constrain each positive/negative pair of literals to match.
+--  * Use constraints to force each positive/negative pair of literals to match.
 --     * E.g.: x1 node = choice of (0, a) or (1, b). ~x1 node = choice of (0, b) or (1, a)
---             If x1/~x1 have indices 0/1, then the constraint 0.1=1.1 constraints
+--             If x1/~x1 have indices 0/1, then the constraint 0.1=1.1 constrains
 --             x1/~x1 to be either true/false or false/true
 --
 -- formulaNode:
