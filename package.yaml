@@ -20,8 +20,14 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/githubuser/compact-coupled-terms#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+- base
+- containers
+- hashable
+- language-dot
+- text
+- unordered-containers
 default-extensions:
+  - BangPatterns
   - ConstraintKinds
   - DataKinds
   - DefaultSignatures
@@ -35,6 +41,7 @@ default-extensions:
   - GADTs
   - GeneralizedNewtypeDeriving
   - KindSignatures
+  - LambdaCase
   - MultiParamTypeClasses
   - NamedFieldPuns
   - PatternGuards
@@ -46,22 +53,27 @@ default-extensions:
   - TypeFamilies
   - TypeOperators
   - ViewPatterns
+flags:
+  profile-caches:
+    manual: true
+    default: false
+when:
+    condition: flag(profile-caches)
+    cpp-options: -D PROFILE_CACHES
 library:
   source-dirs: src
   dependencies:
     - array
-    - containers
+    - equivalence
     - fgl
-    - hashable
+    - hashtables
     - ilist
     - intern
-    - language-dot
     - lens
     - mtl
     - pretty-simple
     - raw-strings-qq
     - text
-    - unordered-containers
 
 executables:
   compact-coupled-terms-exe:
@@ -83,8 +95,19 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-      - base
       - compact-coupled-terms
-      - hashable
       - hspec
-      - text
+      - QuickCheck
+
+benchmarks:
+  mainbench:
+    main: Benchmarks.hs
+    source-dirs: benchmarks
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -O2
+    dependencies:
+      - compact-coupled-terms
+      - criterion

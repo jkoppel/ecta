@@ -2,10 +2,12 @@
 
 module DbOpt where
 
-import ECDFTA
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Language.Dot.Pretty as Dot
+
+import ECTA
+import Paths
 
 trinary :: Symbol -> Node -> Node -> Node -> Node
 trinary name x y z = Node [Edge name [x, y, z]]
@@ -44,7 +46,7 @@ data Pattern p =
   | NodePat Node
   deriving ( Eq, Ord, Show )
 
-newtype ConstrPattern = ConstrPattern (Pattern ConstrPattern, [EqConstraint])
+newtype ConstrPattern = ConstrPattern (Pattern ConstrPattern, EqConstraints)
   deriving ( Eq, Ord, Show )
 
 data PatternMatch = PatternMatch { root :: Node
@@ -139,40 +141,37 @@ repeat' i r n =
     Just n' ->
       if n == n' then Just n else repeat' (i - 1) r n'
 
-eqConstr p p' =
-  EqConstraint (path p) (path p')
-
 alwaysRule lhs rhs = Rule { lhs, rhs, DbOpt.pred = const True }
 
-var x = ConstrPattern (Var x, [])
+var x = ConstrPattern (Var x, EmptyConstraints)
 varC x c = ConstrPattern (Var x, c)
-app f xs = ConstrPattern (App f xs, [])
+app f xs = ConstrPattern (App f xs, EmptyConstraints)
 appC f xs c = ConstrPattern (App f xs, c)
-nodePat n = ConstrPattern (NodePat n, [])
+nodePat n = ConstrPattern (NodePat n, EmptyConstraints)
 
 andConstr p p' =
   (nodePat node, constr)
   where
-    node = Node [mkEdge "=" [tNode, tNode, tNode] [],
-                 mkEdge "=" [fNode, tNode, fNode] [],
-                 mkEdge "=" [fNode, fNode, tNode] [],
-                 mkEdge "=" [fNode, fNode, fNode] []
+    node = Node [mkEdge "=" [tNode, tNode, tNode] EmptyConstraints,
+                 mkEdge "=" [fNode, tNode, fNode] EmptyConstraints,
+                 mkEdge "=" [fNode, fNode, tNode] EmptyConstraints,
+                 mkEdge "=" [fNode, fNode, fNode] EmptyConstraints
                 ]
-    constr = [eqConstr [0, 1] p, eqConstr [0, 2] p']
+    constr = mkEqConstraints [[path [0, 1], p], [path [0, 2], p']]
 
 copyConstr p =
   (nodePat node, constr)
   where
-    node = Node [mkEdge "=" [tNode] [], mkEdge "=" [fNode] [] ]
-    constr = [eqConstr [0, 0] p]
+    node = Node [mkEdge "=" [tNode] EmptyConstraints, mkEdge "=" [fNode] EmptyConstraints ]
+    constr = mkEqConstraints [[path [0, 0], p]]
     
 bothT name x y = appC name [metaNode, x, y] constrs
   where
-    (metaNode, constrs) = andConstr [1, 0, 0] [2, 0, 0]
+    (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [2, 0, 0])
 
 firstT name x y = appC name [metaNode, x, y] constrs
   where
-    (metaNode, constrs) = copyConstr [1, 0, 0]
+    (metaNode, constrs) = copyConstr $ path [1, 0, 0]
     
 filterT = bothT "filter"
 eqT = bothT "eq"
@@ -181,8 +180,8 @@ ltT = bothT "lt"
 selectT = bothT "select"
 dotT = firstT "dot"
 
-rtimeT = nodePat $ Node [mkEdge "=" [tNode] []]
-ctimeT = nodePat $ Node [mkEdge "=" [fNode] []]
+rtimeT = nodePat $ Node [mkEdge "=" [tNode] EmptyConstraints]
+ctimeT = nodePat $ Node [mkEdge "=" [fNode] EmptyConstraints]
 
 cscopeT = ctimeT
 rscopeT = rtimeT
@@ -192,12 +191,14 @@ nameT = relationT
 joinT p r r' = app "join" [ctimeT, p, r, r']
 depjoinT r r' = appC "depjoin" [metaNode, r, nodePat scope, r'] constrs
   where
-    (metaNode, constrs) = andConstr [1, 0, 0] [3, 0, 0]
+    (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [3, 0, 0])
+
+addConstr c = combineEqConstraints (mkEqConstraints c)
 
 idxT name xs = appC name (metaNode : xs) constrs'
   where
-    (metaNode, constrs) = andConstr [1, 0, 0] [2, 0, 0]
-    constrs' = eqConstr [1] [2, 0, 1, 0] : constrs
+    (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [2, 0, 0])
+    constrs' = addConstr [[path [1], path [2, 0, 1, 0]]] constrs
     
 hidxT = idxT "hidx"
 oidxT = idxT "oidx"
@@ -278,7 +279,7 @@ elimJoin = alwaysRule lhs rhs
 inject :: ConstrPattern -> Rule
 inject = alwaysRule (var 0)
 
-forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] [eqConstr [0, 0] [1, 0, 0]])
+forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] (mkEqConstraints [[path [0, 0], path [1, 0, 0]]]))
 
 -- flipEq = flipBinop "eq"
 -- flipAnd = flipBinop "and"
@@ -297,7 +298,7 @@ forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] [eqConstr [0
 --   try (rewriteFirst flipEq) `andThen`
 --   try (rewriteFirst flipJoin)
 
-dummyNode = Node [mkEdge "?" [] []]
+dummyNode = Node [mkEdge "?" [] EmptyConstraints]
 rewriteTest =
   (rewriteFirst $ inject (joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
           (joinT (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
