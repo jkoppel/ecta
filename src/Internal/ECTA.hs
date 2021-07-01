@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Internal.ECTA (
@@ -42,6 +43,10 @@ module Internal.ECTA (
   , toDot
   , refreshNode
   , refreshEdge
+
+#ifdef PROFILE_CACHES
+  , resetAllEctaCaches_BrokenDoNotUse
+#endif
   ) where
 
 import Control.Monad ( guard )
@@ -73,10 +78,11 @@ import Data.List.Index ( imap )
 import qualified Language.Dot.Syntax as Dot
 
 --import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
-import Data.Interned.Extended.HashTableBased
+import Data.Interned.Extended.HashTableBased as Interned
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
+import qualified Data.Memoization as Memoization
 import Paths
 import Pretty
 import Utilities
@@ -181,7 +187,7 @@ instance Hashable ECReduction
 -- | This design has a violation of the representable/valid principle: If one constructs an FTA
 -- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
 -- all edges the same. They will not be equal, even though the graph is identical.
-data Edge = InternedEdge { edgeId        ::  !Id
+data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
 
@@ -222,7 +228,7 @@ instance Hashable Edge where
 -- Assumes a single globally unique recursive node
 data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | EmptyNode
-          | Mu Node
+          | Mu !Node
           | Rec
 
 instance Eq Node where
@@ -395,7 +401,7 @@ mapNodes f n = go n
 
     go' :: (Node -> Node) -> Node -> Node
     go' f EmptyNode = EmptyNode
-    go' f (Node es) = f $ (Node $ map(\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
     go' f (Mu n)    = f $ (Mu $ go n)
     go' f Rec       = f Rec
 
@@ -428,7 +434,9 @@ onNormalNodes _ _          = mempty
 -----------------------
 
 unfoldRec :: Node -> Node
-unfoldRec n = mapNodes (\x -> if x == Rec then Mu n else x) n
+unfoldRec = memo (NameTag "unfoldRec") go
+  where
+    go n = mapNodes (\x -> if x == Rec then Mu n else x) n
 
 refold :: Node -> Node
 refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
@@ -635,12 +643,16 @@ reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
 reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection e = mkEdge (edgeSymbol e)
-                                  (reduceEqConstraints (edgeEcs e) (edgeChildren e))
-                                  (edgeEcs e)
+reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
+  where
+   go :: Edge -> Edge
+   go e = mkEdge (edgeSymbol e)
+                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                 (edgeEcs e)
+{-# NOINLINE reduceEdgeIntersection #-}
 
 reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
-reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
+reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
     propagateEmptyNodes ns = if any (==EmptyNode) ns then map (const EmptyNode) ns else ns
@@ -671,7 +683,6 @@ reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
         dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
-{-# NOINLINE reduceEqConstraints #-}
 
 reduceEdgeMultiply :: Edge -> Edge
 reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"
@@ -816,3 +827,11 @@ refreshNode Rec       = Rec
 -- | This should be the identity operation. If not, something has gone wrong.
 refreshEdge :: Edge -> Edge
 refreshEdge e = reduceEdgeTo (edgeReduction e) $ setChildren e (map refreshNode (edgeChildren e))
+
+#ifdef PROFILE_CACHES
+resetAllEctaCaches_BrokenDoNotUse :: IO ()
+resetAllEctaCaches_BrokenDoNotUse = do
+  Memoization.resetAllCaches
+  Interned.resetCache (cache @Node)
+  Interned.resetCache (cache @Edge)
+#endif

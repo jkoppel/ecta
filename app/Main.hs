@@ -1,23 +1,34 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Data.List ( nub )
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+import System.IO ( hFlush, stdout )
 
-import Data.Interned.Extended.HashTableBased
-import Data.Memoization
+import Data.Interned.Extended.HashTableBased as Interned
+import Data.Memoization as Memoization
 import ECTA
+import Pretty
 import TermSearch
 
 import Language.Dot
 
 ----------------------------------------------------------
 
+
+printCacheStatsForReduction :: Node -> IO ()
+printCacheStatsForReduction n = do
+    --resetAllEctaCaches_BrokenDoNotUse
+    let n' = reducePartially n
+    Text.putStrLn $ "Nodes: " <> Text.pack (show (nodeCount n'))
+    Text.putStrLn $ "Edges: " <> Text.pack (show (edgeCount n'))
+    Memoization.printAllCacheMetrics
+    Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
+    Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
+    Text.putStrLn ""
+    hFlush stdout
+
 main :: IO ()
-main = do let g = reducePartially $ filterType uptoSize6UniqueRep baseType
-          print $ nodeCount g
-          print $ edgeCount g
-{--          print =<< getAllCacheMetrics
-          let c = cache @Edge
-          print =<< getMetrics c
-          let c = cache @Node
-          print =<< getMetrics c
-          -}
+main = do printCacheStatsForReduction $ size6

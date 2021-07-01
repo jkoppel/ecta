@@ -3,17 +3,13 @@
 
 module TermSearch where
 
-import Data.List ( nub )
+import Data.List ( (\\), nub )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
 
 import Data.Text ( Text )
 import qualified Data.Text as Text
 import Text.RawString.QQ
-
-import Debug.Trace
-import Data.Function
-import Data.List hiding (union)
 
 import ECTA
 import Paths
@@ -88,7 +84,7 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
     pathsForVar :: Node -> [Path]
     pathsForVar v = pathsMatching (==v) n
 
-f1, f2, f3, f4, f5, f6, f7 :: Edge
+f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
 f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
 f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
@@ -100,6 +96,7 @@ f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exc
 f9 = constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
 f10 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
 f11 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+
 
 arg1, arg2 :: Edge
 arg1 = constFunc "def" baseType

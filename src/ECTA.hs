@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -- | Equality-constrained deterministic finite tree automata
 --
 -- Specialized to DAGs, plus at most one globally unique recursive node
@@ -30,6 +32,10 @@ module ECTA (
   , toDot
   , refreshNode
   , refreshEdge
+
+#ifdef PROFILE_CACHES
+  , resetAllEctaCaches_BrokenDoNotUse
+#endif
   ) where
 
 import Internal.ECTA

@@ -20,6 +20,7 @@ import qualified Data.HashTable.IO as HT
 import Data.IORef
 import GHC.IO (unsafeDupablePerformIO, unsafePerformIO)
 
+import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
 
 ----------------------------------------------------------------------------------------------------------
@@ -55,10 +56,13 @@ cacheSize :: Cache t -> IO Int
 cacheSize Cache {fresh = refI} = readIORef refI
 
 resetCache :: (Interned t) => Cache t -> IO ()
-resetCache Cache {fresh=refI, content=ht} = do
+resetCache c@(Cache {fresh=refI, content=ht}) = do
   writeIORef refI 0
-  keys <- map fst <$> HT.toList ht
-  mapM_ (\k -> HT.delete ht k) keys
+  resetHashTable (AnyHashTable ht)
+#ifdef PROFILE_CACHES
+  writeIORef (queryCount c) 0
+  writeIORef (missCount  c) 0
+#endif
 
 bumpQueryCount :: Cache t -> IO ()
 #ifdef PROFILE_CACHES
