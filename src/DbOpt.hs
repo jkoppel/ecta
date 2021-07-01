@@ -2,6 +2,9 @@
 
 module DbOpt where
 
+import Control.Monad.State
+import qualified Data.Set as Set
+import qualified Data.Map as Map
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Language.Dot.Pretty as Dot
@@ -224,88 +227,88 @@ filterToOidx = alwaysRule lhs rhs
                   rkey1, rkey2
                 ]
 
--- filterToOidx1 = alwaysRule lhs rhs 
---   where
---     ckey = var 0
---     rkey = var 1
---     rel = var 2
---     lhs = filterT [ltT [ckey, rkey], rel]
---     rhs = oidxT [ selectT [ckey, rel],
---                   cscopeT,
---                   filterT [eqT [ckey, dotT [nodePat scope, ckey]], rel, app "none" [], rkey]]
+filterToOidx1 = alwaysRule lhs rhs 
+  where
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = filterT (ckey `ltT` rkey) rel
+    rhs = oidxT [ selectT ckey rel,
+                  cscopeT,
+                  filterT (ckey `eqT` (nodePat scope `dotT` ckey)) rel,
+                  app "none" [], rkey]
 
--- filterToOidx2 = alwaysRule lhs rhs 
---   where
---     ckey = var 0
---     rkey = var 1
---     rel = var 2
---     lhs = filterT [ltT [rkey, ckey], rel]
---     rhs = oidxT [ selectT [ckey, rel],
---                   nodePat scope,
---                   filterT [eqT [ckey, dotT [nodePat scope, ckey]], rel, rkey, app "none" []]]
+filterToOidx2 = alwaysRule lhs rhs 
+  where
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = filterT (rkey `ltT` ckey) rel
+    rhs = oidxT [ selectT ckey rel,
+                  nodePat scope,
+                  filterT (ckey `eqT` (nodePat scope `dotT` ckey)) rel,
+                  rkey, app "none" []]
 
--- splitFilter = alwaysRule lhs rhs 
---   where
---     lhs = filterT [andT [var 0, var 1], var 2]
---     rhs = filterT [var 0, filterT [var 1, var 2]]
+splitFilter = alwaysRule lhs rhs 
+  where
+    lhs = filterT (var 0 `andT` var 1) (var 2)
+    rhs = filterT (var 0) $ filterT (var 1) (var 2)
 
--- mergeFilter = alwaysRule lhs rhs 
---   where
---     lhs = filterT [var 0, filterT [var 1, var 2]]
---     rhs = filterT [andT [var 0, var 1], var 2]
+mergeFilter = alwaysRule lhs rhs 
+  where
+    lhs = filterT (var 0) $ filterT (var 1) (var 2)
+    rhs = filterT (var 0 `andT` var 1) (var 2)
 
--- hoistFilter = alwaysRule lhs rhs 
---   where
---     lhs = app "join" [var 0, filterT [var 1, var 2], var 3]
---     rhs = filterT [var 1, app "join" [var 0, var 2, var 3]]
+hoistFilter = alwaysRule lhs rhs 
+  where
+    lhs = joinT (var 0) (filterT (var 1) (var 2)) (var 3)
+    rhs = filterT (var 1) $ joinT (var 0) (var 2) (var 3)
 
 elimJoin = alwaysRule lhs rhs 
   where
     lhs = joinT (var 0) (var 1) (var 2)
     rhs = depjoinT (var 1) (filterT (var 0) (var 2))
 
+flipJoin = alwaysRule lhs rhs 
+  where
+    lhs = joinT (var 0) (var 1) (var 2)
+    rhs = joinT (var 0) (var 2) (var 1)
 
-
--- flipJoin = alwaysRule lhs rhs 
---   where
---     lhs = app "join" [var 0, var 1, var 2]
---     rhs = app "join" [var 0, var 2, var 1]
-
--- flipBinop op = alwaysRule lhs rhs
---   where
---     lhs = app op [var 0, var 1]
---     rhs = app op [var 1, var 0]
+flipBinop op = alwaysRule lhs rhs
+  where
+    lhs = app op [var 0, var 1]
+    rhs = app op [var 1, var 0]
 
 inject :: ConstrPattern -> Rule
 inject = alwaysRule (var 0)
 
 forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] (mkEqConstraints [[path [0, 0], path [1, 0, 0]]]))
 
--- flipEq = flipBinop "eq"
--- flipAnd = flipBinop "and"
+flipEq = flipBinop "eq"
+flipAnd = flipBinop "and"
 
--- rewrite =
---   repeat' 5 $
---   try (rewriteFirst splitFilter) `andThen`
---   try (rewriteFirst mergeFilter) `andThen`
---   try (rewriteFirst hoistFilter) `andThen`
---   try (rewriteFirst filterToOidx) `andThen`
---   try (rewriteFirst filterToOidx1) `andThen`
---   try (rewriteFirst filterToOidx2) `andThen`
---   try (rewriteFirst filterToHidx) `andThen`
---   try (rewriteFirst toDepjoin) `andThen`
---   try (rewriteFirst flipAnd) `andThen`
---   try (rewriteFirst flipEq) `andThen`
---   try (rewriteFirst flipJoin)
+rewrite t =
+  (rewriteFirst $ inject t) `andThen`
+  (repeat' 5 $
+  try (rewriteFirst splitFilter) `andThen`
+  try (rewriteFirst mergeFilter) `andThen`
+  try (rewriteFirst hoistFilter) `andThen`
+  try (rewriteFirst filterToOidx) `andThen`
+  try (rewriteFirst filterToOidx1) `andThen`
+  try (rewriteFirst filterToOidx2) `andThen`
+  try (rewriteFirst filterToHidx) `andThen`
+  try (rewriteFirst elimJoin) `andThen`
+  try (rewriteFirst flipAnd) `andThen`
+  try (rewriteFirst flipEq) `andThen`
+  try (rewriteFirst flipJoin)) `andThen`
+  (rewriteRoot forceRtime) $ dummyNode
 
 dummyNode = Node [mkEdge "?" [] EmptyConstraints]
 rewriteTest =
-  (rewriteFirst $ inject (joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
-          (joinT (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
-           (relationT "orders")
-           (relationT "lineitem"))
-          (relationT "customer")))
-  `andThen` (repeat' 5 $ try (rewriteFirst elimJoin))
+  (rewriteFirst $ inject tpch3)
+  `andThen` (repeat' 5 $
+             try (rewriteFirst elimJoin) `andThen`
+             try (rewriteFirst filterToHidx))
   `andThen` (rewriteRoot forceRtime)
 
 relationSchema "orders" = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
@@ -314,10 +317,13 @@ relationSchema "lineitem" = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumb
 
 schema n = undefined
 
-tpch3 = join (eq (name "c_custkey") (name "o_custkey"))
-        (join (eq (name "l_orderkey") (name "o_orderkey"))
-          (filter' (lt (name "o_orderdate") (name "param1")) (relation "orders"))
-          (filter' (lt (name "param1") (name "l_shipdate")) (relation "lineitem")))
-        (filter' (eq (name "c_mktsegment") (name "param0")) (relation "customer"))
+tpch3 = joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
+        (joinT (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
+          (filterT (ltT (nameT "o_orderdate") (nameT "param1")) (relationT "orders"))
+          (filterT (ltT (nameT "param1") (nameT "l_shipdate")) (relationT "lineitem")))
+        (filterT (eqT (nameT "c_mktsegment") (nameT "param0")) (relationT "customer"))
 
 dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
+
+select root =
+  undefined

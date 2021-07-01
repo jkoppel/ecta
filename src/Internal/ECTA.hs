@@ -30,7 +30,6 @@ module Internal.ECTA (
   , requirePathList
   , denotation
   , nodeEdges
-  , crush
 
   , reducePartially
   , reduce
@@ -48,7 +47,7 @@ import Control.Monad ( guard )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
-import           Data.Map ( Map )
+import           Data.Map ( Map, ! )
 import qualified Data.Map as Map
 import Data.Maybe ( catMaybes, isJust, fromJust, maybeToList )
 import Data.Monoid ( Monoid(..), Sum(..), First(..) )
@@ -413,6 +412,22 @@ crush f n = evalState (go n) Set.empty
        else do
         modify (Set.insert nId)
         mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
+
+annotate :: forall m. (Monoid m) => (Symbol -> [m] -> m) -> Node -> Map.Map Node m
+annotate f n = evalState (go n) Map.empty
+  where
+    go :: (Monoid m) => Node -> State (Map.Map Id m) (Map.Map Id m)
+    go EmptyNode = return Map.empty
+    go Rec       = return Map.empty
+    go (Mu n)    = go n
+    go n@(Node es) = do
+      seen <- get
+      let nId = nodeIdentity n
+      if Set.member nId seen then
+        return seen
+       else do
+        modify (Set.insert nId)
+        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)      
 
 -----------------------
 ------ Edge operations
