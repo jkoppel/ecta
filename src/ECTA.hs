@@ -30,8 +30,6 @@ module ECTA (
 
   -- * Visualization / debugging
   , toDot
-  , refreshNode
-  , refreshEdge
 
 #ifdef PROFILE_CACHES
   , resetAllEctaCaches_BrokenDoNotUse

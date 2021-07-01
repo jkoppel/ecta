@@ -34,16 +34,11 @@ module Internal.ECTA (
   , denotation
 
   , reducePartially
-  , reduce
-  , reduceEdgeTo
   , reduceEdgeIntersection
   , reduceEqConstraints
 
   -- * Visualization / debugging
   , toDot
-  , refreshNode
-  , refreshEdge
-
 #ifdef PROFILE_CACHES
   , resetAllEctaCaches_BrokenDoNotUse
 #endif
@@ -627,20 +622,13 @@ instance Pathable [Node] Node where
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = reduce ECLeafReduced
-
--- | TODO: Does reducing top-down result in a properly reduced FTA? Must one
---   reapply the top constraints? Top down is faster than bottom-up, right?
-reduce :: ECReduction -> Node -> Node
-reduce _   EmptyNode = EmptyNode
-reduce _   (Mu n)    = Mu n
-reduce ecr (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map (reduce ecr) (edgeChildren e)})
-                            $ map (reduceEdgeTo ecr) es
-
-reduceEdgeTo :: ECReduction -> Edge -> Edge
-reduceEdgeTo ECUnreduced   e = e
-reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
-reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
+reducePartially = memo (NameTag "reducePartially") go
+  where
+    go :: Node -> Node
+    go EmptyNode = EmptyNode
+    go (Mu n)    = Mu n
+    go (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
+                        $ map reduceEdgeIntersection es
 
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
@@ -683,9 +671,6 @@ reduceEqConstraints = go
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
         dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
-
-reduceEdgeMultiply :: Edge -> Edge
-reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"
 
 ------------------------------------
 ------ Denotation
@@ -815,18 +800,6 @@ toDot = fglToDot . toFgl
 ---------------------------------------------------------------
 ------------------------- Debugging ---------------------------
 ---------------------------------------------------------------
-
-
--- | This should be the identity operation. If not, something has gone wrong.
-refreshNode :: Node -> Node
-refreshNode EmptyNode = EmptyNode
-refreshNode (Node es) = Node (map refreshEdge es)
-refreshNode (Mu n)    = Mu (refreshNode n)
-refreshNode Rec       = Rec
-
--- | This should be the identity operation. If not, something has gone wrong.
-refreshEdge :: Edge -> Edge
-refreshEdge e = reduceEdgeTo (edgeReduction e) $ setChildren e (map refreshNode (edgeChildren e))
 
 #ifdef PROFILE_CACHES
 resetAllEctaCaches_BrokenDoNotUse :: IO ()

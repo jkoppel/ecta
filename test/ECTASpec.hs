@@ -95,9 +95,6 @@ spec = do
     it "reduces paths constrained by equality constraints" $
         reducePartially ex2 `shouldBe` reducePartially ex1
 
-    it "has already performed all normalizations" $
-        refreshNode testBigNode `shouldBe` testBigNode
-
   describe "intersection" $ do
     it "intersection commutes with denotation" $
       property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (denotation $ intersect n1 n2)
