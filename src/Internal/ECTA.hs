@@ -525,18 +525,20 @@ doIntersect n1@(Node es1) n2@(Node es2)
     -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
     -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
     -- then ecs1 < ecs2
-    dropRedundantEdges es = dropRedundantEdges' $ reverse $ sort es
+    dropRedundantEdges es = go $ reverse $ sort es
       where
         -- Optimization idea: Some of these equality checks are already done in sort
-        dropRedundantEdges' (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
-                                       dropRedundantEdges es
-                                     else
-                                       e : dropRedundantEdges es
-        dropRedundantEdges' []     = []
+        go (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
+                      go es
+                    else
+                      e : go es
+        go []     = []
 
 doIntersect n1 n2 = error ("Unexpected " ++ show n1 ++ " " ++ show n2)
 
 
+-- Micro-optimization potential: Kill the defense check, add a case for e1 == e2.
+-- With coarse wall-clock measurements, did not see a difference as of 7/1/2021.
 intersectEdge :: Edge -> Edge -> Maybe Edge
 intersectEdge (Edge s1 _) (Edge s2 _)
   | s1 /= s2                                        = Nothing
