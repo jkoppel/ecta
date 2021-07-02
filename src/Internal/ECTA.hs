@@ -73,8 +73,10 @@ import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
 
---import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- | Switch the comments on these lines to switch to ekmett's original `intern` library
+--   instead of our single-threaded hashtable-based reimplementation.
 import Data.Interned.Extended.HashTableBased as Interned
+--import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
