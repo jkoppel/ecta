@@ -29,7 +29,6 @@ module Internal.ECTA (
   , requirePath
   , requirePathList
   , denotation
-  , nodeEdges
 
   , reducePartially
   , reduce
@@ -43,11 +42,11 @@ module Internal.ECTA (
   , refreshEdge
   ) where
 
-import Control.Monad ( guard )
-import Control.Monad.State ( evalState, State, MonadState(..), modify )
+import Control.Monad ( guard, liftM )
+import Control.Monad.State ( evalState, State, MonadState(..), modify, execState )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
-import           Data.Map ( Map, ! )
+import           Data.Map ( Map, (!) )
 import qualified Data.Map as Map
 import Data.Maybe ( catMaybes, isJust, fromJust, maybeToList )
 import Data.Monoid ( Monoid(..), Sum(..), First(..) )
@@ -413,21 +412,24 @@ crush f n = evalState (go n) Set.empty
         modify (Set.insert nId)
         mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
 
-annotate :: forall m. (Monoid m) => (Symbol -> [m] -> m) -> Node -> Map.Map Node m
-annotate f n = evalState (go n) Map.empty
+annotate :: (m -> m -> m) -> (Symbol -> [m] -> m) -> Node -> Map.Map Node m
+annotate merge f n = execState (go n) Map.empty
   where
-    go :: (Monoid m) => Node -> State (Map.Map Id m) (Map.Map Id m)
-    go EmptyNode = return Map.empty
-    go Rec       = return Map.empty
+    go EmptyNode = return ()
+    go Rec       = return ()
     go (Mu n)    = go n
     go n@(Node es) = do
       seen <- get
-      let nId = nodeIdentity n
-      if Set.member nId seen then
-        return seen
-       else do
-        modify (Set.insert nId)
-        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)      
+      if Map.member n seen then return () else
+        do
+          value <-
+            foldl1 merge <$>
+            mapM (\(Edge s ns) -> do
+                     mapM_ go ns
+                     seen <- get
+                     return (f s $ map (seen !) ns))
+            es
+          put $ Map.insert n value seen
 
 -----------------------
 ------ Edge operations

@@ -325,5 +325,8 @@ tpch3 = joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
 
 dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
 
-select root =
+ntuples "filter" [_, _, n] = n
+ntuples "eq" _ = undefined
+ntuples "lt" _ = undefined
+ntuples "join" [_, _, a, b] = max a b
   undefined
