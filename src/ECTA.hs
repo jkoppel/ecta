@@ -22,6 +22,7 @@ module ECTA (
   , crush
   , nodeCount
   , edgeCount
+  , maxIndegree
   , union
   , intersect
   , denotation

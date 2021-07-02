@@ -26,6 +26,7 @@ module Internal.ECTA (
   , crush
   , nodeCount
   , edgeCount
+  , maxIndegree
   , union
   , intersect
   , intersectEdge
@@ -473,6 +474,9 @@ nodeCount = getSum . crush (onNormalNodes $ const $ Sum 1)
 edgeCount :: Node -> Int
 edgeCount = getSum . crush (onNormalNodes $ \(Node es) -> Sum (length es))
 
+maxIndegree :: Node -> Int
+maxIndegree = getMax . crush (onNormalNodes $ \(Node es) -> Max (length es))
+
 ------------
 ------ Membership
 ------------
@@ -717,14 +721,14 @@ data FglNodeLabel = IdLabel Id | TransitionLabel Symbol EqConstraints
 toFgl :: Node -> Fgl.Gr FglNodeLabel ()
 toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges ++ transitionToNodeEdges)
   where
-    maxNodeOutdegree :: Int
-    maxNodeOutdegree = getMax $ crush (onNormalNodes $ \(Node es) -> Max (length es)) root
+    maxNodeIndegree :: Int
+    maxNodeIndegree = maxIndegree root
 
     fglNodeId :: Node -> Fgl.Node
-    fglNodeId n = nodeIdentity n * (maxNodeOutdegree + 1)
+    fglNodeId n = nodeIdentity n * (maxNodeIndegree + 1)
 
     fglTransitionId :: Node -> Int -> Fgl.Node
-    fglTransitionId n i = nodeIdentity n * (maxNodeOutdegree + 1) + (i + 1)
+    fglTransitionId n i = nodeIdentity n * (maxNodeIndegree + 1) + (i + 1)
 
     fglNodeLabel :: Node -> Maybe (Fgl.LNode FglNodeLabel)
     fglNodeLabel n@(Node _) = Just (fglNodeId n, IdLabel $ nodeIdentity n)
