@@ -16,6 +16,7 @@ module Internal.ECTA (
   , Node(.., Node)
   , nodeEdges
   , createGloballyUniqueMu
+  , nodeIdentity
 
   -- * Operations
   , pathsMatching
@@ -29,6 +30,7 @@ module Internal.ECTA (
   , requirePath
   , requirePathList
   , denotation
+  , annotate
 
   , reducePartially
   , reduce
@@ -42,6 +44,7 @@ module Internal.ECTA (
   , refreshEdge
   ) where
 
+import Debug.Trace
 import Control.Monad ( guard, liftM )
 import Control.Monad.State ( evalState, State, MonadState(..), modify, execState )
 import Data.Function ( on )
@@ -412,24 +415,25 @@ crush f n = evalState (go n) Set.empty
         modify (Set.insert nId)
         mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
 
-annotate :: (m -> m -> m) -> (Symbol -> [m] -> m) -> Node -> Map.Map Node m
+annotate :: Show m => (m -> m -> m) -> (Symbol -> [m] -> m) -> Node -> Map.Map Id m
 annotate merge f n = execState (go n) Map.empty
   where
     go EmptyNode = return ()
     go Rec       = return ()
     go (Mu n)    = go n
     go n@(Node es) = do
+      let nId = nodeIdentity n
       seen <- get
-      if Map.member n seen then return () else
+      if Map.member nId seen then return () else
         do
           value <-
             foldl1 merge <$>
             mapM (\(Edge s ns) -> do
                      mapM_ go ns
                      seen <- get
-                     return (f s $ map (seen !) ns))
+                     return (f s $ map (\n -> seen ! nodeIdentity n) ns))
             es
-          put $ Map.insert n value seen
+          modify (Map.insert nId value)
 
 -----------------------
 ------ Edge operations

@@ -13,6 +13,7 @@ module ECTA (
   , Node(Node, EmptyNode)
   , nodeEdges
   , createGloballyUniqueMu
+  , nodeIdentity
 
   -- * Operations
   , pathsMatching
@@ -23,6 +24,7 @@ module ECTA (
   , union
   , intersect
   , denotation
+  , annotate
 
   , reducePartially
 

@@ -2,6 +2,7 @@
 
 module DbOpt where
 
+import Debug.Trace
 import Control.Monad.State
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -287,7 +288,10 @@ forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] (mkEqConstra
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
 
+dummyNode = Node [mkEdge "?" [] EmptyConstraints]
+
 rewrite t =
+  fmap reducePartially $
   (rewriteFirst $ inject t) `andThen`
   (repeat' 5 $
   try (rewriteFirst splitFilter) `andThen`
@@ -303,19 +307,40 @@ rewrite t =
   try (rewriteFirst flipJoin)) `andThen`
   (rewriteRoot forceRtime) $ dummyNode
 
-dummyNode = Node [mkEdge "?" [] EmptyConstraints]
-rewriteTest =
-  (rewriteFirst $ inject tpch3)
+rewriteTest t =
+  fmap reducePartially $
+  (rewriteFirst $ inject t)
   `andThen` (repeat' 5 $
              try (rewriteFirst elimJoin) `andThen`
+             try (rewriteFirst flipJoin) `andThen`
+             try (rewriteFirst splitFilter) `andThen`
+             -- try (rewriteFirst mergeFilter) `andThen`
+             try (rewriteFirst hoistFilter) `andThen`
              try (rewriteFirst filterToHidx))
   `andThen` (rewriteRoot forceRtime)
+  $ dummyNode
 
-relationSchema "orders" = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
-relationSchema "customer" = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
-relationSchema "lineitem" = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
+rewriteTest t =
+  fmap reducePartially $
+  (rewriteFirst $ inject t)
+  `andThen` (repeat' 5 $
+             try (rewriteFirst elimJoin) `andThen`
+             try (rewriteFirst flipJoin) `andThen`
+             try (rewriteFirst splitFilter) `andThen`
+             -- try (rewriteFirst mergeFilter) `andThen`
+             try (rewriteFirst hoistFilter) `andThen`
+             try (rewriteFirst filterToHidx))
+  `andThen` (rewriteRoot forceRtime)
+  $ dummyNode
 
-schema n = undefined
+schema "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
+schema "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
+schema "lineitem" _ = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
+schema "filter" [_, s] = s
+schema "oidx" [_, _, _, v, _, _] = v
+schema "hidx" [_, _, _, v, _, _] = v
+schema "join" [_, _, a, b] = a++b
+schema "depjoin" [_, _, _, v] = v
 
 tpch3 = joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
         (joinT (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
@@ -325,8 +350,15 @@ tpch3 = joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
 
 dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
 
+ntuples :: Symbol -> [Int] -> Int
 ntuples "filter" [_, _, n] = n
-ntuples "eq" _ = undefined
-ntuples "lt" _ = undefined
-ntuples "join" [_, _, a, b] = max a b
-  undefined
+ntuples "select" [_, _, n] = n
+ntuples "oidx" [_, k, _, v, _, _] = ((v `div` k) * 30)
+ntuples "hidx" [_, k, _, v, _, _] = (v `div` k)
+ntuples "join" [_, _, a, b] = (max (a) (b))
+ntuples "depjoin" [_, k, _, v] = (max (k) (v))
+ntuples "lineitem" _ = 6000000
+ntuples "orders" _ = 1500000
+ntuples "customer" _ = 150000
+ntuples "constrained" xs = minimum xs
+ntuples _ _ = 0
