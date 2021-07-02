@@ -523,7 +523,7 @@ doIntersect n1@(Node es1) n2@(Node es2)
                                             [] -> EmptyNode
                                             -- | On one workload (7/2/21), it was found  that this
                                             --   call to dropRedundantEdges eliminated only 3%
-                                            --   of hyperedges, but consumed 90% of the overall time.
+                                            --   of hyperedges and 0.5% of nodes, but consumed 90% of the overall time.
                                             -- TODO: Revisit this after adding multiplicative reduction
                                             es -> Node $ {- dropRedundantEdges -} es
   where
