@@ -521,7 +521,11 @@ doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
                                             [] -> EmptyNode
-                                            es -> Node $ dropRedundantEdges es
+                                            -- | On one workload (7/2/21), it was found  that this
+                                            --   call to dropRedundantEdges eliminated only 3%
+                                            --   of hyperedges, but consumed 90% of the overall time.
+                                            -- TODO: Revisit this after adding multiplicative reduction
+                                            es -> Node $ {- dropRedundantEdges -} es
   where
     dropRedundantEdges :: [Edge] -> [Edge]
     -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
