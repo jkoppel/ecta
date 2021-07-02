@@ -534,7 +534,7 @@ doIntersect n1@(Node es1) n2@(Node es2)
                       e : go es
         go []     = []
 
-doIntersect n1 n2 = error ("Unexpected " ++ show n1 ++ " " ++ show n2)
+doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
 
 
 -- Micro-optimization potential: Kill the defense check, add a case for e1 == e2.
