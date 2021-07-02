@@ -163,10 +163,13 @@ andConstr p p' =
                 ]
     constr = mkEqConstraints [[path [0, 1], p], [path [0, 2], p']]
 
+tEdge = mkEdge "=" [tNode] EmptyConstraints
+fEdge = mkEdge "=" [fNode] EmptyConstraints
+
 copyConstr p =
   (nodePat node, constr)
   where
-    node = Node [mkEdge "=" [tNode] EmptyConstraints, mkEdge "=" [fNode] EmptyConstraints ]
+    node = Node [ tEdge, fEdge ]
     constr = mkEqConstraints [[path [0, 0], p]]
     
 bothT name x y = appC name [metaNode, x, y] constrs
@@ -176,21 +179,25 @@ bothT name x y = appC name [metaNode, x, y] constrs
 firstT name x y = appC name [metaNode, x, y] constrs
   where
     (metaNode, constrs) = copyConstr $ path [1, 0, 0]
-    
-filterT = bothT "filter"
+
+secondT name x y = appC name [metaNode, x, y] constrs
+  where
+    (metaNode, constrs) = copyConstr $ path [2, 0, 0]
+
+filterT = secondT "filter"
 eqT = bothT "eq"
 andT = bothT "and"
 ltT = bothT "lt"
-selectT = bothT "select"
-dotT = firstT "dot"
+selectT = secondT "select"
+dotT x y = app "dot" [x, y]
 
-rtimeT = nodePat $ Node [mkEdge "=" [tNode] EmptyConstraints]
-ctimeT = nodePat $ Node [mkEdge "=" [fNode] EmptyConstraints]
+rtimeT = nodePat $ Node [tEdge]
+ctimeT = nodePat $ Node [fEdge]
 
 cscopeT = ctimeT
 rscopeT = rtimeT
 
-relationT n = app n [rtimeT] -- should be rtime (later)
+relationT n = app n [rtimeT] -- should be ctime (later)
 nameT = relationT
 joinT p r r' = app "join" [ctimeT, p, r, r']
 depjoinT r r' = appC "depjoin" [metaNode, r, nodePat scope, r'] constrs
@@ -199,20 +206,26 @@ depjoinT r r' = appC "depjoin" [metaNode, r, nodePat scope, r'] constrs
 
 addConstr c = combineEqConstraints (mkEqConstraints c)
 
-idxT name xs = appC name (metaNode : xs) constrs'
+idxT name xs = appC name (metaNode : xs) constrs
   where
-    (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [2, 0, 0])
-    constrs' = addConstr [[path [1], path [2, 0, 1, 0]]] constrs
+    (metaNode, constrs) = copyConstr (path [3, 0, 0])
     
 hidxT = idxT "hidx"
 oidxT = idxT "oidx"
+
+filterP x y = app "filter" [var (-1), x, y]
+andP x y = app "and" [var (-1), x, y]
+ltP x y = app "lt" [var (-1), x, y]
+eqP x y = app "eq" [var (-1), x, y]
+dotP x y = app "dot" [var (-1), x, y]
+joinP x y z = app "join" [var (-1), x, y, z]
 
 filterToHidx = alwaysRule lhs rhs
   where
     ckey = var 0
     rkey = var 1
     rel = var 2
-    lhs = filterT (eqT ckey rkey) rel
+    lhs = filterP (eqP ckey rkey) rel
     rhs = hidxT [selectT ckey rel, cscopeT, filterT (eqT ckey (nodePat scope `dotT` ckey)) rel, rkey]
 
 filterToOidx = alwaysRule lhs rhs 
@@ -221,7 +234,7 @@ filterToOidx = alwaysRule lhs rhs
     rkey1 = var 1
     rkey2 = var 2
     rel = var 3
-    lhs = filterT ((rkey1 `ltT` ckey) `andT` (ckey `ltT` rkey2)) rel
+    lhs = filterP ((rkey1 `ltP` ckey) `andP` (ckey `ltP` rkey2)) rel
     rhs = oidxT [ selectT ckey rel,
                   cscopeT,
                   filterT (ckey `eqT` (nodePat scope `dotT` ckey)) rel,
@@ -233,7 +246,7 @@ filterToOidx1 = alwaysRule lhs rhs
     ckey = var 0
     rkey = var 1
     rel = var 2
-    lhs = filterT (ckey `ltT` rkey) rel
+    lhs = filterP (ckey `ltP` rkey) rel
     rhs = oidxT [ selectT ckey rel,
                   cscopeT,
                   filterT (ckey `eqT` (nodePat scope `dotT` ckey)) rel,
@@ -244,7 +257,7 @@ filterToOidx2 = alwaysRule lhs rhs
     ckey = var 0
     rkey = var 1
     rel = var 2
-    lhs = filterT (rkey `ltT` ckey) rel
+    lhs = filterP (rkey `ltP` ckey) rel
     rhs = oidxT [ selectT ckey rel,
                   nodePat scope,
                   filterT (ckey `eqT` (nodePat scope `dotT` ckey)) rel,
@@ -252,27 +265,27 @@ filterToOidx2 = alwaysRule lhs rhs
 
 splitFilter = alwaysRule lhs rhs 
   where
-    lhs = filterT (var 0 `andT` var 1) (var 2)
+    lhs = filterP (var 0 `andP` var 1) (var 2)
     rhs = filterT (var 0) $ filterT (var 1) (var 2)
 
 mergeFilter = alwaysRule lhs rhs 
   where
-    lhs = filterT (var 0) $ filterT (var 1) (var 2)
+    lhs = filterP (var 0) $ filterP (var 1) (var 2)
     rhs = filterT (var 0 `andT` var 1) (var 2)
 
 hoistFilter = alwaysRule lhs rhs 
   where
-    lhs = joinT (var 0) (filterT (var 1) (var 2)) (var 3)
+    lhs = joinP (var 0) (filterP (var 1) (var 2)) (var 3)
     rhs = filterT (var 1) $ joinT (var 0) (var 2) (var 3)
 
 elimJoin = alwaysRule lhs rhs 
   where
-    lhs = joinT (var 0) (var 1) (var 2)
+    lhs = joinP (var 0) (var 1) (var 2)
     rhs = depjoinT (var 1) (filterT (var 0) (var 2))
 
 flipJoin = alwaysRule lhs rhs 
   where
-    lhs = joinT (var 0) (var 1) (var 2)
+    lhs = joinP (var 0) (var 1) (var 2)
     rhs = joinT (var 0) (var 2) (var 1)
 
 flipBinop op = alwaysRule lhs rhs
@@ -311,27 +324,41 @@ rewriteTest t =
   fmap reducePartially $
   (rewriteFirst $ inject t)
   `andThen` (repeat' 5 $
-             try (rewriteFirst elimJoin) `andThen`
-             try (rewriteFirst flipJoin) `andThen`
-             try (rewriteFirst splitFilter) `andThen`
-             -- try (rewriteFirst mergeFilter) `andThen`
-             try (rewriteFirst hoistFilter) `andThen`
-             try (rewriteFirst filterToHidx))
+             try (rewriteFirst elimJoin)
+             `andThen` try (rewriteFirst filterToHidx)
+             -- `andThen` try (rewriteFirst flipJoin) `andThen`
+             -- try (rewriteFirst splitFilter) `andThen`
+             -- -- try (rewriteFirst mergeFilter) `andThen`
+             -- try (rewriteFirst hoistFilter)
+             -- -- `andThen` try (rewriteFirst filterToHidx)
+            )
   `andThen` (rewriteRoot forceRtime)
   $ dummyNode
 
-rewriteTest t =
-  fmap reducePartially $
+rewriteTestNoReduce t =
   (rewriteFirst $ inject t)
-  `andThen` (repeat' 5 $
-             try (rewriteFirst elimJoin) `andThen`
-             try (rewriteFirst flipJoin) `andThen`
-             try (rewriteFirst splitFilter) `andThen`
-             -- try (rewriteFirst mergeFilter) `andThen`
-             try (rewriteFirst hoistFilter) `andThen`
-             try (rewriteFirst filterToHidx))
-  `andThen` (rewriteRoot forceRtime)
+  -- `andThen` (repeat' 5 $
+  --            try (rewriteFirst elimJoin) `andThen`
+  --            try (rewriteFirst flipJoin) `andThen`
+  --            try (rewriteFirst splitFilter) `andThen`
+  --            -- try (rewriteFirst mergeFilter) `andThen`
+  --            try (rewriteFirst hoistFilter) `andThen`
+  --            try (rewriteFirst filterToHidx))
   $ dummyNode
+
+rewriteTestAlwaysReduce t =
+  (reduce (rewriteFirst $ inject t))
+  `andThen` (
+             reduce (try (rewriteFirst elimJoin))
+             -- `andThen` reduce (try (rewriteFirst filterToHidx))
+             -- `andThen` reduce (try (rewriteFirst flipJoin)) `andThen`
+             -- reduce (try (rewriteFirst splitFilter)) `andThen`
+             -- -- try (rewriteFirst mergeFilter) `andThen`
+             -- reduce (try (rewriteFirst hoistFilter))
+             -- -- `andThen` reduce (try (rewriteFirst filterToHidx))
+            )
+  $ dummyNode
+  where reduce tf n = reducePartially <$> tf n
 
 schema "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
 schema "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
