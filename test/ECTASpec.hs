@@ -5,7 +5,7 @@ module ECTASpec ( spec ) where
 import qualified Data.HashSet as HashSet
 import Data.HashSet ( HashSet )
 import Data.IORef ( newIORef, readIORef, modifyIORef )
-import Data.List ( and )
+import Data.List ( and, nub, sort )
 import qualified Data.Text as Text
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -72,6 +72,10 @@ infiniteLineNode = Mu (Node [Edge "f" [Rec]])
 
 spec :: Spec
 spec = do
+  describe "hash utilities" $ do
+    it "nubById is same as nub" $
+      property $ \(xs :: [Int]) -> sort (nub xs) == sort (nubById id xs)
+
   describe "Pathable" $ do
     it "Node.getPath root" $
       getPath (path []) testBigNode `shouldBe` testBigNode

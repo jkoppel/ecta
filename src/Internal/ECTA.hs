@@ -2,7 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Internal.ECTA (
-    Symbol(.., Symbol)
+    nubById
+
+  , Symbol(.., Symbol)
 
   , Term(..)
 
@@ -52,9 +54,9 @@ module Internal.ECTA (
   , getSubnodeById
   ) where
 
-import Control.Monad ( guard )
+import Control.Monad ( forM_, guard, void )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
-import Control.Monad.ST ( runST )
+import Control.Monad.ST ( ST, runST )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map )
@@ -67,6 +69,7 @@ import qualified Data.Set as Set
 import Data.String (IsString(..) )
 import Data.Text ( Text )
 import qualified Data.Text as Text
+import Debug.Trace ( trace )
 
 import GHC.Generics ( Generic )
 
@@ -104,13 +107,60 @@ import Utilities
 square :: (Num a) => a -> a
 square x = x * x
 
+traceFn :: (a -> String) -> a -> a
+traceFn f x = trace (f x) x
+
 ----------
---- Hash join / hash clustering
+--- Hash join / clustering / nub
 ----------
+
+
+-- | PRECONDITION: (f x == f y) => x == y . True for interned types.
+nubById :: (a -> Int) -> [a] -> [a]
+nubById _ [x] = [x]
+nubById h ls = runST $ do
+    ht <- HT.newSized 101
+    mapM_ (\x -> HT.insert ht (h x) x) ls
+    HT.foldM (\res (_, v) -> return $ v : res) [] ht
+
+nubByIdSinglePass :: forall a. (a -> Int) -> [a] -> [a]
+nubByIdSinglePass _ [x] = [x]
+nubByIdSinglePass h ls = runST (go ls [] =<< HT.new)
+  where
+    go :: [a] -> [a] -> HT.HashTable s Int Bool -> ST s [a]
+    go []     acc    _  = return acc
+    go (x:xs) acc ht = do alreadyPresent <- HT.mutate ht
+                                                      (h x)
+                                                      (\case Nothing -> (Just True, False)
+                                                             Just _  -> (Just True, True))
+                          if alreadyPresent then
+                            go xs acc ht
+                          else
+                            go xs (x:acc) ht
+
 
 maybeAddToHt :: v -> Maybe [v] -> (Maybe [v], ())
 maybeAddToHt v = \case Nothing -> (Just [v], ())
                        Just vs -> (Just (v : vs), ())
+
+-- This is testing slower than running clusterByHash and nubByIdSinglePass separately. How?
+hashClusterIdNub :: (Interned a) => (a -> Int) -> (a -> Int) -> [a] -> [[a]]
+hashClusterIdNub _ _ [x] = [[x]]
+hashClusterIdNub hCluster hNub ls = runST $ do
+    clusters <- HT.new
+    seen <- HT.new
+
+    forM_ ls $ \x -> do
+      alreadyPresent <- HT.mutate seen
+                                  (hNub x)
+                                  (\case Nothing -> (Just True, False)
+                                         Just _  -> (Just True, True))
+      if alreadyPresent then
+        return ()
+       else do
+        void $ HT.mutate clusters (hCluster x) (maybeAddToHt x)
+
+    HT.foldM (\res (_, vs) -> return $ vs : res) [] clusters
 
 clusterByHash :: (a -> Int) -> [a] -> [[a]]
 clusterByHash h ls = runST $ do
@@ -398,7 +448,7 @@ pattern Node :: [Edge] -> Node
 pattern Node es <- (InternedNode _ es) where
   Node es = case removeEmptyEdges es of
               []  -> EmptyNode
-              es' -> intern $ UninternedNode $ nub $ sort es' -- TODO: Use sortUniq to eliminate a pass, ensure sort is fast for already sorted
+              es' -> intern $ UninternedNode $ sort $ nubByIdSinglePass edgeId es' -- TODO: Use sortUniq to eliminate a pass, ensure sort is fast for already sorted
 
 createGloballyUniqueMu :: (Node -> Node) -> Node
 createGloballyUniqueMu f = Mu (f Rec)
@@ -563,28 +613,39 @@ doIntersect n1@(Node es1) n2@(Node es2)
                                           --   but hashJoin only guarantees they have the same hash
   | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
                                             [] -> EmptyNode
-                                            es -> Node $ {--dropRedundantEdges-} es
+                                            es -> Node $ dropRedundantEdges es
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
 
 
+nodeDropRedundantEdges :: Node -> Node
+nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
+
+data RuleOutRes = Keep | RuledOutBy Edge
+
+-- | PRECONDITION: See precondition on `intersect`
 dropRedundantEdges :: [Edge] -> [Edge]
-dropRedundantEdges origEs = concatMap reduceCluster clusters
+dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> (length es, edgeSymbol $ head es)) clusters, length $ concatMap reduceCluster clusters)-} clusters
   where
-    clusters = clusterByHash (hash . edgeSymbol) origEs
+    clusters = map (nubByIdSinglePass edgeId) $ clusterByHash (hash . edgeSymbol) origEs
 
     reduceCluster :: [Edge] -> [Edge]
     reduceCluster []     = []
     reduceCluster (e:es) = case ruleOut e es of
-                             (Nothing, es') -> reduceCluster es'
-                             (Just e', es') -> e' : reduceCluster es'
+                             -- Optimization: If e' > e, likely to be greater than other things;
+                             -- move it to front and rule out more stuff next iteratino.
+                             --
+                             -- No noticeable difference in overall wall clock time (7/2/21),
+                             -- but a few % reduction in calls to intersectEdgeSameSymbol
+                             (RuledOutBy e', es') -> reduceCluster (e':es')
+                             (Keep, es') -> e : reduceCluster es'
 
-    ruleOut :: Edge -> [Edge] -> (Maybe Edge, [Edge])
-    ruleOut e []     = (Just e, [])
+    ruleOut :: Edge -> [Edge] -> (RuleOutRes, [Edge])
+    ruleOut e []     = (Keep, [])
     ruleOut e (x:xs) = let e' = intersectEdgeSameSymbol e x in
                        if e' == x then
                          ruleOut e xs
                        else if e' == e then
-                         (Nothing, x:xs)
+                         (RuledOutBy x, xs)
                        else
                          let (res, notRuledOut) = ruleOut e xs
                          in (res, x : notRuledOut)
