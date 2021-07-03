@@ -104,6 +104,20 @@ import Utilities
 square :: (Num a) => a -> a
 square x = x * x
 
+----------
+--- Hash join / hash clustering
+----------
+
+maybeAddToHt :: v -> Maybe [v] -> (Maybe [v], ())
+maybeAddToHt v = \case Nothing -> (Just [v], ())
+                       Just vs -> (Just (v : vs), ())
+
+clusterByHash :: (a -> Int) -> [a] -> [[a]]
+clusterByHash h ls = runST $ do
+    ht <- HT.new
+    mapM_ (\x -> HT.mutate ht (h x) (maybeAddToHt x)) ls
+    HT.foldM (\res (_, vs) -> return $ vs : res) [] ht
+
 hashJoin :: (a -> Int) -> (a -> a -> b) -> [a] -> [a] -> [b]
 hashJoin h j l1 l2 = runST $ do
     ht1 <- HT.new
@@ -116,10 +130,6 @@ hashJoin h j l1 l2 = runST $ do
                                     Just vs2 -> return $ res ++ [j v1 v2 | v1 <- vs1, v2 <- vs2])
               []
               ht1
-  where
-    maybeAddToHt :: v -> Maybe [v] -> (Maybe [v], ())
-    maybeAddToHt v = \case Nothing -> (Just [v], ())
-                           Just vs -> (Just (v : vs), ())
 
 ---------------------------------------------------------------
 -------------- Terms, the things being represented ------------
@@ -532,10 +542,13 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 ------ Intersect
 ------------
 
+-- | PRECONDITION: No edges have symbols with a hash conflict
+-- | TODO: Add a function to check the input for this condition at the top level
 intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
 {-# NOINLINE intersect #-}
 
+-- | PRECONDITION: See precondition on `intersect`
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
@@ -545,6 +558,9 @@ doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
+                                          -- | Uses the "no edge symbol hash conflict" assumption (see intersect)
+                                          --   intersectEdgeSameSymbol assumes inputs have same symbol,
+                                          --   but hashJoin only guarantees they have the same hash
   | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
                                             [] -> EmptyNode
                                             es -> Node $ {--dropRedundantEdges-} es
@@ -552,19 +568,26 @@ doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show 
 
 
 dropRedundantEdges :: [Edge] -> [Edge]
--- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
--- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
--- then ecs1 < ecs2
--- TODO: Optimization ideas: Do a self merge-join (or binary search for endpoints where
---       may have equal symbols). The internal detail from above sounds obsolete (should maybe do full comparison);
---       should still avoid doing both the comparison of (e1, e2) and (e2, e1).
-dropRedundantEdges es = go $ reverse $ sort es
+dropRedundantEdges origEs = concatMap reduceCluster clusters
   where
-    go (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
-                  go es
-                else
-                  e : go es
-    go []     = []
+    clusters = clusterByHash (hash . edgeSymbol) origEs
+
+    reduceCluster :: [Edge] -> [Edge]
+    reduceCluster []     = []
+    reduceCluster (e:es) = case ruleOut e es of
+                             (Nothing, es') -> reduceCluster es'
+                             (Just e', es') -> e' : reduceCluster es'
+
+    ruleOut :: Edge -> [Edge] -> (Maybe Edge, [Edge])
+    ruleOut e []     = (Just e, [])
+    ruleOut e (x:xs) = let e' = intersectEdgeSameSymbol e x in
+                       if e' == x then
+                         ruleOut e xs
+                       else if e' == e then
+                         (Nothing, x:xs)
+                       else
+                         let (res, notRuledOut) = ruleOut e xs
+                         in (res, x : notRuledOut)
 
 intersectEdge :: Edge -> Edge -> Maybe Edge
 intersectEdge e1 e2
