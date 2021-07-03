@@ -28,6 +28,7 @@ module ECTA (
   , intersect
   , denotation
 
+  , withoutRedundantEdges
   , reducePartially
 
   -- * Visualization / debugging

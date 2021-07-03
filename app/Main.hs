@@ -32,4 +32,4 @@ printCacheStatsForReduction n = do
     hFlush stdout
 
 main :: IO ()
-main = do printCacheStatsForReduction $ size6
+main = do printCacheStatsForReduction $ withoutRedundantEdges size6

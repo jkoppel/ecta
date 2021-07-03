@@ -30,12 +30,16 @@ module Internal.ECTA (
   , edgeCount
   , maxIndegree
   , union
+
   , intersect
+  , dropRedundantEdges
   , intersectEdge
+
   , requirePath
   , requirePathList
   , denotation
 
+  , withoutRedundantEdges
   , reducePartially
   , reduceEdgeIntersection
   , reduceEqConstraints
@@ -524,24 +528,25 @@ doIntersect n1@(Node es1) n2@(Node es2)
   | n2 <  n1                            = intersect n2 n1
   | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
                                             [] -> EmptyNode
-                                            es -> Node $ dropRedundantEdges es
-  where
-    dropRedundantEdges :: [Edge] -> [Edge]
-    -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
-    -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
-    -- then ecs1 < ecs2
-    -- TODO: Optimization ideas: Do a self merge-join (or binary search for endpoints where
-    --       may have equal symbols). The internal detail from above sounds obsolete (should maybe do full comparison);
-    --       should still avoid doing both the comparison of (e1, e2) and (e2, e1).
-    dropRedundantEdges es = go $ reverse $ sort es
-      where
-        go (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
-                      go es
-                    else
-                      e : go es
-        go []     = []
-
+                                            es -> Node $ {--dropRedundantEdges-} es
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
+
+
+dropRedundantEdges :: [Edge] -> [Edge]
+-- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
+-- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
+-- then ecs1 < ecs2
+-- TODO: Optimization ideas: Do a self merge-join (or binary search for endpoints where
+--       may have equal symbols). The internal detail from above sounds obsolete (should maybe do full comparison);
+--       should still avoid doing both the comparison of (e1, e2) and (e2, e1).
+dropRedundantEdges es = go $ reverse $ sort es
+  where
+    go (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
+                  go es
+                else
+                  e : go es
+    go []     = []
+
 
 -- Micro-optimization potential: Kill the defense check, add a case for e1 == e2.
 -- With coarse wall-clock measurements, did not see a difference as of 7/1/2021.
@@ -560,7 +565,6 @@ intersectEdge = memo2 (NameTag "intersectEdge") go
         Just $ mkEdge (edgeSymbol e1)
                       (zipWith intersect (edgeChildren e1) (edgeChildren e2))
                       (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
-
 
 ------------
 ------ Union
@@ -633,11 +637,18 @@ instance Pathable [Node] Node where
 
 
 ------------------------------------
------- Reducing equality constraints
+------ Reduction
 ------------------------------------
 
+withoutRedundantEdges :: Node -> Node
+withoutRedundantEdges n = mapNodes dropReds n
+  where
+    dropReds (Node es) = Node (dropRedundantEdges es)
+    dropReds x         = x
+
+
 ---------------
---- Reduction
+--- Reducing Equality Constraints
 ---------------
 
 reducePartially :: Node -> Node
