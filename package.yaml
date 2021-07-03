@@ -66,6 +66,7 @@ library:
   dependencies:
     - array
     - equivalence
+    - extra
     - fgl
     - hashtables
     - ilist

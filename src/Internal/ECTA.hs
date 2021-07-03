@@ -82,6 +82,7 @@ import qualified Data.HashSet as HashSet
 import qualified Data.HashTable.ST.Basic as HT
 import qualified Data.Interned as OrigInterned
 import Data.Interned.Text ( InternedText, internedTextId )
+import Data.List.Extra ( nubSort )
 import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
@@ -439,7 +440,7 @@ mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
 mkEdge s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced -- | TODO: Reduce work on nub/sort
+   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced
 
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
@@ -447,7 +448,8 @@ pattern Node :: [Edge] -> Node
 pattern Node es <- (InternedNode _ es) where
   Node es = case removeEmptyEdges es of
               []  -> EmptyNode
-              es' -> intern $ UninternedNode $ sort $ nubByIdSinglePass edgeId es' -- TODO: Use sortUniq to eliminate a pass, ensure sort is fast for already sorted
+              es' -> intern $ UninternedNode $ nubSort es'
+
 
 createGloballyUniqueMu :: (Node -> Node) -> Node
 createGloballyUniqueMu f = Mu (f Rec)

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 17d870d88b560f9d644ee7b40b9d508e90b94d69643d1bff6767af6e699a76b0
+-- hash: 9afaa7d635ce5709c421525ac36ef8607b3162b9bccdc8d63fb096c676443ea8
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -54,6 +54,7 @@ library
     , base
     , containers
     , equivalence
+    , extra
     , fgl
     , hashable
     , hashtables
