@@ -465,8 +465,7 @@ isEmptyEdge :: Edge -> Bool
 isEmptyEdge e@(Edge _ ns) = any (== EmptyNode) ns
 
 edgeSubsumed :: Edge -> Edge -> Bool
-edgeSubsumed e1 e2 =    (dropEcs e1 == dropEcs e2)
-                     && constraintsImply (edgeEcs e1) (edgeEcs e2)
+edgeSubsumed e1 e2 = intersectEdge e1 e2 == Just e1
 
 
 ------------
@@ -524,19 +523,17 @@ doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
                                             [] -> EmptyNode
-                                            -- | On one workload (7/2/21), it was found  that this
-                                            --   call to dropRedundantEdges eliminated only 3%
-                                            --   of hyperedges and 0.5% of nodes, but consumed 90% of the overall time.
-                                            -- TODO: Revisit this after adding multiplicative reduction
-                                            es -> Node $ {- dropRedundantEdges -} es
+                                            es -> Node $ dropRedundantEdges es
   where
     dropRedundantEdges :: [Edge] -> [Edge]
     -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
     -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
     -- then ecs1 < ecs2
+    -- TODO: Optimization ideas: Do a self merge-join (or binary search for endpoints where
+    --       may have equal symbols). The internal detail from above sounds obsolete (should maybe do full comparison);
+    --       should still avoid doing both the comparison of (e1, e2) and (e2, e1).
     dropRedundantEdges es = go $ reverse $ sort es
       where
-        -- Optimization idea: Some of these equality checks are already done in sort
         go (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
                       go es
                     else
@@ -545,18 +542,22 @@ doIntersect n1@(Node es1) n2@(Node es2)
 
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
 
-
 -- Micro-optimization potential: Kill the defense check, add a case for e1 == e2.
 -- With coarse wall-clock measurements, did not see a difference as of 7/1/2021.
 intersectEdge :: Edge -> Edge -> Maybe Edge
-intersectEdge (Edge s1 _) (Edge s2 _)
-  | s1 /= s2                                        = Nothing
-intersectEdge (Edge s children1) (Edge _ children2)
-  | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
-intersectEdge e1                 e2                 =
-    Just $ mkEdge (edgeSymbol e1)
-                  (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-                  (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+intersectEdge = memo2 (NameTag "intersectEdge") go
+  where
+    go (Edge s1 _) (Edge s2 _)
+      | s1 /= s2                                        = Nothing
+#ifdef DEFENSIVE_CHECKS
+    go (Edge s children1) (Edge _ children2)
+      | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
+#endif
+    go e1                 e2                 =
+        Just $ mkEdge (edgeSymbol e1)
+                      (zipWith intersect (edgeChildren e1) (edgeChildren e2))
+                      (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+
 
 ------------
 ------ Union
