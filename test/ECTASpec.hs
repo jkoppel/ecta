@@ -101,6 +101,18 @@ spec = do
                                                `shouldBe` HashSet.intersection (HashSet.fromList $ denotation n1)
                                                                                (HashSet.fromList $ denotation n2)
 
+    it "intersect is associative" $
+      property $ \n1 n2 n3 -> ((n1 `intersect` n2) `intersect` n3) == (n1 `intersect` (n2 `intersect` n3))
+
+    it "intersect is commutative" $
+      property $ \n1 n2 -> intersect n1 n2 == intersect n2 n1
+
+    it "intersect distributes over union" $
+      property $ \n1 n2 n3 -> intersect n1 (union [n2, n3]) == union [intersect n1 n2, intersect n1 n3]
+
+    it "intersect is idempotent" $
+      property $ \n1 -> intersect n1 n1 == n1
+
   describe "reduction" $ do
     it "reduction preserves denotation" $
       property $ mapSize (min 3) $ \n -> HashSet.fromList (denotation n) `shouldBe` HashSet.fromList (denotation $ reducePartially n)
