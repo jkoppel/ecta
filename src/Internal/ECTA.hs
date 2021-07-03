@@ -521,6 +521,7 @@ doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
 doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
+  | n2 <  n1                            = intersect n2 n1
   | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
                                             [] -> EmptyNode
                                             es -> Node $ dropRedundantEdges es
@@ -547,6 +548,8 @@ doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show 
 intersectEdge :: Edge -> Edge -> Maybe Edge
 intersectEdge = memo2 (NameTag "intersectEdge") go
   where
+    go e1          e2
+      | e2 < e1                                         = intersectEdge e2 e1
     go (Edge s1 _) (Edge s2 _)
       | s1 /= s2                                        = Nothing
 #ifdef DEFENSIVE_CHECKS
