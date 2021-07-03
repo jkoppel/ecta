@@ -54,6 +54,7 @@ module Internal.ECTA (
 
 import Control.Monad ( guard )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
+import Control.Monad.ST ( runST )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map )
@@ -72,8 +73,9 @@ import GHC.Generics ( Generic )
 import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
 import qualified Data.Graph.Inductive as Fgl
-import Data.Hashable ( Hashable, hashWithSalt )
+import Data.Hashable ( Hashable(..) )
 import qualified Data.HashSet as HashSet
+import qualified Data.HashTable.ST.Basic as HT
 import qualified Data.Interned as OrigInterned
 import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Index ( imap )
@@ -101,6 +103,23 @@ import Utilities
 
 square :: (Num a) => a -> a
 square x = x * x
+
+hashJoin :: (a -> Int) -> (a -> a -> b) -> [a] -> [a] -> [b]
+hashJoin h j l1 l2 = runST $ do
+    ht1 <- HT.new
+    ht2 <- HT.new
+    mapM_ (\x -> HT.mutate ht1 (h x) (maybeAddToHt x)) l1
+    mapM_ (\x -> HT.mutate ht2 (h x) (maybeAddToHt x)) l2
+    HT.foldM (\res (k, vs1) -> do maybeVs2 <- HT.lookup ht2 k
+                                  case maybeVs2 of
+                                    Nothing  -> return res
+                                    Just vs2 -> return $ res ++ [j v1 v2 | v1 <- vs1, v2 <- vs2])
+              []
+              ht1
+  where
+    maybeAddToHt :: v -> Maybe [v] -> (Maybe [v], ())
+    maybeAddToHt v = \case Nothing -> (Just [v], ())
+                           Just vs -> (Just (v : vs), ())
 
 ---------------------------------------------------------------
 -------------- Terms, the things being represented ------------
@@ -526,7 +545,7 @@ doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
-  | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
+  | otherwise                           = case catMaybes $ hashJoin (hash . edgeSymbol) intersectEdge es1 es2 of
                                             [] -> EmptyNode
                                             es -> Node $ {--dropRedundantEdges-} es
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
