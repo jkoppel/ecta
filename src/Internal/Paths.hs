@@ -41,6 +41,7 @@ import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
 import GHC.Generics ( Generic )
 
+import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Pretty
 import Utilities
 
@@ -248,11 +249,12 @@ mkEqConstraints initialConstraints = case completedConstraints of
 ---------- Operations
 
 combineEqConstraints :: EqConstraints -> EqConstraints -> EqConstraints
-combineEqConstraints EqContradiction _               = EqContradiction
-combineEqConstraints _               EqContradiction = EqContradiction
-combineEqConstraints ec1             ec2              = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
-
-
+combineEqConstraints = memo2 (NameTag "combineEqConstraints") go
+  where
+    go EqContradiction _               = EqContradiction
+    go _               EqContradiction = EqContradiction
+    go ec1             ec2             = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
+{-# NOINLINE combineEqConstraints #-}
 
 -- A faster implementation would be: Merge the eclasses of both, run mkEqConstraints (or at least do eclass completion),
 -- check result equal to ecs2
