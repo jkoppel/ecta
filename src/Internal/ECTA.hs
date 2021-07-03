@@ -545,7 +545,7 @@ doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
-  | otherwise                           = case catMaybes $ hashJoin (hash . edgeSymbol) intersectEdge es1 es2 of
+  | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
                                             [] -> EmptyNode
                                             es -> Node $ {--dropRedundantEdges-} es
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
@@ -566,24 +566,25 @@ dropRedundantEdges es = go $ reverse $ sort es
                   e : go es
     go []     = []
 
-
--- Micro-optimization potential: Kill the defense check, add a case for e1 == e2.
--- With coarse wall-clock measurements, did not see a difference as of 7/1/2021.
 intersectEdge :: Edge -> Edge -> Maybe Edge
-intersectEdge = memo2 (NameTag "intersectEdge") go
+intersectEdge e1 e2
+  | edgeSymbol e1 /= edgeSymbol e2 = Nothing
+  | otherwise                      = Just $ intersectEdgeSameSymbol e1 e2
+
+intersectEdgeSameSymbol :: Edge -> Edge -> Edge
+intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
   where
     go e1          e2
-      | e2 < e1                                         = intersectEdge e2 e1
-    go (Edge s1 _) (Edge s2 _)
-      | s1 /= s2                                        = Nothing
+      | e2 < e1                                         = intersectEdgeSameSymbol e2 e1
 #ifdef DEFENSIVE_CHECKS
     go (Edge s children1) (Edge _ children2)
       | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
 #endif
     go e1                 e2                 =
-        Just $ mkEdge (edgeSymbol e1)
-                      (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-                      (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+        mkEdge (edgeSymbol e1)
+               (zipWith intersect (edgeChildren e1) (edgeChildren e2))
+               (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+{-# NOINLINE intersectEdgeSameSymbol #-}
 
 ------------
 ------ Union
