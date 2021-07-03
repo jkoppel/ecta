@@ -57,6 +57,7 @@ module Internal.ECTA (
 import Control.Monad ( forM_, guard, void )
 import Control.Monad.State ( evalState, State, MonadState(..), modify )
 import Control.Monad.ST ( ST, runST )
+import Data.Foldable ( foldrM )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map )
@@ -170,16 +171,14 @@ clusterByHash h ls = runST $ do
 
 hashJoin :: (a -> Int) -> (a -> a -> b) -> [a] -> [a] -> [b]
 hashJoin h j l1 l2 = runST $ do
-    ht1 <- HT.new
     ht2 <- HT.new
-    mapM_ (\x -> HT.mutate ht1 (h x) (maybeAddToHt x)) l1
     mapM_ (\x -> HT.mutate ht2 (h x) (maybeAddToHt x)) l2
-    HT.foldM (\res (k, vs1) -> do maybeVs2 <- HT.lookup ht2 k
-                                  case maybeVs2 of
-                                    Nothing  -> return res
-                                    Just vs2 -> return $ res ++ [j v1 v2 | v1 <- vs1, v2 <- vs2])
-              []
-              ht1
+    foldrM (\x res -> do maybeCluster <- HT.lookup ht2 (h x)
+                         case maybeCluster of
+                           Nothing  -> return res
+                           Just vs2 -> return $ [j x v2 | v2 <- vs2] ++ res )
+           []
+           l1
 
 ---------------------------------------------------------------
 -------------- Terms, the things being represented ------------
