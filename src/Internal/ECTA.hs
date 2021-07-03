@@ -15,6 +15,7 @@ module Internal.ECTA (
   , setChildren
 
   , Node(.., Node)
+  , nodeIdentity
   , nodeEdges
   , createGloballyUniqueMu
 
@@ -24,6 +25,7 @@ module Internal.ECTA (
   , refold
   , unfoldBounded
   , crush
+  , onNormalNodes
   , nodeCount
   , edgeCount
   , maxIndegree
@@ -43,6 +45,7 @@ module Internal.ECTA (
 #ifdef PROFILE_CACHES
   , resetAllEctaCaches_BrokenDoNotUse
 #endif
+  , getSubnodeById
   ) where
 
 import Control.Monad ( guard )
@@ -641,6 +644,7 @@ reducePartially = memo (NameTag "reducePartially") go
     go (Mu n)    = Mu n
     go (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
                         $ map reduceEdgeIntersection es
+{-# NOINLINE reducePartially #-}
 
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
@@ -820,3 +824,7 @@ resetAllEctaCaches_BrokenDoNotUse = do
   Interned.resetCache (cache @Node)
   Interned.resetCache (cache @Edge)
 #endif
+
+
+getSubnodeById :: Node -> Id -> Maybe Node
+getSubnodeById n i = getFirst $ crush (onNormalNodes $ \x -> if nodeIdentity x == i then First (Just x) else First Nothing) n

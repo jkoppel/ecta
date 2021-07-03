@@ -20,6 +20,7 @@ module ECTA (
   , refold
   , unfoldBounded
   , crush
+  , onNormalNodes
   , nodeCount
   , edgeCount
   , maxIndegree
