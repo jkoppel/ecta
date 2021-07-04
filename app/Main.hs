@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
@@ -20,16 +21,17 @@ import Language.Dot
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
-    --resetAllEctaCaches_BrokenDoNotUse
     let n' = reducePartially n
     Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
     Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
     Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
+#ifdef PROFILE_CACHES
     Memoization.printAllCacheMetrics
     Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
     Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
     Text.putStrLn ""
+#endif
     hFlush stdout
 
 main :: IO ()
-main = do printCacheStatsForReduction $ withoutRedundantEdges size6
+main = do printCacheStatsForReduction $ withoutRedundantEdges $ filterType uptoSize6UniqueRep baseType
