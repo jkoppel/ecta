@@ -9,6 +9,7 @@ import Test.QuickCheck
 
 import Internal.ECTA
 import Paths
+import Term
 
 -----------------------------------------------------------------------------------------------
 

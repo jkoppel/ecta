@@ -4,10 +4,6 @@
 module Internal.ECTA (
     nubById
 
-  , Symbol(.., Symbol)
-
-  , Term(..)
-
   , Edge(.., Edge)
   , mkEdge
   , emptyEdge
@@ -67,7 +63,6 @@ import Data.Monoid ( Monoid(..), Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
-import Data.String (IsString(..) )
 import Data.Text ( Text )
 import qualified Data.Text as Text
 import Debug.Trace ( trace )
@@ -80,8 +75,6 @@ import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable(..) )
 import qualified Data.HashSet as HashSet
 import qualified Data.HashTable.ST.Basic as HT
-import qualified Data.Interned as OrigInterned
-import Data.Interned.Text ( InternedText, internedTextId )
 import Data.List.Extra ( nubSort )
 import Data.List.Index ( imap )
 
@@ -97,8 +90,8 @@ import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import qualified Data.Memoization as Memoization
 import Paths
 import Pretty
+import Term
 import Utilities
-
 -------------------------------------------------------------------------------
 
 
@@ -180,56 +173,6 @@ hashJoin h j l1 l2 = runST $ do
                            Just vs2 -> return $ [j x v2 | v2 <- vs2] ++ res )
            []
            l1
-
----------------------------------------------------------------
--------------- Terms, the things being represented ------------
----------------------------------------------------------------
-
-
-data Symbol = Symbol' {-# UNPACK #-} !InternedText
-  deriving ( Eq, Ord )
-
-pattern Symbol :: Text -> Symbol
-pattern Symbol t <- Symbol' (OrigInterned.unintern -> t) where
-  Symbol t = Symbol' (OrigInterned.intern t)
-
-instance Pretty Symbol where
-  pretty (Symbol t) = t
-
-instance Show Symbol where
-  show (Symbol it) = show it
-
-instance Hashable Symbol where
-  hashWithSalt s (Symbol' t) = s `hashWithSalt` (internedTextId t)
-
-instance IsString Symbol where
-  fromString = Symbol . fromString
-
-data Term = Term !Symbol ![Term]
-  deriving ( Eq, Ord, Show, Generic )
-
-instance Hashable Term
-
-instance Pretty Term where
-  pretty (Term s [])            = pretty s
-  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
-
----------------------
------- Term ops
----------------------
-
-instance Pathable Term Term where
-  type Emptyable Term = Maybe Term
-
-  getPath EmptyPath       t           = Just t
-  getPath (ConsPath p ps) (Term _ ts) = case ts ^? ix p of
-                                          Nothing -> Nothing
-                                          Just t  -> getPath ps t
-
-  getAllAtPath p t = maybeToList $ getPath p t
-
-  modifyAtPath f EmptyPath       t           = f t
-  modifyAtPath f (ConsPath p ps) (Term s ts) = Term s (ts & ix p %~ modifyAtPath f ps)
 
 ---------------------------------------------------------------
 ------------------- Data type and interning -------------------

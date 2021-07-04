@@ -16,6 +16,7 @@ import Test.QuickCheck
 
 import Internal.ECTA
 import Internal.Paths
+import Term
 import TermSearch
 
 import Test.Generators.ECTA

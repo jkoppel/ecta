@@ -38,6 +38,7 @@ import Data.List.Index ( imap )
 import ECTA
 import Paths
 import Pretty
+import Term
 import Utilities
 
 ----------------------------------------------------------------

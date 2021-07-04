@@ -13,6 +13,7 @@ import Text.RawString.QQ
 
 import ECTA
 import Paths
+import Term
 
 ------------------------------------------------------------------------------
 

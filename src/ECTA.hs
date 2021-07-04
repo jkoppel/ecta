@@ -5,9 +5,7 @@
 -- Specialized to DAGs, plus at most one globally unique recursive node
 
 module ECTA (
-    Symbol(Symbol)
-  , Term(..)
-  , Edge(Edge)
+    Edge(Edge)
   , mkEdge
   , edgeChildren
   , Node(Node, EmptyNode)

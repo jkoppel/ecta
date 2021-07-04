@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9afaa7d635ce5709c421525ac36ef8607b3162b9bccdc8d63fb096c676443ea8
+-- hash: e273bc9c82b57f374a5ab06cd5eba6756178336465e57729124a09ac0331a1c2
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -39,9 +39,11 @@ library
       ECTA
       Internal.ECTA
       Internal.Paths
+      Internal.Term
       Paths
       Pretty
       SAT
+      Term
       TermSearch
       Utilities
   other-modules:
