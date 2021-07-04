@@ -110,7 +110,7 @@ traceFn f x = trace (f x) x
 ----------
 
 
--- | PRECONDITION: (f x == f y) => x == y . True for interned types.
+-- | PRECONDITION: (h x == h y) => x == y
 nubById :: (a -> Int) -> [a] -> [a]
 nubById _ [x] = [x]
 nubById h ls = runST $ do
@@ -536,13 +536,10 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 ------ Intersect
 ------------
 
--- | PRECONDITION: No edges have symbols with a hash conflict
--- | TODO: Add a function to check the input for this condition at the top level
 intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
 {-# NOINLINE intersect #-}
 
--- | PRECONDITION: See precondition on `intersect`
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
@@ -552,9 +549,7 @@ doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
-                                          -- | Uses the "no edge symbol hash conflict" assumption (see intersect)
-                                          --   intersectEdgeSameSymbol assumes inputs have same symbol,
-                                          --   but hashJoin only guarantees they have the same hash
+                                          -- | `hash` gives a unique ID of the symbol because they're interned
   | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
                                             [] -> EmptyNode
                                             es -> Node $ dropRedundantEdges es
@@ -566,7 +561,6 @@ nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
 
 data RuleOutRes = Keep | RuledOutBy Edge
 
--- | PRECONDITION: See precondition on `intersect`
 dropRedundantEdges :: [Edge] -> [Edge]
 dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> (length es, edgeSymbol $ head es)) clusters, length $ concatMap reduceCluster clusters)-} clusters
   where
