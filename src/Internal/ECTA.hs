@@ -570,7 +570,7 @@ dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> 
     reduceCluster []     = []
     reduceCluster (e:es) = case ruleOut e es of
                              -- Optimization: If e' > e, likely to be greater than other things;
-                             -- move it to front and rule out more stuff next iteratino.
+                             -- move it to front and rule out more stuff next iteration.
                              --
                              -- No noticeable difference in overall wall clock time (7/2/21),
                              -- but a few % reduction in calls to intersectEdgeSameSymbol
