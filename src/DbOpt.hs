@@ -93,15 +93,18 @@ data Rule = Rule { lhs :: ConstrPattern
 instance Show Rule where
   show Rule { lhs, rhs } = show (lhs, rhs)
 
+liftPat subst (ConstrPattern (pat, constrs)) =
+  case pat of
+    (App sym args) -> funcC sym (List.map (liftPat subst) args) constrs
+    (Var idx) -> Maybe.fromJust $ List.lookup idx subst
+    (NodePat n) -> n
+
+liftClosedPat = liftPat []
+
 rewriteMatch :: PatternMatch -> Rule -> Node -> Node
 rewriteMatch PatternMatch { root, subst } rule n =
   atNode n root (\(Node ns) -> Node (ns ++ ns'))
   where
-    liftPat subst (ConstrPattern (pat, constrs)) =
-      case pat of
-        (App sym args) -> funcC sym (List.map (liftPat subst) args) constrs
-        (Var idx) -> Maybe.fromJust $ List.lookup idx subst
-        (NodePat n) -> n
     (Node ns') = liftPat subst (rhs rule)
 
 testTerm = filter' (binary "and" (eq (name "x") (name "x'")) (name "y")) (relation "test")
@@ -118,6 +121,12 @@ rewriteFirst rule root =
              let root' = rewriteMatch m rule root in
               if root == root' then Nothing else Just root')
   $ match (lhs rule) root
+
+rewriteAll :: Rule -> Node -> Maybe Node
+rewriteAll rule root =
+  let root' = foldl (\root m -> rewriteMatch m rule root) root
+              $ match (lhs rule) root in
+    if root == root' then Nothing else Just root'
 
 rewriteRoot :: Rule -> Node -> Maybe Node
 rewriteRoot rule root =
@@ -293,72 +302,40 @@ flipBinop op = alwaysRule lhs rhs
     lhs = app op [var 0, var 1]
     rhs = app op [var 1, var 0]
 
-inject :: ConstrPattern -> Rule
-inject = alwaysRule (var 0)
-
 forceRtime = alwaysRule (var 0) (appC "constrained" [rtimeT, var 0] (mkEqConstraints [[path [0, 0], path [1, 0, 0]]]))
 
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
 
-dummyNode = Node [mkEdge "?" [] EmptyConstraints]
-
 rewrite t =
   fmap reducePartially $
-  (rewriteFirst $ inject t) `andThen`
   (repeat' 5 $
-  try (rewriteFirst splitFilter) `andThen`
-  try (rewriteFirst mergeFilter) `andThen`
-  try (rewriteFirst hoistFilter) `andThen`
-  try (rewriteFirst filterToOidx) `andThen`
-  try (rewriteFirst filterToOidx1) `andThen`
-  try (rewriteFirst filterToOidx2) `andThen`
-  try (rewriteFirst filterToHidx) `andThen`
-  try (rewriteFirst elimJoin) `andThen`
-  try (rewriteFirst flipAnd) `andThen`
-  try (rewriteFirst flipEq) `andThen`
-  try (rewriteFirst flipJoin)) `andThen`
-  (rewriteRoot forceRtime) $ dummyNode
+  try (rewriteAll splitFilter) `andThen`
+  try (rewriteAll mergeFilter) `andThen`
+  try (rewriteAll hoistFilter) `andThen`
+  try (rewriteAll filterToOidx) `andThen`
+  try (rewriteAll filterToOidx1) `andThen`
+  try (rewriteAll filterToOidx2) `andThen`
+  try (rewriteAll filterToHidx) `andThen`
+  try (rewriteAll elimJoin) `andThen`
+  try (rewriteAll flipAnd) `andThen`
+  try (rewriteAll flipEq) `andThen`
+  try (rewriteAll flipJoin)) `andThen`
+  (rewriteRoot forceRtime) $ liftClosedPat t
 
 rewriteTest t =
-  fmap reducePartially $
-  (rewriteFirst $ inject t)
-  `andThen` (repeat' 5 $
-             try (rewriteFirst elimJoin)
-             `andThen` try (rewriteFirst filterToHidx)
-             -- `andThen` try (rewriteFirst flipJoin) `andThen`
-             -- try (rewriteFirst splitFilter) `andThen`
-             -- -- try (rewriteFirst mergeFilter) `andThen`
-             -- try (rewriteFirst hoistFilter)
-             -- -- `andThen` try (rewriteFirst filterToHidx)
-            )
+  fmap reducePartially
+  $ (repeat' 5 $
+     try (rewriteAll elimJoin)
+     `andThen` try (rewriteAll filterToHidx)
+             -- `andThen` try (rewriteAll flipJoin) `andThen`
+             -- try (rewriteAll splitFilter) `andThen`
+             -- -- try (rewriteAll mergeFilter) `andThen`
+             -- try (rewriteAll hoistFilter)
+             -- -- `andThen` try (rewriteAll filterToHidx)
+    )
   `andThen` (rewriteRoot forceRtime)
-  $ dummyNode
-
-rewriteTestNoReduce t =
-  (rewriteFirst $ inject t)
-  -- `andThen` (repeat' 5 $
-  --            try (rewriteFirst elimJoin) `andThen`
-  --            try (rewriteFirst flipJoin) `andThen`
-  --            try (rewriteFirst splitFilter) `andThen`
-  --            -- try (rewriteFirst mergeFilter) `andThen`
-  --            try (rewriteFirst hoistFilter) `andThen`
-  --            try (rewriteFirst filterToHidx))
-  $ dummyNode
-
-rewriteTestAlwaysReduce t =
-  (reduce (rewriteFirst $ inject t))
-  `andThen` (
-             reduce (try (rewriteFirst elimJoin))
-             -- `andThen` reduce (try (rewriteFirst filterToHidx))
-             -- `andThen` reduce (try (rewriteFirst flipJoin)) `andThen`
-             -- reduce (try (rewriteFirst splitFilter)) `andThen`
-             -- -- try (rewriteFirst mergeFilter) `andThen`
-             -- reduce (try (rewriteFirst hoistFilter))
-             -- -- `andThen` reduce (try (rewriteFirst filterToHidx))
-            )
-  $ dummyNode
-  where reduce tf n = reducePartially <$> tf n
+  $ liftClosedPat t
 
 schema "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
 schema "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
