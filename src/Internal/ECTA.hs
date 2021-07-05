@@ -540,6 +540,13 @@ intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
 {-# NOINLINE intersect #-}
 
+
+-- 7/4/21: The unrolling strategy for intersection totally does not generalize beyond
+-- recursive nodes which have a self cycle.
+--
+-- The following will enter an infinite recursion:
+--  > t = createGloballyUniqueMu (\n -> Node  [Edge "a" [Node [Edge "a" [n]]]])
+--  > intersect t (Node [Edge "a" [t]])
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
