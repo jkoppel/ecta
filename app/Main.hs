@@ -13,11 +13,19 @@ import Data.Memoization as Memoization
 import ECTA
 import Pretty
 import TermSearch
+import Utilities
 
+import Internal.ECTA
 import Language.Dot
+import Data.List ( nub )
 
 ----------------------------------------------------------
 
+printAllEdgeSymbols :: Node -> IO ()
+printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map edgeSymbol es) n
+
+reduceFully :: Node -> Node
+reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
