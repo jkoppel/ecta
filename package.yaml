@@ -76,6 +76,7 @@ library:
     - pretty-simple
     - raw-strings-qq
     - text
+    - vector-instances
 
 executables:
   compact-coupled-terms-exe:
