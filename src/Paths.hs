@@ -8,6 +8,15 @@ module Paths (
   , pathTailUnsafe
   , isSubpath
 
+  , PathTrie
+  , PathTrieZipper
+  , toPathTrie
+  , fromPathTrie
+  , pathTrieToZipper
+  , zipperCurPathTrie
+  , pathTrieDescend
+  , pathTrieAscend
+
   , PathEClass(..)
   , unPathEClass
   , hasSubsumingMember

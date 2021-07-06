@@ -27,6 +27,7 @@ dependencies:
 - mtl
 - text
 - unordered-containers
+- vector
 default-extensions:
   - BangPatterns
   - ConstraintKinds

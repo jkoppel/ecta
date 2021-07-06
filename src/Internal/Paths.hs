@@ -14,6 +14,16 @@ module Internal.Paths (
   , isStrictSubpath
   , substSubpath
 
+  , PathTrie(..)
+  , InvertedPathTrie(..)
+  , PathTrieZipper(..)
+  , toPathTrie
+  , fromPathTrie
+  , pathTrieToZipper
+  , zipperCurPathTrie
+  , pathTrieDescend
+  , pathTrieAscend
+
   , PathEClass(..)
   , unPathEClass
   , hasSubsumingMember
@@ -23,6 +33,7 @@ module Internal.Paths (
   , rawMkEqConstraints
   , unsafeGetEclasses
   , normalizeEclasses
+  , isContradicting
   , mkEqConstraints
   , combineEqConstraints
   , constraintsAreContradictory
@@ -32,10 +43,14 @@ module Internal.Paths (
   ) where
 
 import Control.Monad ( (=<<) )
+import qualified Data.Array as Array
 import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..), Endo(..) )
 import Data.Hashable ( Hashable )
+import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
+import Data.Vector ( Vector )
+import qualified Data.Vector as Vector
 
 import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
@@ -125,6 +140,74 @@ class Pathable t t' | t -> t' where
   getAllAtPath :: Path -> t -> [t']
   modifyAtPath :: (t' -> t') -> Path -> t -> t
 
+
+-----------------------------------------------------------------------
+----------------------- Path tries and zippers ------------------------
+-----------------------------------------------------------------------
+
+data PathTrie = EmptyPathTrie
+              | TerminalPathTrie
+              | PathTrieSingleChild {-# UNPACK #-} !Int PathTrie
+              | PathTrie !(Vector PathTrie)
+  deriving ( Eq, Ord, Show )
+
+-- | Precondition: No path in the input is a subpath of another
+toPathTrie :: [Path] -> PathTrie
+toPathTrie []          = EmptyPathTrie
+toPathTrie [EmptyPath] = TerminalPathTrie
+toPathTrie ps          = PathTrie vec
+  where
+    maxIndex = getMax $ foldMap (Max . pathHeadUnsafe) ps
+
+    -- TODO: Inefficient to use this; many passes. over the list.
+    -- This may not be used in a place where perf matters, though
+    pathsStartingWith :: Int -> [Path] -> [Path]
+    pathsStartingWith i ps = concatMap (\case EmptyPath    -> []
+                                              ConsPath j p -> if i == j then [p] else [])
+                                    ps
+
+    vec = Vector.generate (maxIndex + 1) (\i -> toPathTrie $ pathsStartingWith i ps)
+
+fromPathTrie :: PathTrie -> [Path]
+fromPathTrie EmptyPathTrie              = []
+fromPathTrie TerminalPathTrie           = [EmptyPath]
+fromPathTrie (PathTrieSingleChild i pt) = map (ConsPath i) $ fromPathTrie pt
+fromPathTrie (PathTrie v)               = Vector.ifoldr (\i pt acc -> map (ConsPath i) (fromPathTrie pt) ++ acc) [] v
+
+---------------------
+------- Zippers
+---------------------
+
+data InvertedPathTrie = PathZipperRoot
+                      | PathTrieAt {-# UNPACK #-} !Int !PathTrie !InvertedPathTrie
+  deriving ( Eq, Ord, Show )
+
+data PathTrieZipper = PathTrieZipper !PathTrie !InvertedPathTrie
+  deriving ( Eq, Ord, Show )
+
+
+pathTrieToZipper :: PathTrie -> PathTrieZipper
+pathTrieToZipper pt = PathTrieZipper pt PathZipperRoot
+
+zipperCurPathTrie :: PathTrieZipper -> PathTrie
+zipperCurPathTrie (PathTrieZipper pt _) = pt
+
+
+pathTrieDescend :: PathTrieZipper -> Int -> PathTrieZipper
+pathTrieDescend (PathTrieZipper     EmptyPathTrie              z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i EmptyPathTrie    z)
+pathTrieDescend (PathTrieZipper     TerminalPathTrie           z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i TerminalPathTrie z)
+pathTrieDescend (PathTrieZipper pt@(PathTrie v)                z) i = PathTrieZipper (v Vector.! i) (PathTrieAt i pt z)
+pathTrieDescend (PathTrieZipper pt@(PathTrieSingleChild j pt') z) i
+                | i == j                                            = PathTrieZipper pt'           (PathTrieAt i pt z)
+                | otherwise                                         = PathTrieZipper EmptyPathTrie (PathTrieAt i pt z)
+
+-- | The semantics of this may not be what you expect: Path trie zippers do not support editing currently, only traversing.
+--   The value at the cursor (as well as the index) is ignored except when traversing above the root, where it uses those
+--   values to extend the path trie upwards.
+pathTrieAscend :: PathTrieZipper -> Int -> PathTrieZipper
+pathTrieAscend (PathTrieZipper pt PathZipperRoot)         i = PathTrieZipper (PathTrieSingleChild i pt) PathZipperRoot
+pathTrieAscend (PathTrieZipper pt (PathTrieAt i pt' ipt)) _ = PathTrieZipper pt'                        ipt
+
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
 --------------------------------------------------------------------------
@@ -133,6 +216,7 @@ class Pathable t t' | t -> t' where
 ---------- Path E-classes
 ---------------------------
 
+-- | TODO: Rewrite to use PathTrie
 newtype PathEClass = PathEClass [Path]
   deriving ( Eq, Ord, Show, Generic )
 

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e273bc9c82b57f374a5ab06cd5eba6756178336465e57729124a09ac0331a1c2
+-- hash: 6ff5758c4a0337b5e268333291a269a84d161a21b3e43fa7633c72ecf7a71d03
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -69,6 +69,7 @@ library
     , raw-strings-qq
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -90,6 +91,7 @@ executable compact-coupled-terms-exe
     , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -119,6 +121,7 @@ test-suite unit-tests
     , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -142,6 +145,7 @@ benchmark mainbench
     , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
