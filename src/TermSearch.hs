@@ -23,8 +23,8 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Nod
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    --usedConstructors = allConstructors
-    usedConstructors = [("Maybe", 1), ("List", 1)]
+    usedConstructors = allConstructors
+    --usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -107,13 +107,15 @@ arg4 = constFunc "x" baseType
 arg5 = constFunc "n" (constrType0 "Int")
 
 anyArg :: Node
---anyArg = Node [arg1, arg2]
+--anyArg = Node [arg1, arg2, arg3, arg4, arg5]
 anyArg = Node [arg3, arg4, arg5]
 
+-- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
+--   in the ECTA.
 anyFunc :: Node
---anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 180 $ Map.toList hoogleComponents
+anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 200 $ Map.toList hoogleComponents
 --anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
-anyFunc = Node [f9, f10, f11]
+--anyFunc = Node [f9, f10, f11]
 
 size1, size2, size3, size4, size5, size6 :: Node
 size1 = union [anyArg, anyFunc]
@@ -123,8 +125,12 @@ size4 = union [app size3 size1, app size2 size2, app size1 size3]
 size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1 size4]
 size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1 size5]
 
-uptoSize6UniqueRep :: Node
-uptoSize6UniqueRep = union [size1, size2, size3, size4, size5, size6]
+uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
+uptoSize2 = union [size1, size2]
+uptoSize3 = union [size1, size2, size3]
+uptoSize4 = union [size1, size2, size3, size4]
+uptoSize5 = union [size1, size2, size3, size4, size5]
+uptoSize6 = union [size1, size2, size3, size4, size5, size6]
 
 uptoDepth2 :: Node
 uptoDepth2 = union [size1, app size1 size1]

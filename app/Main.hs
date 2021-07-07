@@ -42,4 +42,4 @@ printCacheStatsForReduction n = do
     hFlush stdout
 
 main :: IO ()
-main = do printCacheStatsForReduction $ withoutRedundantEdges $ filterType uptoSize6UniqueRep baseType
+main = do printCacheStatsForReduction $ withoutRedundantEdges $ filterType uptoSize6 baseType
