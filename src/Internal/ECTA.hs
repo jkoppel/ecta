@@ -415,7 +415,7 @@ crush f n = evalState (go n) Set.empty
         modify (Set.insert nId)
         mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
 
-annotate :: Show m => (m -> m -> m) -> (Symbol -> [m] -> m) -> Node -> Map.Map Id m
+annotate :: (m -> m -> m) -> (Symbol -> [m] -> m) -> Node -> Map.Map Id m
 annotate merge f n = execState (go n) Map.empty
   where
     go EmptyNode = return ()

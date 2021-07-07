@@ -66,6 +66,7 @@ library
     , raw-strings-qq
     , text
     , unordered-containers
+    , deepseq
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010

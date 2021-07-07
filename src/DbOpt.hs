@@ -40,8 +40,12 @@ name = const'
 relation = const'
 scope = consts ["k1", "k2", "k3"]
 hidx x y z = func "hidx" [x, y, z]
-tNode = const' "T"
-fNode = const' "F"
+
+tEdge = Edge "T" []
+fEdge = Edge "F" []
+tNode = Node [tEdge]
+fNode = Node [fEdge]
+tfNode = Node [tEdge, fEdge]
 
 data Pattern p =
   App Symbol [p]
@@ -94,13 +98,12 @@ atNode n n' f =
     Node (List.map (\e -> mkEdge (edgeSymbol e) (List.map (\n -> atNode n n' f) $ edgeChildren e) (edgeEcs e)) es)
     where (Node es) = n
 
-data Rule = Rule { lhs :: ConstrPattern
-                 , rhs :: ConstrPattern
-                 , pred :: Node -> Bool
-                 }
+data RuleRhs =
+  FuncRhs ([(Int, Node)] -> Maybe ConstrPattern)
+  | PatternRhs ConstrPattern
 
-instance Show Rule where
-  show Rule { lhs, rhs } = show (lhs, rhs)
+data Rule = Rule { lhs :: ConstrPattern
+                 , rhs :: RuleRhs }
 
 liftPat subst (ConstrPattern (pat, constrs)) =
   case pat of
@@ -112,11 +115,14 @@ liftPat subst (ConstrPattern (pat, constrs)) =
 
 liftClosedPat = liftPat []
 
-rewriteMatch :: PatternMatch -> Rule -> Node -> Node
-rewriteMatch PatternMatch { root, subst } rule n =
-  atNode n root (\(Node ns) -> Node (ns ++ ns'))
+rewriteMatch :: PatternMatch -> Rule -> Node -> Maybe Node
+rewriteMatch PatternMatch { root, subst } Rule { lhs, rhs = PatternRhs rhs } n =
+  return $ atNode n root (\(Node ns) -> Node (ns ++ ns'))
   where
-    (Node ns') = liftPat subst (rhs rule)
+    (Node ns') = liftPat subst rhs
+rewriteMatch PatternMatch { root, subst } Rule { rhs = FuncRhs rhs } n = do
+  (Node ns') <- liftPat subst <$> rhs subst
+  return $ atNode n root (\(Node ns) -> Node (ns ++ ns'))
 
 testTerm = filter' (binary "and" (eq (name "x") (name "x'")) (name "y")) (relation "test")
 
@@ -128,21 +134,22 @@ findMap f (x : xs) = case f x of
 
 rewriteFirst :: Rule -> Node -> Maybe Node
 rewriteFirst rule root =
-  findMap (\m ->
-             let root' = rewriteMatch m rule root in
-              if root == root' then Nothing else Just root')
+  findMap (\m -> do
+              root' <- rewriteMatch m rule root
+              if root == root' then Nothing else return root')
   $ match (lhs rule) root
 
 rewriteAll :: Rule -> Node -> Maybe Node
-rewriteAll rule root =
-  let root' = foldl (\root m -> rewriteMatch m rule root) root
-              $ match (lhs rule) root in
-    if root == root' then Nothing else Just root'
+rewriteAll rule root = do
+  root' <- foldM (\root m -> case rewriteMatch m rule root of
+                               Just root' -> Just root'
+                               Nothing -> Just root) root
+           $ match (lhs rule) root
+  if root == root' then Nothing else return root'
 
 rewriteRoot :: Rule -> Node -> Maybe Node
 rewriteRoot rule root =
-  Just $
-  foldl (\r m -> rewriteMatch m rule r) root
+  foldM (\r m -> rewriteMatch m rule r) root
   $ matchRoot (lhs rule) root
 
 try :: (Node -> Maybe Node) -> Node -> Maybe Node
@@ -165,7 +172,8 @@ repeat' i r n =
     Just n' ->
       if n == n' then Just n else repeat' (i - 1) r n'
 
-rule lhs rhs = Rule { lhs, rhs, DbOpt.pred = const True }
+rule lhs rhs = Rule { lhs, rhs = PatternRhs rhs }
+frule lhs rhs = Rule { lhs, rhs = FuncRhs rhs }
 
 var x = ConstrPattern (Var x, EmptyConstraints)
 varC x c = ConstrPattern (Var x, c)
@@ -178,25 +186,45 @@ as p i = ConstrPattern (As (p, i), EmptyConstraints)
 andConstr p p' =
   (nodePat node, constr)
   where
-    node = Node [mkEdge "=" [tNode, tNode, tNode] EmptyConstraints,
-                 mkEdge "=" [fNode, tNode, fNode] EmptyConstraints,
-                 mkEdge "=" [fNode, fNode, tNode] EmptyConstraints,
-                 mkEdge "=" [fNode, fNode, fNode] EmptyConstraints
+    node = Node [mkEdge "stage" [tNode, tNode, tNode] EmptyConstraints,
+                 mkEdge "stage" [fNode, tNode, fNode] EmptyConstraints,
+                 mkEdge "stage" [fNode, fNode, tNode] EmptyConstraints,
+                 mkEdge "stage" [fNode, fNode, fNode] EmptyConstraints
                 ]
     constr = mkEqConstraints [[path [0, 1], p], [path [0, 2], p']]
 
-tEdge = mkEdge "=" [tNode] EmptyConstraints
-fEdge = mkEdge "=" [fNode] EmptyConstraints
+notConstr p =
+  (nodePat node, constr)
+  where
+    node = Node [ mkEdge "stage" [tNode, fNode] EmptyConstraints
+                , mkEdge "stage" [fNode, tNode] EmptyConstraints
+                ]
+    constr = mkEqConstraints [[path [0, 1], p]]
+
+andManyConstr ps =
+  (nodePat node, constr)
+  where
+    node = Node [ mkEdge "stage" (tNode : map (const tNode) ps) EmptyConstraints
+                , mkEdge "stage" (tNode : map (const tfNode) ps) EmptyConstraints
+                ]
+    constr = mkEqConstraints [[path [0, i], p] | (i, p) <- zip [0..] ps]
+
+rstageEdge = mkEdge "stage" [tNode] EmptyConstraints
+cstageEdge = mkEdge "stage" [fNode] EmptyConstraints
 
 copyConstr p =
   (nodePat node, constr)
   where
-    node = Node [ tEdge, fEdge ]
+    node = Node [ rstageEdge, cstageEdge ]
     constr = mkEqConstraints [[path [0, 0], p]]
 
 bothT name x y = appC name [metaNode, x, y] constrs
   where
     (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [2, 0, 0])
+
+allT name xs = appC name (metaNode : xs) constrs
+  where
+    (metaNode, constrs) = andManyConstr [path [i, 0, 0] | i <- [1..length xs]]
 
 firstT name x y = appC name [metaNode, x, y] constrs
   where
@@ -206,27 +234,31 @@ secondT name x y = appC name [metaNode, x, y] constrs
   where
     (metaNode, constrs) = copyConstr $ path [2, 0, 0]
 
-filterT = secondT "filter"
+filterT = bothT "filter"
 eqT = bothT "eq"
 andT = bothT "and"
 ltT = bothT "lt"
-selectT = secondT "select"
-dotT x y = app "dot" [x, y]
+selectT = bothT "select"
+listT = secondT "list"
+tupleT = allT "tuple"
+scalarT x = appC "scalar" [metaNode, x] constrs
+  where (metaNode, constrs) = notConstr $ path [1, 0, 0]
+dotT = firstT "dot"
 
 rtimeT = nodePat $ Node [tEdge]
 ctimeT = nodePat $ Node [fEdge]
+rctimeT = nodePat $ Node [tEdge, fEdge]
 
-cscopeT = ctimeT
 rscopeT = rtimeT
+cscopeT = ctimeT
 
-relationT n = app n [rtimeT] -- should be ctime (later)
-nameT = relationT
+relationT n = app n [ctimeT]
+nameT n = app n [rctimeT]
+paramT n = app n [rtimeT]
 joinT p r r' = app "join" [ctimeT, p, r, r']
-depjoinT r r' = appC "depjoin" [metaNode, r, nodePat scope, r'] constrs
+depjoinT r r' = appC "depjoin" [metaNode, r, rscopeT, r'] constrs
   where
     (metaNode, constrs) = andConstr (path [1, 0, 0]) (path [3, 0, 0])
-
-addConstr c = combineEqConstraints (mkEqConstraints c)
 
 idxT name xs = appC name (metaNode : xs) constrs
   where
@@ -248,7 +280,7 @@ filterToHidx = rule lhs rhs
     rkey = var 1
     rel = var 2
     lhs = filterP (eqP ckey rkey) rel
-    rhs = hidxT [selectT ckey rel, cscopeT, filterT (eqT ckey (nodePat scope `dotT` ckey)) rel, rkey]
+    rhs = hidxT [selectT ckey rel, cscopeT, filterT (eqT ckey (cscopeT `dotT` ckey)) rel, rkey]
 
 filterToOidx = rule lhs rhs
   where
@@ -315,6 +347,52 @@ flipBinop op = rule lhs rhs
     lhs = app op [var 0, var 1]
     rhs = app op [var 1, var 0]
 
+bothEq x y = if x == y then x else error ("expected equal " ++ show x ++ " " ++ show y)
+
+schema' :: Symbol -> [[Symbol]] -> [Symbol]
+schema' "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
+schema' "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
+schema' "lineitem" _ = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
+schema' "filter" [_, _, s] = s
+schema' "oidx" [_, _, _, v, _, _] = v
+schema' "hidx" [_, _, _, v, _] = v
+schema' "join" [_, _, a, b] = List.nub $ a++b
+schema' "depjoin" [_, v, _, v'] = List.nub $ v ++ v'
+schema' "scalar" [_, s] = s
+schema' "dot" [_, _, s] = s
+schema' "list" [_, _, s] = s
+schema' "tuple" (_ : xs) = concat xs
+schema' n _ = [n]
+
+-- schema n xs = trace (show (n, xs)) (schema' n xs)
+schema = schema'
+
+schemaOf node =
+  Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate bothEq schema node)
+
+data Kind = Relation | Scalar | MetaData
+  deriving ( Eq, Show )
+
+kind :: Symbol -> [Kind] -> Kind
+kind n _
+  | n == "filter" || n == "select" || n == "oidx" || n == "hidx" || n == "depjoin" || n == "list" || n == "scalar" || n == "join" = Relation
+  | n == "eq" || n == "lt" = Scalar
+  | otherwise = MetaData
+
+kindOf node =
+  Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate bothEq kind node)
+
+introList = frule lhs rhs
+  where
+    lhs = var 0
+    rhs subst = do
+      node <- List.lookup 0 subst
+      case kindOf node of
+        Relation -> do
+          let schm = schemaOf node
+          return $ listT (var 0) (tupleT [scalarT $ nameT n | n <- schm])
+        _ -> Nothing
+
 forceRtime = rule (var 0) (appC "constrained" [rtimeT, var 0] (mkEqConstraints [[path [0, 0], path [1, 0, 0]]]))
 
 flipEq = flipBinop "eq"
@@ -337,30 +415,25 @@ flipAnd = flipBinop "and"
 --   (rewriteRoot forceRtime) $ liftClosedPat t
 
 rewriteNoReduce t =
-  fmap reducePartially
-  $ (repeat' 5 $
+  (repeat' 1 $
      try (rewriteAll elimJoin)
      `andThen` try (rewriteAll filterToHidx)
+     `andThen` try (rewriteAll introList)
     )
   `andThen` rewriteRoot forceRtime
   $ liftClosedPat t
 
 rewrite t = reducePartially <$> rewriteNoReduce t
 
-schema "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
-schema "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
-schema "lineitem" _ = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
-schema "filter" [_, s] = s
-schema "oidx" [_, _, _, v, _, _] = v
-schema "hidx" [_, _, _, v, _, _] = v
-schema "join" [_, _, a, b] = a++b
-schema "depjoin" [_, _, _, v] = v
-
-tpch3 = joinT (eqT (nameT "c_custkey") (nameT "o_custkey"))
-        (joinT (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
-          (filterT (ltT (nameT "o_orderdate") (nameT "param1")) (relationT "orders"))
-          (filterT (ltT (nameT "param1") (nameT "l_shipdate")) (relationT "lineitem")))
-        (filterT (eqT (nameT "c_mktsegment") (nameT "param0")) (relationT "customer"))
+tpch3 =
+  joinT
+    (eqT (nameT "c_custkey") (nameT "o_custkey"))
+    ( joinT
+        (eqT (nameT "l_orderkey") (nameT "o_orderkey"))
+        (filterT (ltT (nameT "o_orderdate") (nameT "param1")) (relationT "orders"))
+        (filterT (ltT (nameT "param1") (nameT "l_shipdate")) (relationT "lineitem"))
+    )
+    (filterT (eqT (nameT "c_mktsegment") (nameT "param0")) (relationT "customer"))
 
 dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
 
@@ -441,3 +514,4 @@ rewriteEgraph t =
     `andThen` try (rewriteAll eqStageE)
     `andThen` try (rewriteAll hidxStageE)
   ) $ liftClosedPat t
+
