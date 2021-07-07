@@ -101,6 +101,9 @@ spec = do
       property $ \xs ys zs -> substSubpath (path zs) (path ys) (path $ ys ++ xs) `shouldBe` path (zs ++ xs)
 
   describe "path tries and zippers" $ do
+    it "fromPathTrie and toPathTrie are inverses" $ do
+      property $ \pt -> toPathTrie (fromPathTrie pt) == pt
+
     it "smallestNonempty works" $ do
       smallestNonempty (Vector.fromList [EmptyPathTrie, EmptyPathTrie, TerminalPathTrie, TerminalPathTrie, EmptyPathTrie]) `shouldBe` 2
 
@@ -110,8 +113,8 @@ spec = do
                                    == compare (sort $ nub ps1) (sort $ nub ps2)
 
     it "PathTrie-based hasSubsumingMember same as list-based implementation" $ do
-      property $ \pt1 pt2 -> let pec1 = PathEClass pt1
-                                 pec2 = PathEClass pt2
+      property $ \pt1 pt2 -> let pec1 = PathEClass (fromPathTrie pt1)
+                                 pec2 = PathEClass (fromPathTrie pt2)
                              in hasSubsumingMember pec1 pec2 == hasSubsumingMemberListBased (unPathEClass pec1) (unPathEClass pec2)
 
     it "ascending a zipper well beyond the root == adding ints to a path" $ do
@@ -120,6 +123,11 @@ spec = do
     it "a sequence of path trie ascends/descends followed by its reverse yields the identity" $ do
       property $ \actions pt -> (zipperCurPathTrie $ foldr applyPathTrieCommand (pathTrieToZipper pt) (reverse (map invertPathTrieCommand actions) ++ actions))
                                 == pt
+
+  describe "PathEClass" $ do
+    it "both ways of getting list of paths from a PathEClass are identical" $ do
+      property $ \pt -> fromPathTrie (getPathTrie (PathEClass (fromPathTrie pt))) == getOrigPaths (PathEClass (fromPathTrie pt))
+
 
   describe "mkEqConstraints" $ do
     it "removes unitary" $

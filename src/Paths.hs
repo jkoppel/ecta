@@ -17,7 +17,7 @@ module Paths (
   , pathTrieDescend
   , pathTrieAscend
 
-  , PathEClass(..)
+  , PathEClass
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering

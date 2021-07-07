@@ -25,7 +25,7 @@ module Internal.Paths (
   , pathTrieDescend
   , pathTrieAscend
 
-  , PathEClass(..)
+  , PathEClass(PathEClass, ..)
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
@@ -45,6 +45,7 @@ module Internal.Paths (
 
 import Control.Monad ( (=<<) )
 import qualified Data.Array as Array
+import Data.Function ( on )
 import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..), Endo(..) )
 import Data.Hashable ( Hashable )
@@ -293,11 +294,25 @@ pathTrieAscend (PathTrieZipper pt (PathTrieAt i pt' ipt)) _ = PathTrieZipper pt'
 ---------- Path E-classes
 ---------------------------
 
-newtype PathEClass = PathEClass PathTrie
-  deriving ( Eq, Ord, Show, Generic )
+data PathEClass = PathEClass' { getPathTrie  :: !PathTrie
+                              , getOrigPaths :: ![Path]
+                              }
+  deriving ( Show, Generic )
+
+instance Eq PathEClass where
+  (==) = (==) `on` getPathTrie
+
+instance Ord PathEClass where
+  compare = compare `on` getPathTrie
+
+-- | TODO: This pattern (and the caching of the original path list) is a temporary affair
+--         until we convert all clients of PathEclass to fully be based on tries
+pattern PathEClass :: [Path] -> PathEClass
+pattern PathEClass ps <- PathEClass' _ ps where
+  PathEClass ps = PathEClass' (toPathTrie $ nub ps) (sort $ nub ps)
 
 unPathEClass :: PathEClass -> [Path]
-unPathEClass (PathEClass pt) = fromPathTrie pt
+unPathEClass (PathEClass' _ paths) = paths
 
 instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
@@ -305,7 +320,7 @@ instance Pretty PathEClass where
 instance Hashable PathEClass
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
-hasSubsumingMember (PathEClass ptTop1) (PathEClass ptTop2) = go ptTop1 ptTop2
+hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
   where
     go :: PathTrie -> PathTrie -> Bool
     go EmptyPathTrie                _                            = False
@@ -369,7 +384,7 @@ unsafeGetEclasses EqContradiction = error "unsafeGetEclasses: Illegal argument '
 unsafeGetEclasses ecs             = getEclasses ecs
 
 rawMkEqConstraints :: [[Path]] -> EqConstraints
-rawMkEqConstraints = EqConstraints . map PathEClass . map toPathTrie
+rawMkEqConstraints = EqConstraints . map PathEClass
 
 
 constraintsAreContradictory :: EqConstraints -> Bool
@@ -393,7 +408,7 @@ isContradicting cs = any (\pec -> hasSubsumingMemberListBased pec pec) cs
 mkEqConstraints :: [[Path]] -> EqConstraints
 mkEqConstraints initialConstraints = case completedConstraints of
                                        Nothing -> EqContradiction
-                                       Just cs -> EqConstraints $ sort $ map PathEClass $ map toPathTrie cs
+                                       Just cs -> EqConstraints $ sort $ map PathEClass cs
   where
     removeTrivial :: (Eq a) => [[a]] -> [[a]]
     removeTrivial = filter (\x -> length x > 1) . map nub
