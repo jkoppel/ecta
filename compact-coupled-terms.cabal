@@ -3,8 +3,6 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 5a5628497e22b4cc0045039e0f8766163350bbc703b55a411209e94ffb644453
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -33,9 +31,9 @@ library
   exposed-modules:
       Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
-      DbOpt
       Data.Memoization
       Data.Memoization.Metrics
+      DbOpt
       ECTA
       Internal.ECTA
       Internal.Paths
@@ -48,7 +46,33 @@ library
       Paths_compact_coupled_terms
   hs-source-dirs:
       src
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveGeneric
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      PatternGuards
+      PatternSynonyms
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
   build-depends:
       array
     , base
@@ -66,7 +90,6 @@ library
     , raw-strings-qq
     , text
     , unordered-containers
-    , deepseq
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -77,7 +100,33 @@ executable compact-coupled-terms-exe
       Paths_compact_coupled_terms
   hs-source-dirs:
       app
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveGeneric
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      PatternGuards
+      PatternSynonyms
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base
@@ -101,7 +150,33 @@ test-suite unit-tests
       Paths_compact_coupled_terms
   hs-source-dirs:
       test
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveGeneric
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      PatternGuards
+      PatternSynonyms
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
@@ -124,7 +199,33 @@ benchmark mainbench
       Paths_compact_coupled_terms
   hs-source-dirs:
       benchmarks
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions:
+      BangPatterns
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveGeneric
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NamedFieldPuns
+      PatternGuards
+      PatternSynonyms
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base

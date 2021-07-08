@@ -9,6 +9,9 @@ import qualified Data.Map as Map
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Language.Dot.Pretty as Dot
+import Data.Memoization ( MemoCacheTag(..), memo2 )
+import Data.Hashable ( Hashable, hashWithSalt )
+import GHC.Generics (Generic)
 
 import ECTA
 import Paths
@@ -53,14 +56,20 @@ data Pattern p =
   | As (p, Int)
   | Var Int
   | NodePat Node
-  deriving ( Eq, Ord, Show )
+  deriving ( Eq, Ord, Show, Generic )
+
+instance Hashable p => Hashable (Pattern p)
 
 newtype ConstrPattern = ConstrPattern (Pattern ConstrPattern, EqConstraints)
-  deriving ( Eq, Ord, Show )
+  deriving ( Eq, Ord, Show, Generic )
+
+instance Hashable ConstrPattern
+
+type Subst = [(Int, Node)]
 
 data PatternMatch = PatternMatch { root :: Node
                                  , pat :: ConstrPattern
-                                 , subst :: [(Int, Node)]
+                                 , subst :: Subst
                                  }
   deriving ( Show )
 
@@ -103,15 +112,21 @@ data RuleRhs =
   | PatternRhs ConstrPattern
 
 data Rule = Rule { lhs :: ConstrPattern
-                 , rhs :: RuleRhs }
+                 , rhs :: RuleRhs
+                 , ruleName :: String }
 
-liftPat subst (ConstrPattern (pat, constrs)) =
+liftPat' :: Subst -> ConstrPattern -> Node
+liftPat' subst (ConstrPattern (pat, constrs)) =
   case pat of
     (App sym args) -> funcC sym (List.map (liftPat subst) args) constrs
     (Var idx) -> Maybe.fromJust $ List.lookup idx subst
     (NodePat n) -> n
     (As _) -> error "Cannot lift As"
     (Meta _) -> error "Cannot lift Meta"
+
+liftPat = liftPat'
+-- liftPat :: Subst -> ConstrPattern -> Node
+-- liftPat = memo2 (NameTag "liftPat") liftPat'
 
 liftClosedPat = liftPat []
 
@@ -141,10 +156,14 @@ rewriteFirst rule root =
 
 rewriteAll :: Rule -> Node -> Maybe Node
 rewriteAll rule root = do
-  root' <- foldM (\root m -> case rewriteMatch m rule root of
-                               Just root' -> Just root'
-                               Nothing -> Just root) root
-           $ match (lhs rule) root
+  traceM ("running " ++ ruleName rule)
+  let matches = match (lhs rule) root
+  traceM ("found " ++ show (length matches) ++ " matches")
+  root' <- foldM (\root (i, m) ->
+                    let root' = (try $ rewriteMatch m rule) root in
+                      seq root' $ trace ("processed " ++ show i) root')
+           root
+           $ zip [0..] matches
   if root == root' then Nothing else return root'
 
 rewriteRoot :: Rule -> Node -> Maybe Node
@@ -172,8 +191,10 @@ repeat' i r n =
     Just n' ->
       if n == n' then Just n else repeat' (i - 1) r n'
 
-rule lhs rhs = Rule { lhs, rhs = PatternRhs rhs }
-frule lhs rhs = Rule { lhs, rhs = FuncRhs rhs }
+rule' name lhs rhs = Rule { lhs, rhs = PatternRhs rhs, ruleName = name }
+rule = rule' "" 
+frule' name lhs rhs = Rule { lhs, rhs = FuncRhs rhs, ruleName = name }
+frule = frule' ""
 
 var x = ConstrPattern (Var x, EmptyConstraints)
 varC x c = ConstrPattern (Var x, c)
@@ -318,7 +339,7 @@ eqP x y = app "eq" [var (-1), x, y]
 dotP x y = app "dot" [var (-1), x, y]
 joinP x y z = app "join" [var (-1), x, y, z]
 
-filterToHidx = rule lhs rhs
+filterToHidx = rule' "filter-to-hidx" lhs rhs
   where
     ckey = var 0
     rkey = var 1
@@ -326,7 +347,7 @@ filterToHidx = rule lhs rhs
     lhs = filterP (eqP ckey rkey) rel
     rhs = hidxT (selectT ckey rel) (filterT (eqT ckey (cscopeT `dotT` ckey)) rel) rkey
 
-filterToOidx = rule lhs rhs
+filterToOidx = rule' "filter-to-oidx" lhs rhs
   where
     ckey = var 0
     rkey1 = var 1
@@ -335,7 +356,7 @@ filterToOidx = rule lhs rhs
     lhs = filterP ((rkey1 `ltP` ckey) `andP` (ckey `ltP` rkey2)) rel
     rhs = oidxT (selectT ckey rel) (filterT (ckey `eqT` (cscopeT `dotT` ckey)) rel) rkey1 rkey2
 
-filterToOidx1 = rule lhs rhs
+filterToOidx1 = rule' "filter-to-oidx1" lhs rhs
   where
     ckey = var 0
     rkey = var 1
@@ -343,7 +364,7 @@ filterToOidx1 = rule lhs rhs
     lhs = filterP (ckey `ltP` rkey) rel
     rhs = oidxT (selectT ckey rel) (filterT (ckey `eqT` (cscopeT `dotT` ckey)) rel) noneT rkey
 
-filterToOidx2 = rule lhs rhs
+filterToOidx2 = rule' "filter-to-oidx2" lhs rhs
   where
     ckey = var 0
     rkey = var 1
@@ -351,27 +372,27 @@ filterToOidx2 = rule lhs rhs
     lhs = filterP (rkey `ltP` ckey) rel
     rhs = oidxT (selectT ckey rel) (filterT (ckey `eqT` (cscopeT `dotT` ckey)) rel) rkey noneT
 
-splitFilter = rule lhs rhs
+splitFilter = rule' "split-filter" lhs rhs
   where
     lhs = filterP (var 0 `andP` var 1) (var 2)
     rhs = filterT (var 0) $ filterT (var 1) (var 2)
 
-mergeFilter = rule lhs rhs
+mergeFilter = rule' "merge-filter" lhs rhs
   where
     lhs = filterP (var 0) $ filterP (var 1) (var 2)
     rhs = filterT (var 0 `andT` var 1) (var 2)
 
-hoistFilter = rule lhs rhs
+hoistFilter = rule' "hoist-filter" lhs rhs
   where
     lhs = joinP (var 0) (filterP (var 1) (var 2)) (var 3)
     rhs = filterT (var 1) $ joinT (var 0) (var 2) (var 3)
 
-elimJoin = rule lhs rhs
+elimJoin = rule' "elim-join" lhs rhs
   where
     lhs = joinP (var 0) (var 1) (var 2)
     rhs = depjoinT (var 1) (filterT (var 0) (var 2))
 
-flipJoin = rule lhs rhs
+flipJoin = rule' "flip-join" lhs rhs
   where
     lhs = joinP (var 0) (var 1) (var 2)
     rhs = joinT (var 0) (var 2) (var 1)
@@ -419,9 +440,7 @@ kind n _
 kindOf node =
   Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate bothEq kind node)
 
-isStructure n
-  | n == "oidx" || n == "hidx" || n == "list" || n == "scalar" = True
-  | otherwise = False
+isStructure n = n == "oidx" || n == "hidx" || n == "list" || n == "scalar" 
 
 hasStructure :: Symbol -> [Bool] -> Bool
 hasStructure n xs = isStructure n || or xs
@@ -429,7 +448,7 @@ hasStructure n xs = isStructure n || or xs
 hasStructureOf node =
   Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate (||) hasStructure node)
 
-introList = frule lhs rhs
+introList = frule' "intro-list" lhs rhs
   where
     lhs = var 0
     rhs subst = do
@@ -438,10 +457,10 @@ introList = frule lhs rhs
         let schm = schemaOf node
         return $ listT (var 0) (tupleT [scalarT $ nameT n | n <- schm])
 
-introSimpleList = frule lhs rhs
+introSimpleList = frule' "intro-simple-list" lhs rhs
   where
     lhs = var 0
-    rhs subst = do return $ simpleListT (var 0)
+    rhs subst = return $ simpleListT (var 0)
 
 forceRtime = rule (var 0) rhs
   where
@@ -450,24 +469,8 @@ forceRtime = rule (var 0) rhs
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
 
--- rewrite t =
---   fmap reducePartially $
---   (repeat' 5 $
---   try (rewriteAll splitFilter) `andThen`
---   try (rewriteAll mergeFilter) `andThen`
---   try (rewriteAll hoistFilter) `andThen`
---   try (rewriteAll filterToOidx) `andThen`
---   try (rewriteAll filterToOidx1) `andThen`
---   try (rewriteAll filterToOidx2) `andThen`
---   try (rewriteAll filterToHidx) `andThen`
---   try (rewriteAll elimJoin) `andThen`
---   try (rewriteAll flipAnd) `andThen`
---   try (rewriteAll flipEq) `andThen`
---   try (rewriteAll flipJoin)) `andThen`
---   (rewriteRoot forceRtime) $ liftClosedPat t
-
 rewriteNoReduce t =
-  (repeat' 1 $
+  (repeat' 3 $
     try (rewriteAll splitFilter)
     `andThen` try (rewriteAll mergeFilter)
     `andThen` try (rewriteAll hoistFilter)
@@ -482,8 +485,8 @@ rewriteNoReduce t =
      `andThen` try (rewriteAll filterToOidx1)
      `andThen` try (rewriteAll filterToOidx2) 
     )
-  `andThen` try (rewriteAll introSimpleList)
-  -- `andThen` rewriteRoot forceRtime
+  `andThen` try (rewriteAll introList)
+  `andThen` rewriteRoot forceRtime
   $ liftClosedPat t
 
 rewrite t = reducePartially <$> rewriteNoReduce t
