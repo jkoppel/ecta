@@ -32,7 +32,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
 
-import Pretty
+import Data.Text.Extended.Pretty
 
 -----------------------------------------------------------------
 

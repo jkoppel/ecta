@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
-module Internal.ECTA (
+module Data.ECTA.Internal.ECTA (
     nubById
 
   , Edge(.., Edge)
@@ -122,16 +122,14 @@ import Data.Interned.Extended.HashTableBased as Interned
 --import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
+import Data.ECTA.Paths
+import Data.ECTA.Term
+import Data.ECTA.Utilities
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import qualified Data.Memoization as Memoization
 import Data.Persistent.UnionFind ( UnionFind, UVar, uvarToInt, intToUVar, UVarGen )
 import qualified Data.Persistent.UnionFind as UnionFind
-import Paths
-import Pretty
-import Term
-import Utilities
-
-import Debug.Trace
+import Data.Text.Extended.Pretty
 
 -------------------------------------------------------------------------------
 

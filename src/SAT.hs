@@ -35,11 +35,11 @@ import GHC.Generics ( Generic )
 
 import Data.List.Index ( imap )
 
-import ECTA
-import Paths
-import Pretty
-import Term
-import Utilities
+import Data.ECTA
+import Data.ECTA.Paths
+import Data.ECTA.Term
+import Data.ECTA.Utilities
+import Data.Text.Extended.Pretty
 
 ----------------------------------------------------------------
 

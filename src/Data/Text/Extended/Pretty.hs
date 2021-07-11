@@ -1,4 +1,4 @@
-module Pretty (
+module Data.Text.Extended.Pretty (
     Pretty(..)
   ) where
 

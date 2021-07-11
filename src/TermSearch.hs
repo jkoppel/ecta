@@ -11,9 +11,9 @@ import Data.Text ( Text )
 import qualified Data.Text as Text
 import Text.RawString.QQ
 
-import ECTA
-import Paths
-import Term
+import Data.ECTA
+import Data.ECTA.Paths
+import Data.ECTA.Term
 
 ------------------------------------------------------------------------------
 

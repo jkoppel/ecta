@@ -7,7 +7,7 @@ module Data.Memoization.Metrics (
 
 import qualified Data.Text as Text
 
-import Pretty
+import Data.Text.Extended.Pretty
 
 ----------------------------------------------------------
 

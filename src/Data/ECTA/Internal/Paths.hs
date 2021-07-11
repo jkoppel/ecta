@@ -3,7 +3,7 @@
 -- | Representations of paths in an FTA, data structures for
 --   equality constraints over paths, algorithms for saturating these constraints
 
-module Internal.Paths (
+module Data.ECTA.Internal.Paths (
     Path(.., EmptyPath, ConsPath)
   , unPath
   , path
@@ -18,7 +18,7 @@ module Internal.Paths (
   , largestNonempty
   , getMaxNonemptyIndex
 
-  , PathTrie(TerminalPathTrie, ..)
+  , PathTrie(..)
   , isEmptyPathTrie
   , isTerminalPathTrie
   , toPathTrie
@@ -61,9 +61,9 @@ import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
 
+import Data.ECTA.Utilities
 import Data.Memoization ( MemoCacheTag(..), memo2 )
-import Pretty
-import Utilities
+import Data.Text.Extended.Pretty
 
 -------------------------------------------------------
 

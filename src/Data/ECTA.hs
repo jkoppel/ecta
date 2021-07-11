@@ -4,7 +4,7 @@
 --
 -- Specialized to DAGs, plus at most one globally unique recursive node
 
-module ECTA (
+module Data.ECTA (
     Edge(Edge)
   , mkEdge
   , edgeChildren
@@ -37,4 +37,4 @@ module ECTA (
 #endif
   ) where
 
-import Internal.ECTA
+import Data.ECTA.Internal.ECTA

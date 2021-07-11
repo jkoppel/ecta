@@ -1,4 +1,4 @@
-module Paths (
+module Data.ECTA.Paths (
     -- * Paths
     Path(EmptyPath, ConsPath)
   , unPath
@@ -32,4 +32,4 @@ module Paths (
   , unsafeSubsumptionOrderedEclasses
   ) where
 
-import Internal.Paths
+import Data.ECTA.Internal.Paths

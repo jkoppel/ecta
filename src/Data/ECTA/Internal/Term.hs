@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Internal.Term (
+module Data.ECTA.Internal.Term (
     Symbol(.., Symbol)
 
   , Term(..)
@@ -21,8 +21,8 @@ import Data.Interned.Text ( InternedText, internedTextId )
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 
-import Paths
-import Pretty
+import Data.ECTA.Paths
+import Data.Text.Extended.Pretty
 
 ---------------------------------------------------------------
 -------------------------- Symbols ----------------------------

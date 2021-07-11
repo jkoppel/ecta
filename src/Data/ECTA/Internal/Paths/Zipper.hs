@@ -3,7 +3,7 @@
 --   They are being kept around just in case.
 
 
-module Internal.Paths.Zipper (
+module Data.ECTA.Internal.Paths.Zipper (
     unionPathTrie
 
   , InvertedPathTrie(..)
@@ -23,7 +23,7 @@ import qualified Data.Vector.Mutable as Vector ( unsafeWrite )
 
 import GHC.Exts ( inline )
 
-import Internal.Paths
+import Data.ECTA.Internal.Paths
 
 -----------------------------------------------------------------------
 

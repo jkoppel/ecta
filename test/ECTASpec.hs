@@ -14,9 +14,9 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
-import Internal.ECTA
-import Internal.Paths
-import Term
+import Data.ECTA.Internal.ECTA
+import Data.ECTA.Internal.Paths
+import Data.ECTA.Term
 import TermSearch
 
 import Test.Generators.ECTA

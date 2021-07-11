@@ -10,14 +10,11 @@ import System.IO ( hFlush, stdout )
 
 import Data.Interned.Extended.HashTableBased as Interned
 import Data.Memoization as Memoization
-import ECTA
-import Pretty
+import Data.ECTA
+import Data.ECTA.Internal.ECTA
+import Data.ECTA.Utilities
+import Data.Text.Extended.Pretty
 import TermSearch
-import Utilities
-
-import Internal.ECTA
-import Language.Dot
-import Data.List ( nub )
 
 ----------------------------------------------------------
 

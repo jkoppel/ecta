@@ -8,7 +8,7 @@ import Test.Hspec.QuickCheck
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
-import ECTA
+import Data.ECTA
 import TermSearch
 
 import Test.Generators.ECTA

@@ -7,9 +7,9 @@ import Data.List ( and, subsequences, (\\) )
 
 import Test.QuickCheck
 
-import Internal.ECTA
-import Paths
-import Term
+import Data.ECTA.Internal.ECTA
+import Data.ECTA.Paths
+import Data.ECTA.Term
 
 -----------------------------------------------------------------------------------------------
 
