@@ -8,16 +8,15 @@ module Paths (
   , pathTailUnsafe
   , isSubpath
 
-  , PathTrie
-  , PathTrieZipper
+  , PathTrie(TerminalPathTrie)
+  , isEmptyPathTrie
+  , isTerminalPathTrie
+  , getMaxNonemptyIndex
   , toPathTrie
   , fromPathTrie
-  , pathTrieToZipper
-  , zipperCurPathTrie
   , pathTrieDescend
-  , pathTrieAscend
 
-  , PathEClass
+  , PathEClass(getPathTrie)
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering

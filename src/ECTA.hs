@@ -24,7 +24,7 @@ module ECTA (
   , maxIndegree
   , union
   , intersect
-  , denotation
+  , naiveDenotation
 
   , withoutRedundantEdges
   , reducePartially

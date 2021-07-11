@@ -95,16 +95,16 @@ spec = do
 
   describe "ECDFTA-nodes" $ do
     it "equality constraints constrain" $
-        denotation ex1 `shouldSatisfy` ((== 2) . length)
+        naiveDenotation ex1 `shouldSatisfy` ((== 2) . length)
 
     it "reduces paths constrained by equality constraints" $
         reducePartially ex2 `shouldBe` reducePartially ex1
 
   describe "intersection" $ do
-    it "intersection commutes with denotation" $
-      property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (denotation $ intersect n1 n2)
-                                               `shouldBe` HashSet.intersection (HashSet.fromList $ denotation n1)
-                                                                               (HashSet.fromList $ denotation n2)
+    it "intersection commutes with naiveDenotation" $
+      property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (naiveDenotation $ intersect n1 n2)
+                                               `shouldBe` HashSet.intersection (HashSet.fromList $ naiveDenotation n1)
+                                                                               (HashSet.fromList $ naiveDenotation n2)
 
     it "intersect is associative" $
       property $ \n1 n2 n3 -> ((n1 `intersect` n2) `intersect` n3) == (n1 `intersect` (n2 `intersect` n3))
@@ -119,8 +119,8 @@ spec = do
       property $ \n1 -> intersect n1 n1 == n1
 
   describe "reduction" $ do
-    it "reduction preserves denotation" $
-      property $ mapSize (min 3) $ \n -> HashSet.fromList (denotation n) `shouldBe` HashSet.fromList (denotation $ reducePartially n)
+    it "reduction preserves naiveDenotation" $
+      property $ mapSize (min 3) $ \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (naiveDenotation $ reducePartially n)
 
     it "reducing a single constraint is idempotent 1" $
       property $ \e -> let ns  = edgeChildren e

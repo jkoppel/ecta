@@ -23,8 +23,8 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Nod
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    usedConstructors = allConstructors
-    --usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
+    --usedConstructors = allConstructors
+    usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -59,8 +59,10 @@ arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 constFunc :: Symbol -> Node -> Edge
 constFunc s t = Edge s [t]
 
+-- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
+-- Sometimes this can be desirable, but for enumeration,
 app :: Node -> Node -> Node
-app n1 n2 = Node [mkEdge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
+app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1-} tau, theArrowNode, n1, n2]
                                (mkEqConstraints $ [ [path [1],      path [2, 0, 0]]
                                                   , [path [2,0, 1], path [3, 0]]
                                                   , [path [0],      path [2, 0, 2]]
@@ -113,9 +115,9 @@ anyArg = Node [arg3, arg4, arg5]
 -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
 --   in the ECTA.
 anyFunc :: Node
-anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 200 $ Map.toList hoogleComponents
+--anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 177 $ Map.toList hoogleComponents
 --anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
---anyFunc = Node [f9, f10, f11]
+anyFunc = Node [f9, f10, f11]
 
 size1, size2, size3, size4, size5, size6 :: Node
 size1 = union [anyArg, anyFunc]

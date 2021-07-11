@@ -14,16 +14,16 @@ module Internal.Paths (
   , isStrictSubpath
   , substSubpath
 
-  , PathTrie(..)
-  , InvertedPathTrie(..)
-  , PathTrieZipper(..)
   , smallestNonempty
+  , largestNonempty
+  , getMaxNonemptyIndex
+
+  , PathTrie(TerminalPathTrie, ..)
+  , isEmptyPathTrie
+  , isTerminalPathTrie
   , toPathTrie
   , fromPathTrie
-  , pathTrieToZipper
-  , zipperCurPathTrie
   , pathTrieDescend
-  , pathTrieAscend
 
   , PathEClass(PathEClass, ..)
   , unPathEClass
@@ -53,10 +53,12 @@ import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
+import qualified Data.Vector.Mutable as Vector ( unsafeWrite )
 import Data.Vector.Instances ()
 
 import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
+import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
 
 import Data.Memoization ( MemoCacheTag(..), memo2 )
@@ -155,7 +157,7 @@ class Pathable t t' | t -> t' where
 
 
 -----------------------------------------------------------------------
------------------------ Path tries and zippers ------------------------
+---------------------------- Path tries -------------------------------
 -----------------------------------------------------------------------
 
 ---------------------
@@ -170,6 +172,21 @@ smallestNonempty v = Vector.ifoldr (\i pt oldMin -> case pt of
                                    maxBound
                                    v
 
+
+-- | Precondition: A nonempty cell exists
+largestNonempty :: Vector PathTrie -> Int
+largestNonempty v = Vector.ifoldl (\oldMin i pt -> case pt of
+                                                     EmptyPathTrie -> oldMin
+                                                     _             -> i)
+                                  minBound
+                                  v
+
+getMaxNonemptyIndex :: PathTrie -> Maybe Int
+getMaxNonemptyIndex EmptyPathTrie             = Nothing
+getMaxNonemptyIndex TerminalPathTrie          = Nothing
+getMaxNonemptyIndex (PathTrieSingleChild i _) = Just i
+getMaxNonemptyIndex (PathTrie vec)            = Just $ largestNonempty vec
+
 ---------------------
 ------- Path tries
 ---------------------
@@ -182,8 +199,16 @@ data PathTrie = EmptyPathTrie
 
 instance Hashable PathTrie
 
+isEmptyPathTrie :: PathTrie -> Bool
+isEmptyPathTrie EmptyPathTrie = True
+isEmptyPathTrie _             = False
+
+isTerminalPathTrie :: PathTrie -> Bool
+isTerminalPathTrie TerminalPathTrie = True
+isTerminalPathTrie _                = False
+
 comparePathTrieVectors :: Vector PathTrie -> Vector PathTrie -> Ordering
-comparePathTrieVectors v1 v2 = foldr (\i res -> let (t1, t2) = (v1 Vector.! i, v2 Vector.! i)
+comparePathTrieVectors v1 v2 = foldr (\i res -> let (t1, t2) = (v1 `Vector.unsafeIndex` i, v2 `Vector.unsafeIndex` i)
                                                 in case (isEmptyPathTrie t1, isEmptyPathTrie t2) of
                                                      (False, True)  -> LT
                                                      (True, False)  -> GT
@@ -196,12 +221,6 @@ comparePathTrieVectors v1 v2 = foldr (\i res -> let (t1, t2) = (v1 Vector.! i, v
                                      [0..(min (Vector.length v1) (Vector.length v2) - 1)]
   where
     valueIfComponentsMatch = compare (Vector.length v1) (Vector.length v2)
-
-
-
-isEmptyPathTrie :: PathTrie -> Bool
-isEmptyPathTrie EmptyPathTrie = True
-isEmptyPathTrie _             = False
 
 instance Ord PathTrie where
   compare EmptyPathTrie                EmptyPathTrie                = EQ
@@ -218,11 +237,11 @@ instance Ord PathTrie where
                                                                       case compare i1 i2 of
                                                                         LT -> LT
                                                                         GT -> GT
-                                                                        EQ -> case compare pt1 (v2 Vector.! i2) of
+                                                                        EQ -> case compare pt1 (v2 `Vector.unsafeIndex` i2) of
                                                                                 LT -> LT
                                                                                 GT -> GT
                                                                                 EQ -> LT -- v2 must have a second nonempty
-  compare a@(PathTrie _)               b@(PathTrieSingleChild _ _)  = flipOrdering $ compare b a
+  compare a@(PathTrie _)               b@(PathTrieSingleChild _ _)  = flipOrdering $ inline compare b a -- | TODO: Check whether this inlining is effective
   compare (PathTrie v1)                (PathTrie v2)                = comparePathTrieVectors v1 v2
 
 
@@ -252,39 +271,16 @@ fromPathTrie TerminalPathTrie           = [EmptyPath]
 fromPathTrie (PathTrieSingleChild i pt) = map (ConsPath i) $ fromPathTrie pt
 fromPathTrie (PathTrie v)               = Vector.ifoldr (\i pt acc -> map (ConsPath i) (fromPathTrie pt) ++ acc) [] v
 
----------------------
-------- Zippers
----------------------
-
-data InvertedPathTrie = PathZipperRoot
-                      | PathTrieAt {-# UNPACK #-} !Int !PathTrie !InvertedPathTrie
-  deriving ( Eq, Ord, Show )
-
-data PathTrieZipper = PathTrieZipper !PathTrie !InvertedPathTrie
-  deriving ( Eq, Ord, Show )
-
-
-pathTrieToZipper :: PathTrie -> PathTrieZipper
-pathTrieToZipper pt = PathTrieZipper pt PathZipperRoot
-
-zipperCurPathTrie :: PathTrieZipper -> PathTrie
-zipperCurPathTrie (PathTrieZipper pt _) = pt
-
-
-pathTrieDescend :: PathTrieZipper -> Int -> PathTrieZipper
-pathTrieDescend (PathTrieZipper     EmptyPathTrie              z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i EmptyPathTrie    z)
-pathTrieDescend (PathTrieZipper     TerminalPathTrie           z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i TerminalPathTrie z)
-pathTrieDescend (PathTrieZipper pt@(PathTrie v)                z) i = PathTrieZipper (v Vector.! i) (PathTrieAt i pt z)
-pathTrieDescend (PathTrieZipper pt@(PathTrieSingleChild j pt') z) i
-                | i == j                                            = PathTrieZipper pt'           (PathTrieAt i pt z)
-                | otherwise                                         = PathTrieZipper EmptyPathTrie (PathTrieAt i pt z)
-
--- | The semantics of this may not be what you expect: Path trie zippers do not support editing currently, only traversing.
---   The value at the cursor (as well as the index) is ignored except when traversing above the root, where it uses those
---   values to extend the path trie upwards.
-pathTrieAscend :: PathTrieZipper -> Int -> PathTrieZipper
-pathTrieAscend (PathTrieZipper pt PathZipperRoot)         i = PathTrieZipper (PathTrieSingleChild i pt) PathZipperRoot
-pathTrieAscend (PathTrieZipper pt (PathTrieAt i pt' ipt)) _ = PathTrieZipper pt'                        ipt
+pathTrieDescend :: PathTrie -> Int -> PathTrie
+pathTrieDescend EmptyPathTrie                  i = EmptyPathTrie
+pathTrieDescend TerminalPathTrie               i = EmptyPathTrie
+pathTrieDescend pt@(PathTrie v)                i = if Vector.length v > i then
+                                                     v `Vector.unsafeIndex` i
+                                                   else
+                                                     EmptyPathTrie
+pathTrieDescend pt@(PathTrieSingleChild j pt') i
+                | i == j                         = pt'
+                | otherwise                      = EmptyPathTrie
 
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
@@ -338,7 +334,7 @@ hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
     go (PathTrie v1)                (PathTrieSingleChild i2 pt2) = case v1 Vector.!? i2 of
                                                                      Nothing  -> False
                                                                      Just pt1 -> go pt1 pt2
-    go (PathTrie v1)                (PathTrie v2)                = any (\i -> go (v1 Vector.! i) (v2 Vector.! i))
+    go (PathTrie v1)                (PathTrie v2)                = any (\i -> go (v1 `Vector.unsafeIndex` i) (v2 `Vector.unsafeIndex` i))
                                                                        [0..(min (Vector.length v1) (Vector.length v2) - 1)]
 
 

@@ -8,6 +8,7 @@ import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
 import Internal.Paths
+import Internal.Paths.Zipper
 
 import Debug.Trace
 
@@ -17,32 +18,32 @@ import Debug.Trace
 ------ PathTrie testing utils
 -----------------------------------
 
-data PathTrieCommand = PathTrieAscend  Int
-                     | PathTrieDescend Int
+data PathTrieCommand = PathTrieZipperAscend  Int
+                     | PathTrieZipperDescend Int
   deriving ( Show )
 
 instance Arbitrary PathTrieCommand where
   arbitrary = do b <- arbitrary
-                 i <- chooseInt (0, 5)
-                 return $ if b then PathTrieAscend i else PathTrieDescend i
+                 i <- chooseInt (0, 4)
+                 return $ if b then PathTrieZipperAscend i else PathTrieZipperDescend i
 
   shrink _ = []
 
 
 invertPathTrieCommand :: PathTrieCommand -> PathTrieCommand
-invertPathTrieCommand (PathTrieAscend i)  = PathTrieDescend i
-invertPathTrieCommand (PathTrieDescend i) = PathTrieAscend  i
+invertPathTrieCommand (PathTrieZipperAscend i)  = PathTrieZipperDescend i
+invertPathTrieCommand (PathTrieZipperDescend i) = PathTrieZipperAscend  i
 
--- | A variant of pathTrieDescend that allows for descending out of bounds.
+-- | A variant of pathTrieZipperDescend that allows for descending out of bounds.
 --   Makes the "descend/ascend are inverses" property easy to write
-extendedPathTrieDescend :: PathTrieZipper -> Int -> PathTrieZipper
-extendedPathTrieDescend (PathTrieZipper (PathTrie v) z') i
-                                | i >= Vector.length v     = PathTrieZipper EmptyPathTrie (PathTrieAt i (PathTrie v) z')
-extendedPathTrieDescend z                                i = pathTrieDescend z i
+extendedPathTrieZipperDescend :: PathTrieZipper -> Int -> PathTrieZipper
+extendedPathTrieZipperDescend (PathTrieZipper (PathTrie v) z') i
+                                      | i >= Vector.length v     = PathTrieZipper EmptyPathTrie (PathTrieAt i (PathTrie v) z')
+extendedPathTrieZipperDescend z                                i = pathTrieZipperDescend z i
 
 applyPathTrieCommand :: PathTrieCommand -> PathTrieZipper -> PathTrieZipper
-applyPathTrieCommand (PathTrieAscend  i) z = pathTrieAscend z i
-applyPathTrieCommand (PathTrieDescend i) z = extendedPathTrieDescend z i
+applyPathTrieCommand (PathTrieZipperAscend  i) z = pathTrieZipperAscend z i
+applyPathTrieCommand (PathTrieZipperDescend i) z = extendedPathTrieZipperDescend z i
 
 
 
@@ -51,7 +52,7 @@ applyPathTrieCommand (PathTrieDescend i) z = extendedPathTrieDescend z i
 -----------------------------------
 
 instance Arbitrary Path where
-  arbitrary = path <$> listOf (chooseInt (0, 5))
+  arbitrary = path <$> listOf (chooseInt (0, 4))
   shrink = map Path . shrink . unPath
 
 
@@ -100,27 +101,38 @@ spec = do
     it "replaces prefix" $
       property $ \xs ys zs -> substSubpath (path zs) (path ys) (path $ ys ++ xs) `shouldBe` path (zs ++ xs)
 
-  describe "path tries and zippers" $ do
+  describe "path tries" $ do
     it "fromPathTrie and toPathTrie are inverses" $ do
       property $ \pt -> toPathTrie (fromPathTrie pt) == pt
-
-    it "smallestNonempty works" $ do
-      smallestNonempty (Vector.fromList [EmptyPathTrie, EmptyPathTrie, TerminalPathTrie, TerminalPathTrie, EmptyPathTrie]) `shouldBe` 2
 
     it "comparing path trie is same as comparing list of paths" $ do
       property $ \ps1 ps2 -> not (isContradicting [ps1] || isContradicting [ps2])
                              ==> compare (toPathTrie $ nub ps1) (toPathTrie $ nub ps2)
                                    == compare (sort $ nub ps1) (sort $ nub ps2)
 
+    it "unioning path trie same as unioning lists of paths, checking contradiction" $ do
+      property $ \pt1 pt2 -> case unionPathTrie pt1 pt2 of
+                               Nothing  -> isContradicting [fromPathTrie pt1 ++ fromPathTrie pt2]
+                               Just pt' -> fromPathTrie pt' == (sort $ nub $ fromPathTrie pt1 ++ fromPathTrie pt2)
+
     it "PathTrie-based hasSubsumingMember same as list-based implementation" $ do
       property $ \pt1 pt2 -> let pec1 = PathEClass (fromPathTrie pt1)
                                  pec2 = PathEClass (fromPathTrie pt2)
                              in hasSubsumingMember pec1 pec2 == hasSubsumingMemberListBased (unPathEClass pec1) (unPathEClass pec2)
 
-    it "ascending a zipper well beyond the root == adding ints to a path" $ do
-      forAll (listOf (chooseInt (0, 5))) $ \ns -> fromPathTrie (zipperCurPathTrie $ foldr (flip pathTrieAscend) (pathTrieToZipper $ toPathTrie [EmptyPath]) ns) == [path ns]
 
-    it "a sequence of path trie ascends/descends followed by its reverse yields the identity" $ do
+
+  describe "path trie zipper" $ do
+    it "smallestNonempty works" $ do
+      smallestNonempty (Vector.fromList [EmptyPathTrie, EmptyPathTrie, TerminalPathTrie, TerminalPathTrie, EmptyPathTrie]) `shouldBe` 2
+
+    it "largestNonempty works" $ do
+      largestNonempty  (Vector.fromList [EmptyPathTrie, EmptyPathTrie, TerminalPathTrie, TerminalPathTrie, EmptyPathTrie]) `shouldBe` 3
+
+    it "ascending a zipper well beyond the root == adding ints to a path" $ do
+      forAll (listOf (chooseInt (0, 4))) $ \ns -> fromPathTrie (zipperCurPathTrie $ foldr (flip pathTrieZipperAscend) (pathTrieToZipper $ toPathTrie [EmptyPath]) ns) == [path ns]
+
+    it "a sequence of path trie zipper ascends/descends followed by its reverse yields the identity" $ do
       property $ \actions pt -> (zipperCurPathTrie $ foldr applyPathTrieCommand (pathTrieToZipper pt) (reverse (map invertPathTrieCommand actions) ++ actions))
                                 == pt
 

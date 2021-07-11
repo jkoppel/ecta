@@ -168,10 +168,10 @@ trueNode :: Node
 trueNode = Node [Edge "1" []]
 
 falseTerm :: Term
-falseTerm = head $ denotation falseNode
+falseTerm = head $ naiveDenotation falseNode
 
 trueTerm :: Term
-trueTerm = head $ denotation trueNode
+trueTerm = head $ naiveDenotation trueNode
 
 trueOrFalseNode :: Node
 trueOrFalseNode = Node [Edge "0" [], Edge "1" []]
@@ -253,7 +253,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ denotation $ fixUnbounded reducePartially $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ naiveDenotation $ fixUnbounded reducePartially $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula

@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 
 module Internal.ECTA (
     nubById
@@ -35,7 +36,39 @@ module Internal.ECTA (
 
   , requirePath
   , requirePathList
-  , denotation
+
+  , TermFragment(..)
+  , termFragToTruncatedTerm
+
+  , SuspendedConstraint(..)
+  , descendScs
+  , UVarValue(..)
+
+  , EnumerationState(..)
+  , uvarCounter
+  , uvarRepresentative
+  , uvarValues
+  , initEnumerationState
+
+
+  , EnumerateM
+  , getUVarRepresentative
+  , assimilateUvarVal
+  , mergeNodeIntoUVarVal
+  , getUVarValue
+  , getTermFragForUVar
+  , runEnumerateM
+
+
+  , enumerateNode
+  , enumerateEdge
+  , firstExpandableUVar
+  , enumerateOutUVar
+  , enumerateOutFirstExpandableUVar
+  , enumerateFully
+  , expandTermFrag
+  , expandUVar
+  , naiveDenotation
 
   , withoutRedundantEdges
   , reducePartially
@@ -50,17 +83,19 @@ module Internal.ECTA (
   , getSubnodeById
   ) where
 
-import Control.Monad ( forM_, guard, void )
-import Control.Monad.State ( evalState, State, MonadState(..), modify )
+import Control.Monad ( mzero, forM_, guard, void )
+import Control.Monad.State.Strict ( StateT(..), evalState, State, MonadState(..), modify )
 import Control.Monad.ST ( ST, runST )
+import Control.Monad.Trans ( lift )
 import Data.Foldable ( foldrM )
 import Data.Function ( on )
+import qualified Data.IntMap as IntMap
 import Data.List ( inits, intercalate, nub, sort, tails )
-import           Data.Map ( Map )
-import qualified Data.Map as Map
-import Data.Maybe ( catMaybes, isJust, fromJust, maybeToList )
-import Data.Monoid ( Monoid(..), Sum(..), First(..) )
+import Data.Maybe ( catMaybes, fromMaybe, isJust, fromJust, maybeToList )
+import Data.Monoid ( Any(..), Monoid(..), Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
+import Data.Sequence ( Seq((:<|), (:|>)) )
+import qualified Data.Sequence as Sequence
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 import Data.Text ( Text )
@@ -69,14 +104,15 @@ import Debug.Trace ( trace )
 
 import GHC.Generics ( Generic )
 
-import Control.Lens ( (&), ix, _1, (^?), (%~) )
+import Control.Lens ( use, (&), ix, _1, (^?), (%~), (%=), (.=) )
+import Control.Lens.TH ( makeLenses )
 
 import qualified Data.Graph.Inductive as Fgl
 import Data.Hashable ( Hashable(..) )
 import qualified Data.HashSet as HashSet
 import qualified Data.HashTable.ST.Basic as HT
 import Data.List.Extra ( nubSort )
-import Data.List.Index ( imap )
+import Data.List.Index ( imap, imapM )
 
 import qualified Language.Dot.Syntax as Dot
 
@@ -88,10 +124,15 @@ import Data.Interned.Extended.HashTableBased as Interned
 
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import qualified Data.Memoization as Memoization
+import Data.Persistent.UnionFind ( UnionFind, UVar, uvarToInt, intToUVar, UVarGen )
+import qualified Data.Persistent.UnionFind as UnionFind
 import Paths
 import Pretty
 import Term
 import Utilities
+
+import Debug.Trace
+
 -------------------------------------------------------------------------------
 
 
@@ -393,6 +434,19 @@ pattern Node es <- (InternedNode _ es) where
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
+mkNodeAlreadyNubbed :: [Edge] -> Node
+mkNodeAlreadyNubbed es = case removeEmptyEdges es of
+                           []  -> EmptyNode
+                           es' -> intern $ UninternedNode $ sort es'
+
+-- | An optimized Node constructor that avoids the interning/preprocessing of the Node constructor
+--   when nothing changes
+modifyNode :: Node -> ([Edge] -> [Edge]) -> Node
+modifyNode n@(Node es) f = let es' = f es in
+                           if es' == es then
+                             n
+                           else
+                             Node es'
 
 createGloballyUniqueMu :: (Node -> Node) -> Node
 createGloballyUniqueMu f = Mu (f Rec)
@@ -531,6 +585,7 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
     allTheSame ((!x):xs) = go x xs where
         go !x [] = True
         go !x (!y:ys) = (x == y) && (go x ys)
+    {-# INLINE allTheSame #-}
 
 ------------
 ------ Intersect
@@ -557,9 +612,10 @@ doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
                                           -- | `hash` gives a unique ID of the symbol because they're interned
-  | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
-                                            [] -> EmptyNode
-                                            es -> Node $ dropRedundantEdges es
+  | otherwise                           = let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
+                                          in Node joined
+                                             --Node $ dropRedundantEdges joined
+                                             --mkNodeAlreadyNubbed $ dropRedundantEdges joined
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
 
 
@@ -704,10 +760,10 @@ reducePartially :: Node -> Node
 reducePartially = memo (NameTag "reducePartially") go
   where
     go :: Node -> Node
-    go EmptyNode = EmptyNode
-    go (Mu n)    = Mu n
-    go (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
-                        $ map reduceEdgeIntersection es
+    go EmptyNode  = EmptyNode
+    go (Mu n)     = Mu n
+    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
+                                          $ map reduceEdgeIntersection es
 {-# NOINLINE reducePartially #-}
 
 reduceEdgeIntersection :: Edge -> Edge
@@ -730,6 +786,7 @@ reduceEqConstraints = go
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
+        -- | TODO: Replace with a "requirePathTrie"
         withNeededChildren = foldr requirePathList origNs (concatMap unPathEClass eclasses)
 
         intersectList :: [Node] -> Node
@@ -746,23 +803,502 @@ reduceEqConstraints = go
             ps = unPathEClass pec
 
         toIntersect :: [Node] -> [Path] -> [Node]
+        --toIntersect ns ps = replicate (length ps) $ intersectList $ map (nodeDropRedundantEdges . flip getPath ns) ps
+        --toIntersect ns ps = map intersectList $ dropOnes $ map (nodeDropRedundantEdges . flip getPath ns) ps
+        --toIntersect ns ps = replicate (length ps) $ intersectList $ map (flip getPath ns) ps
         toIntersect ns ps = map intersectList $ dropOnes $ map (flip getPath ns) ps
 
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
         dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
 
+
 ------------------------------------
------- Denotation
+------ Denotation/enumeration
 ------------------------------------
 
-denotation :: Node -> [Term]
-denotation n = go n
+
+---------------------
+-------- Enumeration state
+---------------------
+
+
+data TermFragment = TermFragmentNode !Symbol ![TermFragment]
+                  | TermFragmentUVar UVar
+  deriving ( Eq, Ord, Show )
+
+termFragToTruncatedTerm :: TermFragment -> Term
+termFragToTruncatedTerm (TermFragmentNode s ts) = Term s (map termFragToTruncatedTerm ts)
+termFragToTruncatedTerm (TermFragmentUVar uv)   = Term (Symbol $ "v" <> Text.pack (show $ uvarToInt uv)) []
+
+data SuspendedConstraint = SuspendedConstraint !PathTrie !UVar
+  deriving ( Eq, Ord, Show )
+
+scGetPathTrie :: SuspendedConstraint -> PathTrie
+scGetPathTrie (SuspendedConstraint pt _) = pt
+
+scGetUVar :: SuspendedConstraint -> UVar
+scGetUVar (SuspendedConstraint _ uv) = uv
+
+descendScs :: Int -> Seq SuspendedConstraint -> Seq SuspendedConstraint
+descendScs i scs = Sequence.filter (not . isEmptyPathTrie . scGetPathTrie)
+                   $ fmap (\(SuspendedConstraint pt uv) -> SuspendedConstraint (pathTrieDescend pt i) uv)
+                          scs
+
+data UVarValue = UVarUnenumerated { contents    :: !(Maybe Node)
+                                  , constraints :: !(Seq SuspendedConstraint)
+                                  }
+               | UVarEnumerated { termFragment :: !TermFragment }
+               | UVarEliminated
+  deriving ( Eq, Ord, Show )
+
+intersectUVarValue :: UVarValue -> UVarValue -> UVarValue
+intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarUnenumerated mn2 scs2) =
+  let newContents = case (mn1, mn2) of
+                      (Nothing, x      ) -> x
+                      (x,       Nothing) -> x
+                      (Just n1, Just n2) -> Just (intersect n1 n2)
+      newConstraints = scs1 <> scs2
+  in UVarUnenumerated newContents newConstraints
+
+intersectUVarValue UVarEliminated            _                         = error "intersectUVarValue: Unexpected UVarEliminated"
+intersectUVarValue _                         UVarEliminated            = error "intersectUVarValue: Unexpected UVarEliminated"
+intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
+
+
+data EnumerationState = EnumerationState {
+    _uvarCounter        :: UVarGen
+  , _uvarRepresentative :: UnionFind
+  , _uvarValues         :: Seq UVarValue
+  }
+  deriving ( Eq, Ord, Show )
+
+makeLenses ''EnumerationState
+
+
+initEnumerationState :: Node -> EnumerationState
+initEnumerationState n = let (uvg, uv) = UnionFind.nextUVar UnionFind.initUVarGen
+                         in EnumerationState uvg
+                                             (UnionFind.withInitialValues [uv])
+                                             (Sequence.singleton (UVarUnenumerated (Just n) Sequence.Empty))
+
+
+---------------------
+-------- Enumeration monad and operations
+---------------------
+
+
+type EnumerateM = StateT EnumerationState []
+
+runEnumerateM :: EnumerateM a -> EnumerationState -> [(a, EnumerationState)]
+runEnumerateM = runStateT
+
+nextUVar :: EnumerateM UVar
+nextUVar = do c <- use uvarCounter
+              let (c', uv) = UnionFind.nextUVar c
+              uvarCounter .= c'
+              return uv
+
+addUVarValue :: Maybe Node -> EnumerateM UVar
+addUVarValue x = do uv <- nextUVar
+                    uvarValues %= (:|> (UVarUnenumerated x Sequence.Empty))
+                    return uv
+
+getUVarValue :: UVar -> EnumerateM UVarValue
+getUVarValue uv = do uv' <- getUVarRepresentative uv
+                     let idx = uvarToInt uv'
+                     values <- use uvarValues
+                     return $ Sequence.index values idx
+
+getTermFragForUVar :: UVar -> EnumerateM TermFragment
+getTermFragForUVar uv =  termFragment <$> getUVarValue uv
+
+getUVarRepresentative :: UVar -> EnumerateM UVar
+getUVarRepresentative uv = do uf <- use uvarRepresentative
+                              let (uv', uf') = UnionFind.find uv uf
+                              uvarRepresentative .= uf'
+                              return uv'
+
+
+assimilateUvarVal :: UVar -> SuspendedConstraint -> EnumerateM ()
+assimilateUvarVal uvTarg (SuspendedConstraint pt uvSrc)
+                                | uvTarg == uvSrc      = return ()
+                                | otherwise            = do
+  values <- use uvarValues
+  let srcVal  = Sequence.index values (uvarToInt uvSrc)
+  let targVal = Sequence.index values (uvarToInt uvTarg)
+  case srcVal of
+    UVarEliminated -> return () -- Happens from duplicate constraints
+    _              -> do
+      let v = intersectUVarValue srcVal targVal
+      guard (contents v /= Just EmptyNode)
+      uvarValues.(ix $ uvarToInt uvTarg) .= v
+      uvarValues.(ix $ uvarToInt uvSrc)  .= UVarEliminated
+
+
+mergeNodeIntoUVarVal :: UVar -> Node -> Seq SuspendedConstraint -> EnumerateM ()
+mergeNodeIntoUVarVal uv n scs = do
+  uv' <- getUVarRepresentative uv
+  let idx = uvarToInt uv'
+  uvarValues.(ix idx) %= intersectUVarValue (UVarUnenumerated (Just n) scs)
+  newValues <- use uvarValues
+  guard (contents (Sequence.index newValues idx) /= Just EmptyNode)
+
+pecToSuspendedConstraint :: PathEClass -> EnumerateM SuspendedConstraint
+pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
+                                  return $ SuspendedConstraint (getPathTrie pec) uv
+
+-- A full traversal; definitely not the most efficient.
+-- | TODO: Why does this exist again? Was this added from a phase before I was proper about not touching eliminated uvars?
+refreshReferencedUVars :: EnumerateM ()
+refreshReferencedUVars = do
+  values <- use uvarValues
+  updated <- traverse (\case UVarUnenumerated n scs ->
+                               UVarUnenumerated n <$>
+                                   mapM (\sc -> SuspendedConstraint (scGetPathTrie sc)
+                                                                       <$> getUVarRepresentative (scGetUVar sc))
+                                        scs
+
+                             x                      -> return x)
+                      values
+
+  uvarValues .= updated
+
+
+---------------------
+-------- Enumeration algorithm
+---------------------
+
+enumerateNode :: Seq SuspendedConstraint -> Node -> EnumerateM TermFragment
+enumerateNode scs n =
+  let (hereConstraints, descendantConstraints) = Sequence.partition (\(SuspendedConstraint pt _) -> isTerminalPathTrie pt) scs
+  in case hereConstraints of
+       Sequence.Empty -> case n of
+                           Mu _    -> TermFragmentUVar <$> addUVarValue (Just n)
+
+                           Node es -> enumerateEdge scs =<< lift es
+
+       (x :<| xs)     -> do forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
+                            uv <- getUVarRepresentative (scGetUVar x)
+                            mapM_ (assimilateUvarVal uv) hereConstraints
+                            mergeNodeIntoUVarVal uv n descendantConstraints
+
+                            return $ TermFragmentUVar uv
+
+enumerateEdge :: Seq SuspendedConstraint -> Edge -> EnumerateM TermFragment
+enumerateEdge scs e = do
+  let highestConstraintIndex = getMax $ foldMap (\sc -> Max $ fromMaybe (-1) $ getMaxNonemptyIndex $ scGetPathTrie sc) scs
+  guard $ highestConstraintIndex < length (edgeChildren e)
+
+  newScs <- Sequence.fromList <$> mapM pecToSuspendedConstraint (unsafeGetEclasses $ edgeEcs e)
+  let scs' = scs <> newScs
+  TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
+
+data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
+
+-- Can speed this up with bitvectors
+firstExpandableUVar :: EnumerateM ExpandableUVarResult
+firstExpandableUVar = do
+    values <- use uvarValues
+    let candidates = Sequence.foldMapWithIndex
+                      (\i -> \case (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> IntMap.empty
+                                   (UVarUnenumerated (Just (Mu _)) _             ) -> IntMap.singleton i (Any False)
+                                   (UVarUnenumerated (Just _)      _)              -> IntMap.singleton i (Any False)
+                                   _                                               -> IntMap.empty)
+                      values
+
+    if IntMap.null candidates then
+      return ExpansionDone
+     else do
+      let ruledOut = foldMap
+                      (\case (UVarUnenumerated _ scs) -> foldMap
+                                                             (\sc -> IntMap.singleton (uvarToInt $ scGetUVar sc) (Any True))
+                                                             scs
+
+                             _                         -> IntMap.empty)
+                      values
+
+      let unconstrainedCandidateMap = IntMap.filter (not . getAny) (ruledOut <> candidates)
+      case IntMap.lookupMin unconstrainedCandidateMap of
+        Nothing     -> return ExpansionStuck
+        Just (i, _) -> return $ ExpansionNext $ intToUVar i
+
+
+
+enumerateOutUVar :: UVar -> EnumerateM TermFragment
+enumerateOutUVar uv = do UVarUnenumerated (Just n) scs <- getUVarValue uv
+                         uv' <- getUVarRepresentative uv
+
+                         t <- case n of
+                                Mu x -> enumerateNode scs (unfoldRec x)
+                                _    -> enumerateNode scs n
+
+
+                         uvarValues.(ix $ uvarToInt uv') .= UVarEnumerated t
+                         refreshReferencedUVars
+                         return t
+
+enumerateOutFirstExpandableUVar :: EnumerateM ()
+enumerateOutFirstExpandableUVar = do
+  muv <- firstExpandableUVar
+  case muv of
+    ExpansionNext uv -> void $ enumerateOutUVar uv
+    ExpansionDone    -> mzero
+    ExpansionStuck   -> mzero
+
+enumerateFully :: EnumerateM ()
+enumerateFully = do
+  muv <- firstExpandableUVar
+  case muv of
+    ExpansionStuck   -> mzero
+    ExpansionDone    -> return ()
+    ExpansionNext uv -> do UVarUnenumerated (Just n) scs <- getUVarValue uv
+                           if scs == Sequence.Empty then
+                             case n of
+                               Mu _ -> return ()
+                               _    -> enumerateOutUVar uv >> enumerateFully
+                            else
+                             enumerateOutUVar uv >> enumerateFully
+
+expandTermFrag :: TermFragment -> EnumerateM Term
+expandTermFrag (TermFragmentNode s ts) = Term s <$> mapM expandTermFrag ts
+expandTermFrag (TermFragmentUVar uv)   = do val <- getUVarValue uv
+                                            case val of
+                                              UVarEnumerated t                 -> expandTermFrag t
+                                              UVarUnenumerated (Just (Mu _)) _ -> return $ Term "Mu" []
+                                              _                                -> error "expandTermFrag: Non-recursive, unenumerated node encountered"
+
+
+expandUVar :: UVar -> EnumerateM Term
+expandUVar uv = do UVarEnumerated t <- getUVarValue uv
+                   expandTermFrag t
+
+-----------
+{-
+
+{- Comment on secret version of nodeRepresents -}
+
+-- This function has a secret inner spec:
+-- To the outside world, it answers "Is term t within the denotation of the ECTA with root n,"
+-- but to the inside world, it answers: "If t is a pure term, then is t within the denotation of n.
+-- And if t is a term which may contain the placeholder for anything generated by the globally unique mu,
+-- then are all instantiations of said placeholder with something (the same for each) generated by
+-- the gloablly unique mu represented by n."
+
+
+-- Proposed alternate name: ???
+data EClassValue = EClassValue {-# UNPACK #-} !PathTrie {-# UNPACK #-} !Node
+  deriving ( Show )
+
+-- Proposed alternate name: ConstraintValue
+data BuilderValue = BVNode !Node | BVTerm !Term | BVUnconstrained
+  deriving ( Eq, Show )
+
+
+-- Proposed alternate name: ConstraintValueZipper
+data EClassValueBuilder = EClassValueBuilder { getPathTrieZipper :: !PathTrieZipper
+                                             , getBuilderValue   :: !BuilderValue
+                                             }
+  deriving ( Show )
+
+emptyECVB :: EClassValueBuilder
+emptyECVB = EClassValueBuilder emptyPathTrieZipper (BVNode EmptyNode)
+
+intersectECVBs :: Node -> [EClassValueBuilder] -> EClassValueBuilder
+intersectECVBs origN origECVBs = go Nothing Nothing emptyPathTrieZipper origECVBs
   where
-    -- | TODO: This is unused. It is needed for the more efficient implementation of this, as well as for efficient counting
-    descendMap :: Map Path Term -> Int -> Map Path Term
-    descendMap mp p = Map.fromList $ map (_1 %~ pathTailUnsafe) $ filter ((== p) . pathHeadUnsafe . fst) $ Map.toList mp
+    go :: Maybe Term -> Maybe Node -> PathTrieZipper -> [EClassValueBuilder] -> EClassValueBuilder
+    go mt  mn        z []          = case (mt, mn) of
+                                       (Nothing, Nothing) -> EClassValueBuilder z BVUnconstrained
+                                       (Nothing, Just n)  -> EClassValueBuilder z (BVNode $ intersect n origN)
+                                       (Just t, Nothing)  -> if nodeRepresents origN t then
+                                                               EClassValueBuilder z (BVTerm t)
+                                                             else
+                                                               emptyECVB
+                                       (Just t, Just n)   -> if nodeRepresents (intersect n origN) t then -- | TODO: I'm not sure this nodeRepresents is correct
+                                                               EClassValueBuilder z (BVTerm t)
+                                                             else
+                                                               emptyECVB
 
+    go _  (Just EmptyNode) _ _            = emptyECVB
+    go mt mn               z (ecvb:ecvbs) =
+      case unionPathTrieZipper z (getPathTrieZipper ecvb) of
+        Nothing -> emptyECVB
+        Just z' ->
+          case getBuilderValue ecvb of
+            BVUnconstrained -> go mt mn z' ecvbs
+            BVTerm t'       -> case mt of
+                                 Nothing -> go (Just t') mn z' ecvbs
+                                 Just t  -> if t == t' then
+                                              go mt mn z' ecvbs
+                                            else
+                                              emptyECVB
+            BVNode n'       -> case mn of
+                                 Nothing -> go mt (Just n') z' ecvbs
+                                 Just n  -> go mt (Just $ intersect n n') z' ecvbs
+
+-- | Denotation: The "term family" (t, {(pec_i, node_i}_i) represents the set of terms given by:
+--                   For each (pec_i, node_i) (where node_i must be unconstrained), pick t'\in [[node_i]],
+--                   and, for each path p\in pec_i, set t|p=t'
+data TermFamily = TermFamily !Term ![EClassValue]
+  deriving ( Show )
+
+data TermFamilyBuilder = TermFamilyBuilder !Term ![EClassValueBuilder]
+  deriving ( Show )
+
+-- TODO
+-- Don't forget to eliminate unconstrained's
+termFamilyBuilderToValue :: TermFamilyBuilder -> TermFamily
+termFamilyBuilderToValue (TermFamilyBuilder t ecvbs) = undefined
+--termFamilybuilderToValue (TermFamilyBuilder t ecvbs) = TermFamily t (catMaybes $ map eclassBuilderToValue ecvbs)
+--  where
+--    eclassBuilderToValue (EClassValueBuilder z v) = BuilderValue ipperCurPathTrie z n
+
+
+-- | Design space:
+-- * Intersect greedily or not
+
+termForUniqueMu :: Term
+termForUniqueMu = Term "_____this_is_a_placeholder_for_genned_nodes_____" []
+
+hereIsUnconstrainedMu :: Node -> EClassValueBuilder
+hereIsUnconstrainedMu n = EClassValueBuilder (pathTrieToZipper TerminalPathTrie) (BVNode n)
+
+data PartitionedECVBs = PartitionedECVBs { emptyPartition      :: ![EClassValueBuilder]
+                                         , terminalPartition   :: ![EClassValueBuilder]
+                                         , descendantPartition :: ![EClassValueBuilder]
+                                         }
+
+-- Implementation note: Be careful with the laziness in this definition;
+-- it must return answers streaming.
+denotation :: Node -> [TermFamilyBuilder] -- [TermFamily]
+denotation n = {- map termFamilyBuilderToValue $ -} nodeDenotation [] n
+  where
+
+    -- Cases:
+    --  0) EmptyNode
+    --     * Return []
+    --  1) No prior-visited constraint constrains this present node, nor its children
+    --     a) The present node is the global unique Mu node
+    --        * Mark the present path as an uncostrained mu; return it.
+    --     b) The present node is not the global unique Mu node
+    --        * Return the terms generated by all child edges
+    --  2) This node is not constrained directly, but its children are.
+    --     * Return the terms generated by all child edges, possibly descending into a Mu node
+    --  3) This node is indicated by at least one prior-visited constraint
+    --     * Intersect these constraining values with each other and the present node.
+    --       Combine all such zippers into one.
+    --       Update all the constrained values to that intersection,
+    --       generate from that intersection (which is possibly empty, and possibly a singleton term).
+    --       ?? replace node with term ??
+    nodeDenotation :: [EClassValueBuilder] -> Node -> [TermFamilyBuilder]
+    nodeDenotation _     EmptyNode = [] -- Case 0
+    nodeDenotation ecvbs n         =
+        let partitioned = partitionECVBs ecvbs in
+        case (terminalPartition partitioned, descendantPartition partitioned) of
+          -- Case 1
+          ([], []) -> case n of
+                        -- Case 1a
+                        Mu _ -> [TermFamilyBuilder termForUniqueMu (hereIsUnconstrainedMu n : ecvbs)]
+
+                        -- Case 1b
+                        _    -> concatMap (edgeDenotation ecvbs) (nodeEdges n)
+
+          -- Case 2
+          ([], _)  -> concatMap (edgeDenotation ecvbs) (nodeEdges n)
+
+          -- Case 3
+          (_, _)   -> let intersectedVB = intersectECVBs n (terminalPartition partitioned)
+                          otherVBs      = emptyPartition partitioned ++ descendantPartition partitioned in
+                      guard (getBuilderValue intersectedVB /= BVNode EmptyNode) >>
+                      case getBuilderValue intersectedVB of
+                        BVUnconstrained ->
+                          case n of
+                            Mu _ -> let intersectedVB' = intersectedVB {getBuilderValue = BVNode n}
+                                    in  [TermFamilyBuilder termForUniqueMu (intersectedVB' : otherVBs)]
+
+                            _    -> do TermFamilyBuilder t newECVBs <- concatMap (edgeDenotation (intersectedVB : otherVBs)) (nodeEdges n)
+                                       let newPartitions = partitionECVBs newECVBs
+                                       case terminalPartition newPartitions of
+                                         [terminalECVB] ->
+                                           return $ TermFamilyBuilder t
+                                                                     (terminalECVB {getBuilderValue = BVTerm t}
+                                                                      : (emptyPartition newPartitions ++ descendantPartition newPartitions))
+
+                                         _              ->
+                                           error $ "denotation.nodeDenotation: Unexpected non-unitary number of constraints "
+                                             ++ "on the present node after merge, descend, and ascend"
+
+
+                        -- | TODO: Should this narrow to a BVTerm after the return?
+                        BVNode n'       ->
+                          case n' of
+                            Mu _ -> [TermFamilyBuilder termForUniqueMu (intersectedVB : otherVBs)]
+                            EmptyNode -> []
+                            _    -> case descendantPartition partitioned of
+                                      [] -> [TermFamilyBuilder termForUniqueMu (intersectedVB : otherVBs)]
+                                      _  -> error "denotation.nodeDenotation: Unimplemented" --concatMap (edgeDenotation (intersectedVB : otherVBs)) (nodeEdges n')
+
+                        BVTerm t        -> return $ TermFamilyBuilder t (intersectedVB : otherVBs)
+
+
+    partitionECVBs :: [EClassValueBuilder] -> PartitionedECVBs
+    partitionECVBs origEcvbs = go origEcvbs $ PartitionedECVBs [] [] []
+      where
+        go []           res = res
+        go (ecvb:ecvbs) res = let pt = zipperCurPathTrie (getPathTrieZipper ecvb) in
+                              if isEmptyPathTrie pt then
+                                go ecvbs (res {emptyPartition = ecvb : emptyPartition res})
+                              else if isTerminalPathTrie pt then
+                                go ecvbs (res {terminalPartition = ecvb : terminalPartition res})
+                              else
+                                go ecvbs (res {descendantPartition = ecvb : descendantPartition res})
+
+    -- Precondition: All constraints on this present edge (at the root) have been addressed by nodeDenotation
+    --
+    -- Algorithm:
+    --
+    --  For each PathEClass, initialize an unconstrained EClassValueBuilder with the corresponding path trie.
+    --
+    --  For each child:
+    --    * Descend all path trie zippers into that child index
+    --    * Generate from the given child node
+    --    * Ascend all path trie zippers with that same index
+    --    * Continue with the next node
+    --
+    -- Once child subterms have been selected, wrap them in a new term with the appropriate symbol, and return.
+    --
+    edgeDenotation :: [EClassValueBuilder] -> Edge -> [TermFamilyBuilder]
+    edgeDenotation ecvbs e = do
+        let highestConstraintIndex = getMax $ foldMap (\ecvb -> Max $ fromMaybe (-1) $ getMaxNonemptyIndex $ zipperCurPathTrie $ getPathTrieZipper ecvb) ecvbs
+        guard $ highestConstraintIndex < length (edgeChildren e)
+
+        (children', ecvbs'') <- runStateT (imapM pickChildAndUpdate (edgeChildren e)) ecvbs'
+        return $ TermFamilyBuilder (Term (edgeSymbol e) children') ecvbs''
+
+      where
+        ecvbs' :: [EClassValueBuilder]
+        ecvbs' = map mkEmptyEClassValueBuilder (unsafeGetEclasses $ edgeEcs e) ++ ecvbs
+
+        mkEmptyEClassValueBuilder :: PathEClass -> EClassValueBuilder
+        mkEmptyEClassValueBuilder pec = EClassValueBuilder (pathTrieToZipper $ getPathTrie pec) BVUnconstrained
+
+        pickChildAndUpdate :: Int -> Node -> StateT [EClassValueBuilder] [] Term
+        pickChildAndUpdate i n = do
+          curEcvbs <- get
+          let descended = map (\ecvb -> ecvb {getPathTrieZipper = pathTrieDescend (getPathTrieZipper ecvb) i})
+                              curEcvbs
+          TermFamilyBuilder t descended' <- lift $ nodeDenotation descended n
+          let ascended = map (\ecvb -> ecvb {getPathTrieZipper = pathTrieAscend (getPathTrieZipper ecvb) i})
+                             descended'
+          put ascended
+          return t
+-}
+
+-- | This works, albeit very inefficiently, for ECTAs without a Mu node
+naiveDenotation :: Node -> [Term]
+naiveDenotation n = go n
+  where
     -- | Note that this code uses the decision that f(a,a) does not satisfy the constraint 0.0=1.0 because those paths are empty.
     --   It would be equally valid to say that it does.
     ecsSatisfied :: Term -> EqConstraints -> Bool
@@ -772,17 +1308,15 @@ denotation n = go n
     go :: Node -> [Term]
     go n = case n of
              EmptyNode -> []
-             Mu _ -> [Term "Mu" []] -- | HAX!
+             Mu _ -> [Term "Mu" []] -- | Does not really work
              Node es -> do
                e <- es
 
-               -- Very inefficient here, but easy to code
                children <- sequence $ map go (edgeChildren e)
 
                let res = Term (edgeSymbol e) children
                guard $ ecsSatisfied res (edgeEcs e)
                return res
-
 
 
 
