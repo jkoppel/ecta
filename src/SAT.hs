@@ -253,7 +253,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ naiveDenotation $ fixUnbounded reducePartially $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded reducePartially $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula
@@ -266,6 +266,7 @@ allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ naiveDen
     termToAssignment :: Term -> HashMap Var Bool
     termToAssignment (Term _ [Term _ litVals, _]) = foldMap (\(var, Term "" [val, _]) -> HashMap.singleton var (termToBool val))
                                                             (zip sortedVars (evens litVals))
+    termToAssignment x    = error $ "Unexpected " <> show x
 
     termToBool :: Term -> Bool
     termToBool t | t == falseTerm = False

@@ -33,6 +33,7 @@ module Data.ECTA (
   , EnumerateM
   , runEnumerateM
   , enumerateFully
+  , getAllTerms
   , getAllTruncatedTerms
   , naiveDenotation
 

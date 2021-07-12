@@ -35,6 +35,7 @@ module Data.ECTA.Internal.ECTA.Enumeration (
   , expandUVar
 
   , getAllTruncatedTerms
+  , getAllTerms
   , naiveDenotation
   ) where
 
@@ -65,15 +66,9 @@ import Data.Text.Extended.Pretty
 -------------------------------------------------------------------------------
 
 
-------------------------------------
------- Denotation/enumeration
-------------------------------------
-
-
----------------------
--------- Enumeration state
----------------------
-
+---------------------------------------------------------------------------
+------------------------------- Term fragments ----------------------------
+---------------------------------------------------------------------------
 
 data TermFragment = TermFragmentNode !Symbol ![TermFragment]
                   | TermFragmentUVar UVar
@@ -82,6 +77,14 @@ data TermFragment = TermFragmentNode !Symbol ![TermFragment]
 termFragToTruncatedTerm :: TermFragment -> Term
 termFragToTruncatedTerm (TermFragmentNode s ts) = Term s (map termFragToTruncatedTerm ts)
 termFragToTruncatedTerm (TermFragmentUVar uv)   = Term (Symbol $ "v" <> pretty (uvarToInt uv)) []
+
+---------------------------------------------------------------------------
+------------------------------ Enumeration state --------------------------
+---------------------------------------------------------------------------
+
+-----------------------
+------- Suspended constraints
+-----------------------
 
 data SuspendedConstraint = SuspendedConstraint !PathTrie !UVar
   deriving ( Eq, Ord, Show )
@@ -96,6 +99,11 @@ descendScs :: Int -> Seq SuspendedConstraint -> Seq SuspendedConstraint
 descendScs i scs = Sequence.filter (not . isEmptyPathTrie . scGetPathTrie)
                    $ fmap (\(SuspendedConstraint pt uv) -> SuspendedConstraint (pathTrieDescend pt i) uv)
                           scs
+
+
+-----------------------
+------- UVarValue
+-----------------------
 
 data UVarValue = UVarUnenumerated { contents    :: !(Maybe Node)
                                   , constraints :: !(Seq SuspendedConstraint)
@@ -118,6 +126,10 @@ intersectUVarValue _                         UVarEliminated            = error "
 intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
 
 
+-----------------------
+------- Top-level state
+-----------------------
+
 data EnumerationState = EnumerationState {
     _uvarCounter        :: UVarGen
   , _uvarRepresentative :: UnionFind
@@ -135,8 +147,13 @@ initEnumerationState n = let (uvg, uv) = UnionFind.nextUVar UnionFind.initUVarGe
                                              (Sequence.singleton (UVarUnenumerated (Just n) Sequence.Empty))
 
 
+
+---------------------------------------------------------------------------
+---------------------------- Enumeration monad ----------------------------
+---------------------------------------------------------------------------
+
 ---------------------
--------- Enumeration monad and operations
+-------- Monad
 ---------------------
 
 
@@ -144,6 +161,11 @@ type EnumerateM = StateT EnumerationState []
 
 runEnumerateM :: EnumerateM a -> EnumerationState -> [(a, EnumerationState)]
 runEnumerateM = runStateT
+
+
+---------------------
+-------- UVar accessors
+---------------------
 
 nextUVar :: EnumerateM UVar
 nextUVar = do c <- use uvarCounter
@@ -171,6 +193,18 @@ getUVarRepresentative uv = do uf <- use uvarRepresentative
                               uvarRepresentative .= uf'
                               return uv'
 
+---------------------
+-------- Creating UVar's
+---------------------
+
+pecToSuspendedConstraint :: PathEClass -> EnumerateM SuspendedConstraint
+pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
+                                  return $ SuspendedConstraint (getPathTrie pec) uv
+
+
+---------------------
+-------- Merging UVar's / nodes
+---------------------
 
 assimilateUvarVal :: UVar -> SuspendedConstraint -> EnumerateM ()
 assimilateUvarVal uvTarg (SuspendedConstraint pt uvSrc)
@@ -196,9 +230,10 @@ mergeNodeIntoUVarVal uv n scs = do
   newValues <- use uvarValues
   guard (contents (Sequence.index newValues idx) /= Just EmptyNode)
 
-pecToSuspendedConstraint :: PathEClass -> EnumerateM SuspendedConstraint
-pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
-                                  return $ SuspendedConstraint (getPathTrie pec) uv
+
+---------------------
+-------- Thing to eliminate
+---------------------
 
 -- A full traversal; definitely not the most efficient.
 -- | TODO: Why does this exist again? Was this added from a phase before I was proper about not touching eliminated uvars?
@@ -218,7 +253,7 @@ refreshReferencedUVars = do
 
 
 ---------------------
--------- Enumeration algorithm
+-------- Core enumeration algorithm
 ---------------------
 
 enumerateNode :: Seq SuspendedConstraint -> Node -> EnumerateM TermFragment
@@ -245,6 +280,11 @@ enumerateEdge scs e = do
   newScs <- Sequence.fromList <$> mapM pecToSuspendedConstraint (unsafeGetEclasses $ edgeEcs e)
   let scs' = scs <> newScs
   TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
+
+
+---------------------
+-------- Enumeration-loop control
+---------------------
 
 data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
 
@@ -312,6 +352,10 @@ enumerateFully = do
                             else
                              enumerateOutUVar uv >> enumerateFully
 
+---------------------
+-------- Expanding an enumerated term fragment into a term
+---------------------
+
 expandTermFrag :: TermFragment -> EnumerateM Term
 expandTermFrag (TermFragmentNode s ts) = Term s <$> mapM expandTermFrag ts
 expandTermFrag (TermFragmentUVar uv)   = do val <- getUVarValue uv
@@ -319,7 +363,6 @@ expandTermFrag (TermFragmentUVar uv)   = do val <- getUVarValue uv
                                               UVarEnumerated t                 -> expandTermFrag t
                                               UVarUnenumerated (Just (Mu _)) _ -> return $ Term "Mu" []
                                               _                                -> error "expandTermFrag: Non-recursive, unenumerated node encountered"
-
 
 expandUVar :: UVar -> EnumerateM Term
 expandUVar uv = do UVarEnumerated t <- getUVarValue uv
@@ -335,6 +378,11 @@ getAllTruncatedTerms n = map (termFragToTruncatedTerm . fst) $
                          flip runEnumerateM (initEnumerationState n) $ do
                            enumerateFully
                            getTermFragForUVar (intToUVar 0)
+
+getAllTerms :: Node -> [Term]
+getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
+                  enumerateFully
+                  expandUVar (intToUVar 0)
 
 
 -- | This works, albeit very inefficiently, for ECTAs without a Mu node
