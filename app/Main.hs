@@ -13,10 +13,9 @@ import Text.Pretty.Simple
 import Data.Interned.Extended.HashTableBased as Interned
 import Data.Memoization as Memoization
 import Data.ECTA
-import Data.ECTA.Internal.ECTA
-import Data.ECTA.Utilities
 import Data.Text.Extended.Pretty
 import TermSearch
+import Utility.Fixpoint
 
 ----------------------------------------------------------
 
@@ -45,4 +44,4 @@ prettyPrintAllTerms :: Node -> IO ()
 prettyPrintAllTerms n = pPrint $ map pretty $ map prettyTerm $ getAllTruncatedTerms n
 
 main :: IO ()
-main = prettyPrintAllTerms $ refold $ withoutRedundantEdges $ reducePartially $ filterType size6 tau
+main = prettyPrintAllTerms $ refold $ reduceFully $ filterType size6 baseType

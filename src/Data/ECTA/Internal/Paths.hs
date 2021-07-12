@@ -61,9 +61,10 @@ import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
 
-import Data.ECTA.Utilities
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Text.Extended.Pretty
+import Utility.Fixpoint
+import Utility.HashJoin
 
 -------------------------------------------------------
 

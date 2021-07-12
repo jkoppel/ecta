@@ -8,6 +8,8 @@ module Data.ECTA (
     Edge(Edge)
   , mkEdge
   , edgeChildren
+  , edgeSymbol
+
   , Node(Node, EmptyNode)
   , nodeEdges
   , createGloballyUniqueMu
@@ -24,17 +26,22 @@ module Data.ECTA (
   , maxIndegree
   , union
   , intersect
-  , naiveDenotation
-
   , withoutRedundantEdges
   , reducePartially
 
+  -- * Enumeration
+  , EnumerateM
+  , runEnumerateM
+  , enumerateFully
+  , getAllTruncatedTerms
+  , naiveDenotation
+
+
   -- * Visualization / debugging
   , toDot
-
-#ifdef PROFILE_CACHES
-  , resetAllEctaCaches_BrokenDoNotUse
-#endif
   ) where
 
-import Data.ECTA.Internal.ECTA
+import Data.ECTA.Internal.ECTA.Enumeration
+import Data.ECTA.Internal.ECTA.Operations
+import Data.ECTA.Internal.ECTA.Type
+import Data.ECTA.Internal.ECTA.Visualization

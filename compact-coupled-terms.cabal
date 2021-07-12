@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c1393a80f4edbfdf970a9970eff14c28754962531547ef07fa8a4adfa8f49136
+-- hash: c25624f7f480daa8dbc799da971378626022ef550147ab5918ae655725511abb
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -32,13 +32,15 @@ flag profile-caches
 library
   exposed-modules:
       Data.ECTA
-      Data.ECTA.Internal.ECTA
+      Data.ECTA.Internal.ECTA.Enumeration
+      Data.ECTA.Internal.ECTA.Operations
+      Data.ECTA.Internal.ECTA.Type
+      Data.ECTA.Internal.ECTA.Visualization
       Data.ECTA.Internal.Paths
       Data.ECTA.Internal.Paths.Zipper
       Data.ECTA.Internal.Term
       Data.ECTA.Paths
       Data.ECTA.Term
-      Data.ECTA.Utilities
       Data.HashTable.Extended
       Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
@@ -48,6 +50,8 @@ library
       Data.Text.Extended.Pretty
       SAT
       TermSearch
+      Utility.Fixpoint
+      Utility.HashJoin
   other-modules:
       Paths_compact_coupled_terms
   hs-source-dirs:
@@ -108,6 +112,7 @@ test-suite unit-tests
       PathsSpec
       SATSpec
       Test.Generators.ECTA
+      Utility.HashJoinSpec
       Paths_compact_coupled_terms
   hs-source-dirs:
       test

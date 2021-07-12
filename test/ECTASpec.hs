@@ -14,7 +14,10 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
-import Data.ECTA.Internal.ECTA
+import Data.ECTA
+import Data.ECTA.Internal.ECTA.Enumeration
+import Data.ECTA.Internal.ECTA.Operations
+import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Term
 import TermSearch
@@ -73,10 +76,6 @@ infiniteLineNode = Mu (Node [Edge "f" [Rec]])
 
 spec :: Spec
 spec = do
-  describe "hash utilities" $ do
-    it "nubById is same as nub" $
-      property $ \(xs :: [Int]) -> sort (nub xs) == sort (nubById id xs)
-
   describe "Pathable" $ do
     it "Node.getPath root" $
       getPath (path []) testBigNode `shouldBe` testBigNode

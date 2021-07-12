@@ -1,4 +1,4 @@
-module Data.ECTA.Utilities (
+module Utility.Fixpoint (
     fix
   , fixUnbounded
   , fixMaybe

@@ -38,8 +38,8 @@ import Data.List.Index ( imap )
 import Data.ECTA
 import Data.ECTA.Paths
 import Data.ECTA.Term
-import Data.ECTA.Utilities
 import Data.Text.Extended.Pretty
+import Utility.Fixpoint
 
 ----------------------------------------------------------------
 
