@@ -92,7 +92,7 @@ spec = do
     it "Node.modifyAtPath modifies at path" $
       modifyAtPath doubleNodeSymbols (path [0,0]) ex3 `shouldBe` ex3_doubled
 
-  describe "ECDFTA-nodes" $ do
+  describe "ECTA-nodes" $ do
     it "equality constraints constrain" $
         naiveDenotation ex1 `shouldSatisfy` ((== 2) . length)
 
@@ -179,3 +179,8 @@ spec = do
                                             let k = nodeCount n'
                                             numInvocations <- k `seq` readIORef v
                                             return $ k == numInvocations
+
+  describe "enumeration" $ do
+    it "naive and sophisticated enumeration are equivalent on nodes without mu" $
+      property $ mapSize (min 3) $
+        \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (getAllTerms $ reducePartially n)

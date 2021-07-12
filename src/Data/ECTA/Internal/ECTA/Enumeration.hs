@@ -257,7 +257,8 @@ refreshReferencedUVars = do
 ---------------------
 
 enumerateNode :: Seq SuspendedConstraint -> Node -> EnumerateM TermFragment
-enumerateNode scs n =
+enumerateNode _   EmptyNode = mzero
+enumerateNode scs n         =
   let (hereConstraints, descendantConstraints) = Sequence.partition (\(SuspendedConstraint pt _) -> isTerminalPathTrie pt) scs
   in case hereConstraints of
        Sequence.Empty -> case n of
