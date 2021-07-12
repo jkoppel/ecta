@@ -8,6 +8,8 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
 
+import Text.Pretty.Simple
+
 import Data.Interned.Extended.HashTableBased as Interned
 import Data.Memoization as Memoization
 import Data.ECTA
@@ -38,5 +40,9 @@ printCacheStatsForReduction n = do
 #endif
     hFlush stdout
 
+
+prettyPrintAllTerms :: Node -> IO ()
+prettyPrintAllTerms n = pPrint $ map pretty $ map prettyTerm $ getAllTruncatedTerms n
+
 main :: IO ()
-main = do printCacheStatsForReduction $ withoutRedundantEdges $ filterType uptoSize6 baseType
+main = prettyPrintAllTerms $ refold $ withoutRedundantEdges $ reducePartially $ filterType size6 tau

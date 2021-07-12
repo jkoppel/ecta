@@ -74,7 +74,6 @@ library:
     - ilist
     - intern
     - lens
-    - pretty-simple
     - raw-strings-qq
     - text
     - vector-instances
@@ -89,6 +88,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - compact-coupled-terms
+    - pretty-simple
 
 tests:
   unit-tests:

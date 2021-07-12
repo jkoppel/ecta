@@ -87,7 +87,7 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
     pathsForVar :: Node -> [Path]
     pathsForVar v = pathsMatching (==v) n
 
-f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11 :: Edge
+f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
 f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
 f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
@@ -96,9 +96,11 @@ f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType 
 f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
 f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
 f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
-f9 = constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-f10 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
-f11 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+
+applyOperator :: Node
+applyOperator = Node [constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
 
 
 arg1, arg2 :: Edge
@@ -117,15 +119,16 @@ anyArg = Node [arg3, arg4, arg5]
 anyFunc :: Node
 --anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 177 $ Map.toList hoogleComponents
 --anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
-anyFunc = Node [f9, f10, f11]
+anyFunc = Node [f9, f10]
 
-size1, size2, size3, size4, size5, size6 :: Node
-size1 = union [anyArg, anyFunc]
-size2 = app size1 size1
-size3 = union [app size2 size1, app size1 size2]
-size4 = union [app size3 size1, app size2 size2, app size1 size3]
-size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1 size4]
-size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1 size5]
+size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
+size1WithoutApplyOperator = union [anyArg, anyFunc]
+size1 = union [anyArg, anyFunc, applyOperator]
+size2 = app size1WithoutApplyOperator size1
+size3 = union [app size2 size1, app size1WithoutApplyOperator size2]
+size4 = union [app size3 size1, app size2 size2, app size1WithoutApplyOperator size3]
+size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
+size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
 
 uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
 uptoSize2 = union [size1, size2]

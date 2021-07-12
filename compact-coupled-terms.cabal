@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 93bdec9b39b8920eddab92633f8b974c5fcb66fc71c20051cc239007e035752e
+-- hash: c1393a80f4edbfdf970a9970eff14c28754962531547ef07fa8a4adfa8f49136
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -67,7 +67,6 @@ library
     , language-dot
     , lens
     , mtl
-    , pretty-simple
     , raw-strings-qq
     , text
     , unordered-containers
@@ -92,6 +91,7 @@ executable compact-coupled-terms-exe
     , hashable
     , language-dot
     , mtl
+    , pretty-simple
     , text
     , unordered-containers
     , vector

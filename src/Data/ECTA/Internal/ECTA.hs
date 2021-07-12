@@ -68,6 +68,8 @@ module Data.ECTA.Internal.ECTA (
   , enumerateFully
   , expandTermFrag
   , expandUVar
+
+  , getAllTruncatedTerms
   , naiveDenotation
 
   , withoutRedundantEdges
@@ -1070,6 +1072,18 @@ expandTermFrag (TermFragmentUVar uv)   = do val <- getUVarValue uv
 expandUVar :: UVar -> EnumerateM Term
 expandUVar uv = do UVarEnumerated t <- getUVarValue uv
                    expandTermFrag t
+
+
+---------------------
+-------- Full enumeration
+---------------------
+
+getAllTruncatedTerms :: Node -> [Term]
+getAllTruncatedTerms n = map (termFragToTruncatedTerm . fst) $
+                         flip runEnumerateM (initEnumerationState n) $ do
+                           enumerateFully
+                           getTermFragForUVar (intToUVar 0)
+
 
 -- | This works, albeit very inefficiently, for ECTAs without a Mu node
 naiveDenotation :: Node -> [Term]
