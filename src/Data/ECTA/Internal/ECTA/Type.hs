@@ -42,38 +42,6 @@ import Data.ECTA.Internal.Term
 ----------------------------- Edges -----------------------------
 -----------------------------------------------------------------
 
-
--- | Levels of equality-constraint reduction
--- 1) Unreduced: The FTA is identical in shape to what it would be if this constraint
---               were not present. To iterate through valid terms, one must
---               generate possible subterms and filter out equals.
---
--- 2) Leaf-reduced: Each node pointed to by the left path of the construct
---                  has been intersected with the union of all nodes pointed
---                  to by the right path. A filter is still required
---                  to find valid terms, but fewer invalid terms will be generated.
---
---                  HOWEVER, this property is unstable, and reducing other equality
---                  constraints on other nodes may make this property no longer hold.
---                  (See Sat.hs for a prime example.) We hence do not do anything
---                  with this level.
---
--- 3) Multiplied: Duplicates have been made of the hyperedge, and intersections performed, so that
---                it is guaranteed that, for each choice of term and the end of the left path,
---                there will be an equal term possible at the right edge. This enables
---                both efficient generation and counting.
---
--- The constraints being reduced is a property of the entire hyperedge, not of the individual constraints.
--- This is because reducing one constraint may result in another constraint becoming unreduced,
--- similar to how, in classic constraint propagation, one cannot process all constraints in a fixed linear order.
-data ECReduction = ECUnreduced | ECLeafReduced | ECMultiplied
-  deriving (Eq, Ord, Show, Generic)
-
-instance Hashable ECReduction
-
--- | This design has a violation of the representable/valid principle: If one constructs an FTA
--- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
--- all edges the same. They will not be equal, even though the graph is identical.
 data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
@@ -83,7 +51,7 @@ instance Show Edge where
          | otherwise                     = "(mkEdge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ ")"
 
 --instance Show Edge where
---  show e = "InternedEdge " ++ show (edgeId e) ++ " " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e) ++ " " ++ show (edgeReduction e)
+--  show e = "InternedEdge " ++ show (edgeId e) ++ " " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ " " ++ show (edgeEcs e)
 
 edgeSymbol :: Edge -> Symbol
 edgeSymbol = uEdgeSymbol . uninternedEdge
@@ -93,10 +61,6 @@ edgeChildren = uEdgeChildren . uninternedEdge
 
 edgeEcs :: Edge -> EqConstraints
 edgeEcs = uEdgeEcs . uninternedEdge
-
-edgeReduction :: Edge -> ECReduction
-edgeReduction = uEdgeReduction . uninternedEdge
-
 
 instance Eq Edge where
   (InternedEdge {edgeId = n1}) == (InternedEdge {edgeId = n2}) = n1 == n2
@@ -202,7 +166,6 @@ nodeCache = mkCache
 data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
                                      , uEdgeChildren  :: ![Node]
                                      , uEdgeEcs       :: !EqConstraints
-                                     , uEdgeReduction :: !ECReduction
                                      }
   deriving ( Eq, Show, Generic )
 
@@ -234,8 +197,8 @@ edgeCache = mkCache
 -------------------
 
 pattern Edge :: Symbol -> [Node] -> Edge
-pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _ _)) where
-  Edge s ns = intern $ UninternedEdge s ns EmptyConstraints ECUnreduced
+pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _)) where
+  Edge s ns = intern $ UninternedEdge s ns EmptyConstraints
 
 emptyEdge :: Edge
 emptyEdge = Edge "" [EmptyNode]
@@ -250,7 +213,7 @@ mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
 mkEdge s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced
+   | otherwise                       = intern $ UninternedEdge s ns ecs
 
 
 -------------------
