@@ -114,11 +114,24 @@ anyArg :: Node
 anyArg = Node [arg1, arg2, arg3, arg4, arg5]
 --anyArg = Node [arg3, arg4, arg5]
 
+speciallyTreatedFunctions :: [Symbol]
+speciallyTreatedFunctions = [  -- `($)` is hardcoded to only be in argument position
+                               "(Data.Function.$)", "(Data.Function.$)'ho'"
+                               -- `id` is almost entirely useless, but clogs up the graph. Currently banned
+                             , "Data.Function.id", "Data.Function.id'ho'"
+
+                             -- Seeing what happens upon banning other too-polymorphic functions
+                             , "Data.Either.either"
+                             ]
+
 -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
 --   in the ECTA.
 anyFunc :: Node
---anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 177 $ Map.toList hoogleComponents
-anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f1, f10]
+anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
+               $ map (\(k, v) -> parseHoogleComponent k v)
+               $ take 211
+               $ Map.toList hoogleComponents
+--anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f1, f10]
 --anyFunc = Node [f9, f10]
 
 size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node

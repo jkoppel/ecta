@@ -51,7 +51,14 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 prettyPrintAllTerms :: Node -> IO ()
 prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
-                        in pPrint ts >> print (length ts)
+                        in do pPrint ts
+                              print (length ts)
+#ifdef PROFILE_CACHES
+                              Memoization.printAllCacheMetrics
+                              Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
+                              Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
+                              Text.putStrLn ""
+#endif
 
 main :: IO ()
-main = prettyPrintAllTerms $ refold $ reduceFully $ filterType size6 baseType
+main = prettyPrintAllTerms $ refold $ reduceFully $ filterType uptoSize6 baseType
