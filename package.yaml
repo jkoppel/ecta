@@ -100,6 +100,7 @@ tests:
     - -with-rtsopts=-N
     dependencies:
       - compact-coupled-terms
+      - equivalence
       - hspec
       - QuickCheck
 

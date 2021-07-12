@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c25624f7f480daa8dbc799da971378626022ef550147ab5918ae655725511abb
+-- hash: 181bdd37accbf8a2e5014162e836dc049547513e7e3615b64c361c2bc2cbd308
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -108,6 +108,7 @@ test-suite unit-tests
   main-is: Spec.hs
   other-modules:
       CacheProfilingSpec
+      Data.Persistent.UnionFindSpec
       ECTASpec
       PathsSpec
       SATSpec
@@ -123,6 +124,7 @@ test-suite unit-tests
     , base
     , compact-coupled-terms
     , containers
+    , equivalence
     , hashable
     , hspec
     , language-dot
