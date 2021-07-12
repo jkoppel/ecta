@@ -6,6 +6,8 @@ module Data.ECTA.Internal.ECTA.Enumeration (
   , termFragToTruncatedTerm
 
   , SuspendedConstraint(..)
+  , scGetPathTrie
+  , scGetUVar
   , descendScs
   , UVarValue(..)
 
@@ -232,11 +234,14 @@ mergeNodeIntoUVarVal uv n scs = do
 
 
 ---------------------
--------- Thing to eliminate
+-------- Variant maintainer
 ---------------------
 
--- A full traversal; definitely not the most efficient.
--- | TODO: Why does this exist again? Was this added from a phase before I was proper about not touching eliminated uvars?
+-- This thing here might be a performance issue.
+--
+-- It exists because it was easier to code / might actually be faster
+-- to update referenced uvars here than inline in firstExpandableUVar.
+-- There is no Sequence.foldMapWithIndexM.
 refreshReferencedUVars :: EnumerateM ()
 refreshReferencedUVars = do
   values <- use uvarValues
