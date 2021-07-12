@@ -10,9 +10,12 @@ import System.IO ( hFlush, stdout )
 
 import Text.Pretty.Simple
 
+import Data.ECTA
+import Data.ECTA.Internal.ECTA.Enumeration
+import Data.ECTA.Term
 import Data.Interned.Extended.HashTableBased as Interned
 import Data.Memoization as Memoization
-import Data.ECTA
+import Data.Persistent.UnionFind
 import Data.Text.Extended.Pretty
 import TermSearch
 import Utility.Fixpoint
@@ -40,8 +43,15 @@ printCacheStatsForReduction n = do
     hFlush stdout
 
 
+getTermsNoOccursCheck :: Node -> [Term]
+getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
+                          flip runEnumerateM (initEnumerationState n) $ do
+                            enumerateOutUVar   (intToUVar 0)
+                            getTermFragForUVar (intToUVar 0)
+
 prettyPrintAllTerms :: Node -> IO ()
-prettyPrintAllTerms n = pPrint $ map pretty $ map prettyTerm $ getAllTruncatedTerms n
+prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
+                        in pPrint ts >> print (length ts)
 
 main :: IO ()
 main = prettyPrintAllTerms $ refold $ reduceFully $ filterType size6 baseType

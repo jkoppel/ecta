@@ -1,4 +1,4 @@
--- | Lightweight union-find implementation
+-- | Lightweight union-find implementation suitable for use with nondeterminism
 
 -- Mutable union-find, as in Data.Equivalence.Monad, should be faster overall,
 -- but this persistent implementation is suitable for use in nondeterministic search
