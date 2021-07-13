@@ -13,6 +13,7 @@ import qualified Language.Dot.Pretty as Dot
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Hashable ( Hashable, hashWithSalt )
 import GHC.Generics (Generic)
+import Data.Monoid
 
 import ECTA
 import Paths
@@ -66,7 +67,26 @@ newtype ConstrPattern = ConstrPattern (Pattern ConstrPattern, EqConstraints)
 
 instance Hashable ConstrPattern
 
-type Subst = [(Int, Node)]
+newtype Subst = Subst [(Int, Node)]
+  deriving ( Show )
+
+instance Semigroup Subst where
+  (<>) (Subst s) (Subst s') = Subst $ s ++ s'
+
+instance Monoid Subst where
+  mempty = Subst []
+
+mkSubst :: [(Int, Node)] -> Subst
+mkSubst = Subst
+
+bindSubst :: Int -> Node -> Subst -> Subst
+bindSubst i n (Subst s) = Subst $ (i, n) : s
+
+lookupSubst :: Int -> Subst -> Node
+lookupSubst x (Subst s) =
+  case List.lookup x s of
+    Just v -> v
+    Nothing -> error $ "no binding for " ++ show x ++ " in " ++ show (fmap fst s)
 
 data PatternMatch = PatternMatch { root :: Node
                                  , pat :: ConstrPattern
@@ -78,35 +98,45 @@ matchRoot :: ConstrPattern -> Node -> [PatternMatch]
 matchRoot p n =
   List.map (\s -> PatternMatch { root = n, pat = p, subst = s }) $ matches p n
   where
-    matches :: ConstrPattern -> Node -> [[(Int, Node)]]
+    matches :: ConstrPattern -> Node -> [Subst]
     matches (ConstrPattern (p, _)) n =
       case p of
         (App sym args) ->
           matchArgs args $
           List.filter (\(Edge sym' _) -> sym == sym') $
           nodeEdges n
-        (As (p, idx)) -> List.map (\m -> (idx, n) : m) $ matches p n
-        (Meta p) -> matchMeta p $ nodeEdges n
-        (Var idx) -> [[(idx, n)]]
-        (NodePat n') -> if n == n' then [[]] else []
+        (As (p, idx)) -> List.map (bindSubst idx n) $ matches p n
+        (Meta p) -> matchMetas p $ nodeEdges n
+        (Var idx) -> [mkSubst [(idx, n)]]
+        (NodePat n') -> if n == n' then [mempty] else []
 
-    matchArgs args edges =
-      concatMap ((List.map concat . mapM (uncurry matches))
-                 . (\(Edge _ nodes) -> zip args nodes)) edges
+    matchEdge :: [ConstrPattern] -> Edge -> [Subst]
+    matchEdge pats edge =
+      let children = edgeChildren edge in
+      if length pats /= length children then [] else
+        mconcat <$> zipWithM matches pats children
 
-    matchMeta pat edges =
-      concatMap ((List.map concat . mapM (uncurry matches))
-                 . (\(Edge _ nodes) -> [(pat, head nodes)])) edges
+    matchArgs :: [ConstrPattern] -> [Edge] -> [Subst]
+    matchArgs args = concatMap (matchEdge args)
+
+    matchMeta :: ConstrPattern -> Edge -> [Subst]
+    matchMeta pat edge =
+      case edgeChildren edge of
+        [] -> []
+        (n : _) -> matches pat n
+
+    matchMetas :: ConstrPattern -> [Edge] -> [Subst]
+    matchMetas pat = concatMap (matchMeta pat)
 
 
 match :: ConstrPattern -> Node -> [PatternMatch]
 match p = crush (matchRoot p)
 
 atNode :: Node -> Node -> (Node -> Node) -> Node
-atNode n n' f = mapNodes (\n'' -> if n'' == n' then f n' else n'') n 
+atNode n n' f = mapNodes (\n'' -> if n'' == n' then f n' else n'') n
 
 data RuleRhs =
-  FuncRhs ([(Int, Node)] -> Maybe ConstrPattern)
+  FuncRhs (Subst -> Maybe ConstrPattern)
   | PatternRhs ConstrPattern
 
 data Rule = Rule { lhs :: ConstrPattern
@@ -117,7 +147,7 @@ liftPat' :: Subst -> ConstrPattern -> Node
 liftPat' subst (ConstrPattern (pat, constrs)) =
   case pat of
     (App sym args) -> funcC sym (List.map (liftPat subst) args) constrs
-    (Var idx) -> Maybe.fromJust $ List.lookup idx subst
+    (Var idx) -> lookupSubst idx subst
     (NodePat n) -> n
     (As _) -> error "Cannot lift As"
     (Meta _) -> error "Cannot lift Meta"
@@ -126,7 +156,7 @@ liftPat = liftPat'
 -- liftPat :: Subst -> ConstrPattern -> Node
 -- liftPat = memo2 (NameTag "liftPat") liftPat'
 
-liftClosedPat = liftPat []
+liftClosedPat = liftPat mempty
 
 rewriteMatch :: PatternMatch -> Rule -> Node -> Maybe Node
 rewriteMatch PatternMatch { root, subst } Rule { lhs, rhs = PatternRhs rhs } n =
@@ -176,10 +206,7 @@ try r n =
     Nothing -> Just n
 
 andThen :: (Node -> Maybe Node) -> (Node -> Maybe Node) -> Node -> Maybe Node
-andThen r r' n =
-  case r n of
-    Just n' -> r' n'
-    Nothing -> Nothing
+andThen r r' n = r' =<< r n
 
 repeat' :: Int -> (Node -> Maybe Node) -> Node -> Maybe Node
 repeat' i r n =
@@ -190,7 +217,7 @@ repeat' i r n =
       if n == n' then Just n else repeat' (i - 1) r n'
 
 rule' name lhs rhs = Rule { lhs, rhs = PatternRhs rhs, ruleName = name }
-rule = rule' "" 
+rule = rule' ""
 frule' name lhs rhs = Rule { lhs, rhs = FuncRhs rhs, ruleName = name }
 frule = frule' ""
 
@@ -265,7 +292,7 @@ firstT name p q = appC name [metaNode, p, q] $ combineEqConstraints cs cs'
 
 filterT = bothT "filter"
 eqT = bothT "eq"
-andT = bothT "and"    
+andT = bothT "and"
 ltT = bothT "lt"
 selectT = bothT "select"
 
@@ -293,7 +320,7 @@ rctimeT = app "meta" [app "comp" [nodePat tNode], app "run" [nodePat tNode]]
 
 rscopeT = app "scope" [rtimeT]
 cscopeT = app "scope" [ctimeT]
-  
+
 dotT = firstT "dot"
 
 relationT n = app n [ctimeT]
@@ -345,14 +372,14 @@ filterToHidx = rule' "filter-to-hidx" lhs rhs
     lhs = filterP (eqP ckey rkey) rel
     rhs = hidxT (selectT ckey rel) (filterT (eqT ckey (cscopeT `dotT` ckey)) rel) rkey
 
-filterToOidx = rule' "filter-to-oidx" lhs rhs
-  where
-    ckey = var 0
-    rkey1 = var 1
-    rkey2 = var 2
-    rel = var 3
-    lhs = filterP ((rkey1 `ltP` ckey) `andP` (ckey `ltP` rkey2)) rel
-    rhs = oidxT (selectT ckey rel) (filterT (ckey `eqT` (cscopeT `dotT` ckey)) rel) rkey1 rkey2
+-- filterToOidx = rule' "filter-to-oidx" lhs rhs
+--   where
+--     ckey = var 0
+--     rkey1 = var 1
+--     rkey2 = var 2
+--     rel = var 3
+--     lhs = filterP ((rkey1 `ltP` ckey) `andP` (ckey `ltP` rkey2)) rel
+--     rhs = oidxT (selectT ckey rel) (filterT (ckey `eqT` (cscopeT `dotT` ckey)) rel) rkey1 rkey2
 
 filterToOidx1 = rule' "filter-to-oidx1" lhs rhs
   where
@@ -426,7 +453,7 @@ schema = schema'
 schemaOf node =
   Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate bothEq schema node)
 
-data Kind = Relation | Scalar | MetaData 
+data Kind = Relation | Scalar | MetaData
   deriving ( Eq, Show )
 
 kind :: Symbol -> [Kind] -> Kind
@@ -438,7 +465,7 @@ kind n _
 kindOf node =
   Maybe.fromJust $ Map.lookup (nodeIdentity node) (annotate bothEq kind node)
 
-isStructure n = n == "oidx" || n == "hidx" || n == "list" || n == "scalar" 
+isStructure n = n == "oidx" || n == "hidx" || n == "list" || n == "scalar"
 
 hasStructure :: Symbol -> [Bool] -> Bool
 hasStructure n xs = isStructure n || or xs
@@ -450,7 +477,7 @@ introList = frule' "intro-list" lhs rhs
   where
     lhs = var 0
     rhs subst = do
-      node <- List.lookup 0 subst
+      let node = lookupSubst 0 subst
       if hasStructureOf node then Nothing else do
         let schm = schemaOf node
         return $ listT (var 0) (tupleT [scalarT $ nameT n | n <- schm])
@@ -468,20 +495,20 @@ flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
 
 rewriteNoReduce t =
-  (repeat' 3 $
+  (repeat' 5 $
     try (rewriteAll splitFilter)
     `andThen` try (rewriteAll mergeFilter)
     `andThen` try (rewriteAll hoistFilter)
-    `andThen` try (rewriteAll flipAnd) 
-    `andThen` try (rewriteAll flipEq) 
+    `andThen` try (rewriteAll flipAnd)
+    `andThen` try (rewriteAll flipEq)
     `andThen` try (rewriteAll flipJoin)
   )
-  `andThen` (repeat' 1 $
+  `andThen` (repeat' 5 $
      try (rewriteAll elimJoin)
      `andThen` try (rewriteAll filterToHidx)
-     `andThen` try (rewriteAll filterToOidx) 
+     -- `andThen` try (rewriteAll filterToOidx)
      `andThen` try (rewriteAll filterToOidx1)
-     `andThen` try (rewriteAll filterToOidx2) 
+     `andThen` try (rewriteAll filterToOidx2)
     )
   `andThen` try (rewriteAll introList)
   `andThen` rewriteRoot forceRtime
@@ -499,9 +526,16 @@ tpch3 =
     )
     (filterT (eqT (nameT "c_mktsegment") (paramT "param0")) (relationT "customer"))
 
-simple = listT (relationT "customer") (scalarT (cscopeT `dotT` nameT "test"))
+containsEdgeLabel lbl =
+  crush (\(Node es) -> Any (any (\e -> edgeSymbol e == lbl) es))
+containsConstr = containsEdgeLabel "constrained"
 
-dumpDot (Just x) = Dot.prettyPrintDot $ toDot x
+simple = filterT (eqT (nameT "test") (nameT "test")) $ relationT "lineitem"
+
+simpleC = appC "constrained" [rtimeT, simple] (mkEqConstraints [[path [0, 1, 0], path [1, 0, 1, 0]]])
+
+dumpDot (Just x) = Dot.renderDot $ toDot x
+prettyDot (Just x) = Dot.prettyPrintDot $ toDot x
 
 ntuples :: Symbol -> [Int] -> Int
 ntuples "filter" [_, _, n] = n
