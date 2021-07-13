@@ -4,6 +4,7 @@ module DbOpt where
 
 import Debug.Trace
 import Control.Monad.State
+import Term
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import qualified Data.List as List
@@ -51,7 +52,7 @@ fNode = Node [fEdge]
 tfNode = Node [tEdge, fEdge]
 
 data Pattern p =
-  App Symbol [p]
+    App Symbol [p]
   | Meta p
   | As (p, Int)
   | Var Int
@@ -102,10 +103,7 @@ match :: ConstrPattern -> Node -> [PatternMatch]
 match p = crush (matchRoot p)
 
 atNode :: Node -> Node -> (Node -> Node) -> Node
-atNode n n' f =
-  if n == n' then f n else
-    Node (List.map (\e -> mkEdge (edgeSymbol e) (List.map (\n -> atNode n n' f) $ edgeChildren e) (edgeEcs e)) es)
-    where (Node es) = n
+atNode n n' f = mapNodes (\n'' -> if n'' == n' then f n' else n'') n 
 
 data RuleRhs =
   FuncRhs ([(Int, Node)] -> Maybe ConstrPattern)
@@ -161,7 +159,7 @@ rewriteAll rule root = do
   traceM ("found " ++ show (length matches) ++ " matches")
   root' <- foldM (\root (i, m) ->
                     let root' = (try $ rewriteMatch m rule) root in
-                      seq root' $ trace ("processed " ++ show i) root')
+                      trace ("processed " ++ show i ++ " " ++ show (nodeCount <$> root')) root')
            root
            $ zip [0..] matches
   if root == root' then Nothing else return root'

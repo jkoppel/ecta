@@ -2,11 +2,13 @@
 
 module ECTASpec ( spec ) where
 
-import Control.Monad ( replicateM )
 import qualified Data.HashSet as HashSet
 import Data.HashSet ( HashSet )
-import Data.List ( and, subsequences, (\\) )
+import Data.IORef ( newIORef, readIORef, modifyIORef )
+import Data.List ( and, nub, sort )
 import qualified Data.Text as Text
+
+import System.IO.Unsafe ( unsafePerformIO )
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
@@ -14,7 +16,10 @@ import Test.QuickCheck
 
 import Internal.ECTA
 import Internal.Paths
+import Term
 import TermSearch
+
+import Test.Generators.ECTA
 
 -----------------------------------------------------------------
 
@@ -62,85 +67,16 @@ infiniteLineNode :: Node
 infiniteLineNode = Mu (Node [Edge "f" [Rec]])
 
 --------------------------------------------------------------
--------------------- QuickCheck Instances --------------------
---------------------------------------------------------------
-
--- Cap size at 3 whenever you will generate all denotations
-_MAX_NODE_DEPTH = 5
-
-capSize :: Int -> Gen a -> Gen a
-capSize max g = sized $ \n -> if n > max then
-                                resize max g
-                              else
-                                g
-
-instance Arbitrary Node where
-  arbitrary = capSize _MAX_NODE_DEPTH $ sized $ \n -> do
-    k <- chooseInt (1, 3)
-    Node <$> replicateM k arbitrary
-
-  shrink EmptyNode = []
-  shrink (Node es) = [Node es' | seq <- subsequences es \\ [es], es' <- mapM shrink seq] ++ concatMap (\e -> edgeChildren e) es
-  shrink (Mu _)    = []
-  shrink Rec       = []
-
-
-testEdgeTypes :: [(Symbol, Int)]
-testEdgeTypes = [ ("f", 1)
-                , ("g", 2)
-                , ("h", 1)
-                , ("w", 3)
-                , ("a", 0)
-                , ("b", 0)
-                , ("c", 0)
-                ]
-
-testConstants :: [Symbol]
-testConstants = map fst $ filter ((== 0) . snd) testEdgeTypes
-
-randPathPair :: [Node] -> Gen [Path]
-randPathPair ns = do p1 <- randPath ns
-                     p2 <- randPath ns
-                     return [p1, p2]
-
-randPath :: [Node] -> Gen Path
-randPath [] = return EmptyPath
-randPath ns = do i <- chooseInt (0, length ns - 1)
-                 let Node es = ns !! i
-                 ns' <- edgeChildren <$> elements es
-                 b <- arbitrary
-                 if b then return (path [i]) else ConsPath i <$> randPath ns'
-
-instance Arbitrary Edge where
-  arbitrary =
-    sized $ \n -> case n of
-                   0 -> Edge <$> elements testConstants <*> pure []
-                   _ -> do (sym, arity) <- elements testEdgeTypes
-                           ns <- replicateM arity (resize (n-1) (arbitrary `suchThat` (/= EmptyNode)))
-                           numConstraintPairs <- elements [0,0,1,1,2,3]
-                           ps <- replicateM numConstraintPairs (randPathPair ns)
-                           return $ mkEdge sym ns (mkEqConstraints ps)
-
-  shrink e = mkEdge (edgeSymbol e) <$> (mapM shrink (edgeChildren e)) <*> pure (edgeEcs e)
-
-
-dropEqConstraints :: Node -> Node
-dropEqConstraints = mapNodes go
-  where
-    go :: Node -> Node
-    go (Node es) = Node (map dropEc es)
-
-    dropEc :: Edge -> Edge
-    dropEc (Edge s ns) = Edge s ns
-
-
---------------------------------------------------------------
 ----------------------------- Main ---------------------------
 --------------------------------------------------------------
 
 
 spec :: Spec
 spec = do
+  describe "hash utilities" $ do
+    it "nubById is same as nub" $
+      property $ \(xs :: [Int]) -> sort (nub xs) == sort (nubById id xs)
+
   describe "Pathable" $ do
     it "Node.getPath root" $
       getPath (path []) testBigNode `shouldBe` testBigNode
@@ -164,14 +100,23 @@ spec = do
     it "reduces paths constrained by equality constraints" $
         reducePartially ex2 `shouldBe` reducePartially ex1
 
-    it "has already performed all normalizations" $
-        refreshNode testBigNode `shouldBe` testBigNode
-
   describe "intersection" $ do
     it "intersection commutes with denotation" $
       property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (denotation $ intersect n1 n2)
                                                `shouldBe` HashSet.intersection (HashSet.fromList $ denotation n1)
                                                                                (HashSet.fromList $ denotation n2)
+
+    it "intersect is associative" $
+      property $ \n1 n2 n3 -> ((n1 `intersect` n2) `intersect` n3) == (n1 `intersect` (n2 `intersect` n3))
+
+    it "intersect is commutative" $
+      property $ \n1 n2 -> intersect n1 n2 == intersect n2 n1
+
+    it "intersect distributes over union" $
+      property $ \n1 n2 n3 -> intersect n1 (union [n2, n3]) == union [intersect n1 n2, intersect n1 n3]
+
+    it "intersect is idempotent" $
+      property $ \n1 -> intersect n1 n1 == n1
 
   describe "reduction" $ do
     it "reduction preserves denotation" $
@@ -192,7 +137,7 @@ spec = do
                                      ns' = reduceEqConstraints ecs ns
                                  in  ns' == reduceEqConstraints ecs ns'
 
-    -- | TODO (6/29/21): Need a better way to visualize the type nodes.
+    -- | TODO (6/29/21): Need a better way to visualize the type nodes. Cannot figure out why this fails.
     --   Reversing the order that eclasses are processed seems to make no difference.
     {-
     it "reducing a constraint is idempotent: buggy input 6/27/21" $
@@ -221,3 +166,17 @@ spec = do
           f    = \n -> Node [Edge "f" [n]]
       in (ns' == ns'') && ns' == [f $ f $ f $ f infiniteLineNode, f $ f $ f $ infiniteLineNode]
          `shouldBe` True
+
+
+  describe "folding" $
+    it "refold folds the simplest unrolled input" $
+      refold (Node [Edge "f" [infiniteLineNode]]) `shouldBe` infiniteLineNode
+
+  describe "traversals" $
+    it "mapNodes hits each node exactly once" $
+      -- Note: If the Arbitrary Node instance is changed to return empty or mu nodes, this will need to change
+      property $ \n -> unsafePerformIO $ do v <- newIORef 0
+                                            let n' = mapNodes (\m -> unsafePerformIO (modifyIORef v (+1) >> pure m)) n
+                                            let k = nodeCount n'
+                                            numInvocations <- k `seq` readIORef v
+                                            return $ k == numInvocations

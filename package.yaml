@@ -24,8 +24,10 @@ dependencies:
 - containers
 - hashable
 - language-dot
+- mtl
 - text
 - unordered-containers
+- vector
 default-extensions:
   - BangPatterns
   - ConstraintKinds
@@ -65,15 +67,16 @@ library:
   dependencies:
     - array
     - equivalence
+    - extra
     - fgl
     - hashtables
     - ilist
     - intern
     - lens
-    - mtl
     - pretty-simple
     - raw-strings-qq
     - text
+    - vector-instances
 
 executables:
   compact-coupled-terms-exe:

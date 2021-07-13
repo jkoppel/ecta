@@ -3,6 +3,8 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: 94e4ad4e12573ae0f7d2bd063ee16c55daa29d93af9bd67d41ff3f7167cf2fd3
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -29,6 +31,7 @@ flag profile-caches
 
 library
   exposed-modules:
+      Data.HashTable.Extended
       Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
       Data.Memoization
@@ -37,9 +40,11 @@ library
       ECTA
       Internal.ECTA
       Internal.Paths
+      Internal.Term
       Paths
       Pretty
       SAT
+      Term
       TermSearch
       Utilities
   other-modules:
@@ -78,6 +83,7 @@ library
     , base
     , containers
     , equivalence
+    , extra
     , fgl
     , hashable
     , hashtables
@@ -90,6 +96,8 @@ library
     , raw-strings-qq
     , text
     , unordered-containers
+    , vector
+    , vector-instances
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -134,8 +142,10 @@ executable compact-coupled-terms-exe
     , containers
     , hashable
     , language-dot
+    , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -144,9 +154,11 @@ test-suite unit-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      CacheProfilingSpec
       ECTASpec
       PathsSpec
       SATSpec
+      Test.Generators.ECTA
       Paths_compact_coupled_terms
   hs-source-dirs:
       test
@@ -186,8 +198,10 @@ test-suite unit-tests
     , hashable
     , hspec
     , language-dot
+    , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -234,8 +248,10 @@ benchmark mainbench
     , criterion
     , hashable
     , language-dot
+    , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010

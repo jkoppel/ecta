@@ -14,7 +14,18 @@ module Internal.Paths (
   , isStrictSubpath
   , substSubpath
 
-  , PathEClass(..)
+  , PathTrie(..)
+  , InvertedPathTrie(..)
+  , PathTrieZipper(..)
+  , smallestNonempty
+  , toPathTrie
+  , fromPathTrie
+  , pathTrieToZipper
+  , zipperCurPathTrie
+  , pathTrieDescend
+  , pathTrieAscend
+
+  , PathEClass(PathEClass, ..)
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
@@ -22,7 +33,8 @@ module Internal.Paths (
   , EqConstraints(.., EmptyConstraints)
   , rawMkEqConstraints
   , unsafeGetEclasses
-  , normalizeEclasses
+  , hasSubsumingMemberListBased
+  , isContradicting
   , mkEqConstraints
   , combineEqConstraints
   , constraintsAreContradictory
@@ -32,19 +44,36 @@ module Internal.Paths (
   ) where
 
 import Control.Monad ( (=<<) )
+import qualified Data.Array as Array
+import Data.Function ( on )
 import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..), Endo(..) )
 import Data.Hashable ( Hashable )
+import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
+import Data.Vector ( Vector )
+import qualified Data.Vector as Vector
+import Data.Vector.Instances ()
 
 import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
 import GHC.Generics ( Generic )
 
+import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Pretty
 import Utilities
 
 -------------------------------------------------------
+
+
+-----------------------------------------------------------------------
+--------------------------- Misc / general ----------------------------
+-----------------------------------------------------------------------
+
+flipOrdering :: Ordering -> Ordering
+flipOrdering GT = LT
+flipOrdering LT = GT
+flipOrdering EQ = EQ
 
 -----------------------------------------------------------------------
 -------------------------------- Paths --------------------------------
@@ -124,6 +153,139 @@ class Pathable t t' | t -> t' where
   getAllAtPath :: Path -> t -> [t']
   modifyAtPath :: (t' -> t') -> Path -> t -> t
 
+
+-----------------------------------------------------------------------
+----------------------- Path tries and zippers ------------------------
+-----------------------------------------------------------------------
+
+---------------------
+------- Generic-ish utility functions
+---------------------
+
+-- | Precondition: A nonempty cell exists
+smallestNonempty :: Vector PathTrie -> Int
+smallestNonempty v = Vector.ifoldr (\i pt oldMin -> case pt of
+                                                      EmptyPathTrie -> oldMin
+                                                      _             -> i)
+                                   maxBound
+                                   v
+
+---------------------
+------- Path tries
+---------------------
+
+data PathTrie = EmptyPathTrie
+              | TerminalPathTrie
+              | PathTrieSingleChild {-# UNPACK #-} !Int !PathTrie
+              | PathTrie !(Vector PathTrie) -- Invariant: Must have at least two nonempty nodes
+  deriving ( Eq, Show, Generic )
+
+instance Hashable PathTrie
+
+comparePathTrieVectors :: Vector PathTrie -> Vector PathTrie -> Ordering
+comparePathTrieVectors v1 v2 = foldr (\i res -> let (t1, t2) = (v1 Vector.! i, v2 Vector.! i)
+                                                in case (isEmptyPathTrie t1, isEmptyPathTrie t2) of
+                                                     (False, True)  -> LT
+                                                     (True, False)  -> GT
+                                                     (True, True)   -> res
+                                                     (False, False) -> case compare t1 t2 of
+                                                                         LT -> LT
+                                                                         GT -> GT
+                                                                         EQ -> res)
+                                     valueIfComponentsMatch
+                                     [0..(min (Vector.length v1) (Vector.length v2) - 1)]
+  where
+    valueIfComponentsMatch = compare (Vector.length v1) (Vector.length v2)
+
+
+
+isEmptyPathTrie :: PathTrie -> Bool
+isEmptyPathTrie EmptyPathTrie = True
+isEmptyPathTrie _             = False
+
+instance Ord PathTrie where
+  compare EmptyPathTrie                EmptyPathTrie                = EQ
+  compare EmptyPathTrie                _                            = LT
+  compare _                            EmptyPathTrie                = GT
+  compare TerminalPathTrie             TerminalPathTrie             = EQ
+  compare TerminalPathTrie             _                            = LT
+  compare _                            TerminalPathTrie             = GT
+  compare (PathTrieSingleChild i1 pt1) (PathTrieSingleChild i2 pt2)
+                          | i1 < i2                                 = LT
+                          | i1 > i2                                 = GT
+                          | otherwise                               = compare pt1 pt2
+  compare (PathTrieSingleChild i1 pt1) (PathTrie v2)                = let i2 = smallestNonempty v2 in
+                                                                      case compare i1 i2 of
+                                                                        LT -> LT
+                                                                        GT -> GT
+                                                                        EQ -> case compare pt1 (v2 Vector.! i2) of
+                                                                                LT -> LT
+                                                                                GT -> GT
+                                                                                EQ -> LT -- v2 must have a second nonempty
+  compare a@(PathTrie _)               b@(PathTrieSingleChild _ _)  = flipOrdering $ compare b a
+  compare (PathTrie v1)                (PathTrie v2)                = comparePathTrieVectors v1 v2
+
+
+-- | Precondition: No path in the input is a subpath of another
+toPathTrie :: [Path] -> PathTrie
+toPathTrie []          = EmptyPathTrie
+toPathTrie [EmptyPath] = TerminalPathTrie
+toPathTrie ps          = if all (\p -> pathHeadUnsafe p == pathHeadUnsafe (head ps)) ps then
+                           PathTrieSingleChild (pathHeadUnsafe $ head ps) (toPathTrie $ map pathTailUnsafe ps)
+                         else
+                           PathTrie vec
+  where
+    maxIndex = getMax $ foldMap (Max . pathHeadUnsafe) ps
+
+    -- TODO: Inefficient to use this; many passes. over the list.
+    -- This may not be used in a place where perf matters, though
+    pathsStartingWith :: Int -> [Path] -> [Path]
+    pathsStartingWith i ps = concatMap (\case EmptyPath    -> []
+                                              ConsPath j p -> if i == j then [p] else [])
+                                    ps
+
+    vec = Vector.generate (maxIndex + 1) (\i -> toPathTrie $ pathsStartingWith i ps)
+
+fromPathTrie :: PathTrie -> [Path]
+fromPathTrie EmptyPathTrie              = []
+fromPathTrie TerminalPathTrie           = [EmptyPath]
+fromPathTrie (PathTrieSingleChild i pt) = map (ConsPath i) $ fromPathTrie pt
+fromPathTrie (PathTrie v)               = Vector.ifoldr (\i pt acc -> map (ConsPath i) (fromPathTrie pt) ++ acc) [] v
+
+---------------------
+------- Zippers
+---------------------
+
+data InvertedPathTrie = PathZipperRoot
+                      | PathTrieAt {-# UNPACK #-} !Int !PathTrie !InvertedPathTrie
+  deriving ( Eq, Ord, Show )
+
+data PathTrieZipper = PathTrieZipper !PathTrie !InvertedPathTrie
+  deriving ( Eq, Ord, Show )
+
+
+pathTrieToZipper :: PathTrie -> PathTrieZipper
+pathTrieToZipper pt = PathTrieZipper pt PathZipperRoot
+
+zipperCurPathTrie :: PathTrieZipper -> PathTrie
+zipperCurPathTrie (PathTrieZipper pt _) = pt
+
+
+pathTrieDescend :: PathTrieZipper -> Int -> PathTrieZipper
+pathTrieDescend (PathTrieZipper     EmptyPathTrie              z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i EmptyPathTrie    z)
+pathTrieDescend (PathTrieZipper     TerminalPathTrie           z) i = PathTrieZipper EmptyPathTrie  (PathTrieAt i TerminalPathTrie z)
+pathTrieDescend (PathTrieZipper pt@(PathTrie v)                z) i = PathTrieZipper (v Vector.! i) (PathTrieAt i pt z)
+pathTrieDescend (PathTrieZipper pt@(PathTrieSingleChild j pt') z) i
+                | i == j                                            = PathTrieZipper pt'           (PathTrieAt i pt z)
+                | otherwise                                         = PathTrieZipper EmptyPathTrie (PathTrieAt i pt z)
+
+-- | The semantics of this may not be what you expect: Path trie zippers do not support editing currently, only traversing.
+--   The value at the cursor (as well as the index) is ignored except when traversing above the root, where it uses those
+--   values to extend the path trie upwards.
+pathTrieAscend :: PathTrieZipper -> Int -> PathTrieZipper
+pathTrieAscend (PathTrieZipper pt PathZipperRoot)         i = PathTrieZipper (PathTrieSingleChild i pt) PathZipperRoot
+pathTrieAscend (PathTrieZipper pt (PathTrieAt i pt' ipt)) _ = PathTrieZipper pt'                        ipt
+
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
 --------------------------------------------------------------------------
@@ -132,14 +294,25 @@ class Pathable t t' | t -> t' where
 ---------- Path E-classes
 ---------------------------
 
-newtype PathEClass = PathEClass [Path]
-  deriving ( Eq, Ord, Show, Generic )
+data PathEClass = PathEClass' { getPathTrie  :: !PathTrie
+                              , getOrigPaths :: ![Path]
+                              }
+  deriving ( Show, Generic )
+
+instance Eq PathEClass where
+  (==) = (==) `on` getPathTrie
+
+instance Ord PathEClass where
+  compare = compare `on` getPathTrie
+
+-- | TODO: This pattern (and the caching of the original path list) is a temporary affair
+--         until we convert all clients of PathEclass to fully be based on tries
+pattern PathEClass :: [Path] -> PathEClass
+pattern PathEClass ps <- PathEClass' _ ps where
+  PathEClass ps = PathEClass' (toPathTrie $ nub ps) (sort $ nub ps)
 
 unPathEClass :: PathEClass -> [Path]
-unPathEClass (PathEClass ps) = ps
-
---instance Show PathEClass where
---  showsPrec d = showsPrec d . unPathEClass
+unPathEClass (PathEClass' _ paths) = paths
 
 instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
@@ -147,8 +320,27 @@ instance Pretty PathEClass where
 instance Hashable PathEClass
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
-hasSubsumingMember pec1 pec2 = getAny $ mconcat [Any (isStrictSubpath p1 p2) | p1 <- unPathEClass pec1
-                                                                             , p2 <- unPathEClass pec2]
+hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
+  where
+    go :: PathTrie -> PathTrie -> Bool
+    go EmptyPathTrie                _                            = False
+    go _                            EmptyPathTrie                = False
+    go TerminalPathTrie             TerminalPathTrie             = False
+    go TerminalPathTrie             _                            = True
+    go _                            TerminalPathTrie             = False
+    go (PathTrieSingleChild i1 pt1) (PathTrieSingleChild i2 pt2) = if i1 == i2 then
+                                                                     go pt1 pt2
+                                                                   else
+                                                                     False
+    go (PathTrieSingleChild i1 pt1) (PathTrie v2)                = case v2 Vector.!? i1 of
+                                                                     Nothing  -> False
+                                                                     Just pt2 -> go pt1 pt2
+    go (PathTrie v1)                (PathTrieSingleChild i2 pt2) = case v1 Vector.!? i2 of
+                                                                     Nothing  -> False
+                                                                     Just pt1 -> go pt1 pt2
+    go (PathTrie v1)                (PathTrie v2)                = any (\i -> go (v1 Vector.! i) (v2 Vector.! i))
+                                                                       [0..(min (Vector.length v1) (Vector.length v2) - 1)]
+
 
 -- | Extends the subsumption ordering to a total ordering by using the default lexicographic
 --   comparison for incomparable elements.
@@ -200,22 +392,23 @@ constraintsAreContradictory = (== EqContradiction)
 
 --------- Construction
 
-normalizeEclasses :: (Ord a) => [[a]] -> [[a]]
-normalizeEclasses = sort . map sort
+
+hasSubsumingMemberListBased :: [Path] -> [Path] -> Bool
+hasSubsumingMemberListBased ps1 ps2 = getAny $ mconcat [Any (isStrictSubpath p1 p2) | p1 <- ps1
+                                                                                    , p2 <- ps2]
 
 -- | The real contradiction condition is a cycle in the subsumption ordering.
---   But, after congruence closure, this will reduce into a self-cycle in the subsumption ordering.
 --   But, after congruence closure, this will reduce into a self-cycle in the subsumption ordering.
 --
 --   TODO; Prove this.
 isContradicting :: [[Path]] -> Bool
-isContradicting cs = any (\pec -> hasSubsumingMember pec pec) $ map PathEClass cs
+isContradicting cs = any (\pec -> hasSubsumingMemberListBased pec pec) cs
 
 -- Contains an inefficient implementation of the congruence closure algorithm
 mkEqConstraints :: [[Path]] -> EqConstraints
 mkEqConstraints initialConstraints = case completedConstraints of
                                        Nothing -> EqContradiction
-                                       Just cs -> EqConstraints $ map PathEClass $ normalizeEclasses cs
+                                       Just cs -> EqConstraints $ sort $ map PathEClass cs
   where
     removeTrivial :: (Eq a) => [[a]] -> [[a]]
     removeTrivial = filter (\x -> length x > 1) . map nub
@@ -248,11 +441,12 @@ mkEqConstraints initialConstraints = case completedConstraints of
 ---------- Operations
 
 combineEqConstraints :: EqConstraints -> EqConstraints -> EqConstraints
-combineEqConstraints EqContradiction _               = EqContradiction
-combineEqConstraints _               EqContradiction = EqContradiction
-combineEqConstraints ec1             ec2              = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
-
-
+combineEqConstraints = memo2 (NameTag "combineEqConstraints") go
+  where
+    go EqContradiction _               = EqContradiction
+    go _               EqContradiction = EqContradiction
+    go ec1             ec2             = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
+{-# NOINLINE combineEqConstraints #-}
 
 -- A faster implementation would be: Merge the eclasses of both, run mkEqConstraints (or at least do eclass completion),
 -- check result equal to ecs2

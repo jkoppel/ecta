@@ -1,9 +1,8 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Internal.ECTA (
-    Symbol(.., Symbol)
-
-  , Term(..)
+    nubById
 
   , Edge(.., Edge)
   , mkEdge
@@ -14,6 +13,7 @@ module Internal.ECTA (
   , setChildren
 
   , Node(.., Node)
+  , nodeIdentity
   , nodeEdges
   , createGloballyUniqueMu
   , nodeIdentity
@@ -21,32 +21,41 @@ module Internal.ECTA (
   -- * Operations
   , pathsMatching
   , mapNodes
+  , refold
+  , unfoldBounded
   , crush
+  , onNormalNodes
   , nodeCount
   , edgeCount
+  , maxIndegree
   , union
+
   , intersect
+  , dropRedundantEdges
   , intersectEdge
+
   , requirePath
   , requirePathList
   , denotation
   , annotate
 
+  , withoutRedundantEdges
   , reducePartially
-  , reduce
-  , reduceEdgeTo
   , reduceEdgeIntersection
   , reduceEqConstraints
 
   -- * Visualization / debugging
   , toDot
-  , refreshNode
-  , refreshEdge
+#ifdef PROFILE_CACHES
+  , resetAllEctaCaches_BrokenDoNotUse
+#endif
+  , getSubnodeById
   ) where
 
-import Debug.Trace
-import Control.Monad ( guard, liftM )
+import Control.Monad ( forM_, guard, void )
 import Control.Monad.State ( evalState, State, MonadState(..), modify, execState )
+import Control.Monad.ST ( ST, runST )
+import Data.Foldable ( foldrM )
 import Data.Function ( on )
 import Data.List ( inits, intercalate, nub, sort, tails )
 import           Data.Map ( Map, (!) )
@@ -56,32 +65,35 @@ import Data.Monoid ( Monoid(..), Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
-import Data.String (IsString(..) )
 import Data.Text ( Text )
 import qualified Data.Text as Text
+import Debug.Trace ( trace )
 
 import GHC.Generics ( Generic )
 
 import Control.Lens ( (&), ix, _1, (^?), (%~) )
 
 import qualified Data.Graph.Inductive as Fgl
-import Data.Hashable ( Hashable, hashWithSalt )
+import Data.Hashable ( Hashable(..) )
 import qualified Data.HashSet as HashSet
-import qualified Data.Interned as OrigInterned
-import Data.Interned.Text ( InternedText, internedTextId )
+import qualified Data.HashTable.ST.Basic as HT
+import Data.List.Extra ( nubSort )
 import Data.List.Index ( imap )
 
 import qualified Language.Dot.Syntax as Dot
 
+-- | Switch the comments on these lines to switch to ekmett's original `intern` library
+--   instead of our single-threaded hashtable-based reimplementation.
+import Data.Interned.Extended.HashTableBased as Interned
 --import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
-import Data.Interned.Extended.HashTableBased
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
-import Data.Memoization ( MemoCacheTag(..), memo2 )
+import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
+import qualified Data.Memoization as Memoization
 import Paths
 import Pretty
+import Term
 import Utilities
-
 -------------------------------------------------------------------------------
 
 
@@ -92,55 +104,77 @@ import Utilities
 square :: (Num a) => a -> a
 square x = x * x
 
----------------------------------------------------------------
--------------- Terms, the things being represented ------------
----------------------------------------------------------------
+traceFn :: (a -> String) -> a -> a
+traceFn f x = trace (f x) x
+
+----------
+--- Hash join / clustering / nub
+----------
 
 
-data Symbol = Symbol' {-# UNPACK #-} !InternedText
-  deriving ( Eq, Ord )
+-- | PRECONDITION: (h x == h y) => x == y
+nubById :: (a -> Int) -> [a] -> [a]
+nubById _ [x] = [x]
+nubById h ls = runST $ do
+    ht <- HT.newSized 101
+    mapM_ (\x -> HT.insert ht (h x) x) ls
+    HT.foldM (\res (_, v) -> return $ v : res) [] ht
 
-pattern Symbol :: Text -> Symbol
-pattern Symbol t <- Symbol' (OrigInterned.unintern -> t) where
-  Symbol t = Symbol' (OrigInterned.intern t)
+nubByIdSinglePass :: forall a. (a -> Int) -> [a] -> [a]
+nubByIdSinglePass _ [x] = [x]
+nubByIdSinglePass h ls = runST (go ls [] =<< HT.new)
+  where
+    go :: [a] -> [a] -> HT.HashTable s Int Bool -> ST s [a]
+    go []     acc    _  = return acc
+    go (x:xs) acc ht = do alreadyPresent <- HT.mutate ht
+                                                      (h x)
+                                                      (\case Nothing -> (Just True, False)
+                                                             Just _  -> (Just True, True))
+                          if alreadyPresent then
+                            go xs acc ht
+                          else
+                            go xs (x:acc) ht
 
-instance Pretty Symbol where
-  pretty (Symbol t) = t
 
-instance Show Symbol where
-  show (Symbol it) = show it
+maybeAddToHt :: v -> Maybe [v] -> (Maybe [v], ())
+maybeAddToHt v = \case Nothing -> (Just [v], ())
+                       Just vs -> (Just (v : vs), ())
 
-instance Hashable Symbol where
-  hashWithSalt s (Symbol' t) = s `hashWithSalt` (internedTextId t)
+-- This is testing slower than running clusterByHash and nubByIdSinglePass separately. How?
+hashClusterIdNub :: (Interned a) => (a -> Int) -> (a -> Int) -> [a] -> [[a]]
+hashClusterIdNub _ _ [x] = [[x]]
+hashClusterIdNub hCluster hNub ls = runST $ do
+    clusters <- HT.new
+    seen <- HT.new
 
-instance IsString Symbol where
-  fromString = Symbol . fromString
+    forM_ ls $ \x -> do
+      alreadyPresent <- HT.mutate seen
+                                  (hNub x)
+                                  (\case Nothing -> (Just True, False)
+                                         Just _  -> (Just True, True))
+      if alreadyPresent then
+        return ()
+       else do
+        void $ HT.mutate clusters (hCluster x) (maybeAddToHt x)
 
-data Term = Term Symbol [Term]
-  deriving ( Eq, Ord, Show, Generic )
+    HT.foldM (\res (_, vs) -> return $ vs : res) [] clusters
 
-instance Hashable Term
+clusterByHash :: (a -> Int) -> [a] -> [[a]]
+clusterByHash h ls = runST $ do
+    ht <- HT.new
+    mapM_ (\x -> HT.mutate ht (h x) (maybeAddToHt x)) ls
+    HT.foldM (\res (_, vs) -> return $ vs : res) [] ht
 
-instance Pretty Term where
-  pretty (Term s []) = pretty s
-  pretty (Term s ts) = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
-
----------------------
------- Term ops
----------------------
-
-instance Pathable Term Term where
-  type Emptyable Term = Maybe Term
-
-  getPath EmptyPath       t           = Just t
-  getPath (ConsPath p ps) (Term _ ts) = case ts ^? ix p of
-                                          Nothing -> Nothing
-                                          Just t  -> getPath ps t
-
-  getAllAtPath p t = maybeToList $ getPath p t
-
-  modifyAtPath f EmptyPath       t           = f t
-  modifyAtPath f (ConsPath p ps) (Term s ts) = Term s (ts & ix p %~ modifyAtPath f ps)
+hashJoin :: (a -> Int) -> (a -> a -> b) -> [a] -> [a] -> [b]
+hashJoin h j l1 l2 = runST $ do
+    ht2 <- HT.new
+    mapM_ (\x -> HT.mutate ht2 (h x) (maybeAddToHt x)) l2
+    foldrM (\x res -> do maybeCluster <- HT.lookup ht2 (h x)
+                         case maybeCluster of
+                           Nothing  -> return res
+                           Just vs2 -> return $ [j x v2 | v2 <- vs2] ++ res )
+           []
+           l1
 
 ---------------------------------------------------------------
 ------------------- Data type and interning -------------------
@@ -182,7 +216,7 @@ instance Hashable ECReduction
 -- | This design has a violation of the representable/valid principle: If one constructs an FTA
 -- which is already fully reduced, then reducing it will change the edgeReduction field, but leave
 -- all edges the same. They will not be equal, even though the graph is identical.
-data Edge = InternedEdge { edgeId        ::  !Id
+data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
 
@@ -223,7 +257,7 @@ instance Hashable Edge where
 -- Assumes a single globally unique recursive node
 data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | EmptyNode
-          | Mu Node
+          | Mu !Node
           | Rec
 
 instance Eq Node where
@@ -351,7 +385,7 @@ mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
 mkEdge s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced -- | TODO: Reduce work on nub/sort
+   | otherwise                       = intern $ UninternedEdge s ns ecs ECUnreduced
 
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
@@ -359,7 +393,8 @@ pattern Node :: [Edge] -> Node
 pattern Node es <- (InternedNode _ es) where
   Node es = case removeEmptyEdges es of
               []  -> EmptyNode
-              es' -> intern $ UninternedNode $ nub $ sort es' -- TODO: Use sortUniq to eliminate a pass, ensure sort is fast for already sorted
+              es' -> intern $ UninternedNode $ nubSort es'
+
 
 createGloballyUniqueMu :: (Node -> Node) -> Node
 createGloballyUniqueMu f = Mu (f Rec)
@@ -386,14 +421,19 @@ pathsMatching f n@(Node es) = (concat $ map pathsMatchingEdge es)
     pathsMatchingEdge :: Edge -> [Path]
     pathsMatchingEdge (Edge _ ns) = concat $ imap (\i x -> map (ConsPath i) $ pathsMatching f x) ns
 
-mapNodes :: (Node -> Node) -> Node -> Node
-mapNodes f EmptyNode = f EmptyNode
-mapNodes f (Node es) = f $ Node (map (\(Edge s ns) -> Edge s (map (mapNodes f) ns)) es)
-mapNodes f (Mu n)    = f (Mu (mapNodes f n))
-mapNodes f Rec       = f Rec
+mapNodes ::(Node -> Node) -> Node -> Node
+mapNodes f n = go n
+  where
+    -- | Memoized separately for each mapNodes invocation
+    go :: Node -> Node
+    go = memo (NameTag "mapNodes") (go' f)
+    {-# NOINLINE go #-}
 
-unfoldRec :: Node -> Node
-unfoldRec n = mapNodes (\x -> if x == Rec then Mu n else x) n
+    go' :: (Node -> Node) -> Node -> Node
+    go' f EmptyNode = EmptyNode
+    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' f (Mu n)    = f $ (Mu $ go n)
+    go' f Rec       = f Rec
 
 -- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
 -- combinators in the KURE and compstrat libraries.
@@ -405,7 +445,7 @@ crush f n = evalState (go n) Set.empty
     go :: (Monoid m) => Node -> State (Set Id) m
     go EmptyNode = return mempty
     go Rec       = return mempty
-    go (Mu n)    = go n
+    go (Mu n)    = mappend (f (Mu n)) <$> go n
     go n@(Node es) = do
       seen <- get
       let nId = nodeIdentity n
@@ -435,6 +475,34 @@ annotate merge f n = execState (go n) Map.empty
             es
           modify (Map.insert nId value)
 
+onNormalNodes :: (Monoid m) => (Node -> m) -> (Node -> m)
+onNormalNodes f n@(Node _) = f n
+onNormalNodes _ _          = mempty
+
+-----------------------
+------ Folding
+-----------------------
+
+unfoldRec :: Node -> Node
+unfoldRec = memo (NameTag "unfoldRec") go
+  where
+    go n = mapNodes (\x -> if x == Rec then Mu n else x) n
+
+refold :: Node -> Node
+refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
+                                                _    -> First Nothing)
+                                         n
+           in case muNode of
+                Nothing     -> n
+                Just m -> let unfoldedNode = unfoldRec m
+                          in fixUnbounded (mapNodes (\x -> if x == unfoldedNode then Mu m else x)) n
+
+unfoldBounded :: Int -> Node -> Node
+unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
+                                  n    -> n)
+unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case Mu n -> unfoldRec n
+                                                        n    -> n)
+
 -----------------------
 ------ Edge operations
 -----------------------
@@ -446,8 +514,7 @@ isEmptyEdge :: Edge -> Bool
 isEmptyEdge e@(Edge _ ns) = any (== EmptyNode) ns
 
 edgeSubsumed :: Edge -> Edge -> Bool
-edgeSubsumed e1 e2 =    (dropEcs e1 == dropEcs e2)
-                     && constraintsImply (edgeEcs e1) (edgeEcs e2)
+edgeSubsumed e1 e2 = intersectEdge e1 e2 == Just e1
 
 
 ------------
@@ -455,10 +522,37 @@ edgeSubsumed e1 e2 =    (dropEcs e1 == dropEcs e2)
 ------------
 
 nodeCount :: Node -> Int
-nodeCount = getSum . crush (const $ Sum 1)
+nodeCount = getSum . crush (onNormalNodes $ const $ Sum 1)
 
 edgeCount :: Node -> Int
-edgeCount = getSum . crush (\(Node es) -> Sum (length es))
+edgeCount = getSum . crush (onNormalNodes $ \(Node es) -> Sum (length es))
+
+maxIndegree :: Node -> Int
+maxIndegree = getMax . crush (onNormalNodes $ \(Node es) -> Max (length es))
+
+------------
+------ Membership
+------------
+
+nodeRepresents :: Node -> Term -> Bool
+nodeRepresents EmptyNode _                      = False
+nodeRepresents (Node es) t                      = any (\e -> edgeRepresents e t) es
+nodeRepresents (Mu n)    t                      = nodeRepresents (unfoldRec n) t
+nodeRepresents _         _                      = False
+
+edgeRepresents :: Edge -> Term -> Bool
+edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
+                                 && and (zipWith nodeRepresents (edgeChildren e) ts)
+                                 && all (eclassSatisfied t) (unsafeGetEclasses $ edgeEcs e)
+  where
+    eclassSatisfied :: Term -> PathEClass -> Bool
+    eclassSatisfied t pec = allTheSame $ map (\p -> getPath p t) $ unPathEClass pec
+
+    allTheSame :: (Eq a) => [a] -> Bool
+    allTheSame [] = True
+    allTheSame ((!x):xs) = go x xs where
+        go !x [] = True
+        go !x (!y:ys) = (x == y) && (go x ys)
 
 ------------
 ------ Intersect
@@ -466,7 +560,15 @@ edgeCount = getSum . crush (\(Node es) -> Sum (length es))
 
 intersect :: Node -> Node -> Node
 intersect = memo2 (NameTag "intersect") doIntersect
+{-# NOINLINE intersect #-}
 
+
+-- 7/4/21: The unrolling strategy for intersection totally does not generalize beyond
+-- recursive nodes which have a self cycle.
+--
+-- The following will enter an infinite recursion:
+--  > t = createGloballyUniqueMu (\n -> Node  [Edge "a" [Node [Edge "a" [n]]]])
+--  > intersect t (Node [Edge "a" [t]])
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
@@ -475,35 +577,65 @@ doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
 doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
-  | otherwise                           = case catMaybes [intersectEdge e1 e2 | e1 <- es1, e2 <- es2] of
+  | n2 <  n1                            = intersect n2 n1
+                                          -- | `hash` gives a unique ID of the symbol because they're interned
+  | otherwise                           = case hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2 of
                                             [] -> EmptyNode
                                             es -> Node $ dropRedundantEdges es
+doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
+
+
+nodeDropRedundantEdges :: Node -> Node
+nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
+
+data RuleOutRes = Keep | RuledOutBy Edge
+
+dropRedundantEdges :: [Edge] -> [Edge]
+dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> (length es, edgeSymbol $ head es)) clusters, length $ concatMap reduceCluster clusters)-} clusters
   where
-    dropRedundantEdges :: [Edge] -> [Edge]
-    -- | TODO: WARNING WARNING DANGER WILL ROBINSON. This uses an internal detail
-    -- about EqConstraints (being sorted lists) to know that, if ecs1 has a subset of the constraints of ecs2,
-    -- then ecs1 < ecs2
-    dropRedundantEdges es = dropRedundantEdges' $ reverse $ sort es
-      where
-        -- Optimization idea: Some of these equality checks are already done in sort
-        dropRedundantEdges' (e:es) = if any (\e' -> e `edgeSubsumed` e') es then
-                                       dropRedundantEdges es
-                                     else
-                                       e : dropRedundantEdges es
-        dropRedundantEdges' []     = []
+    clusters = map (nubByIdSinglePass edgeId) $ clusterByHash (hash . edgeSymbol) origEs
 
-doIntersect n1 n2 = error ("Unexpected " ++ show n1 ++ " " ++ show n2)
+    reduceCluster :: [Edge] -> [Edge]
+    reduceCluster []     = []
+    reduceCluster (e:es) = case ruleOut e es of
+                             -- Optimization: If e' > e, likely to be greater than other things;
+                             -- move it to front and rule out more stuff next iteration.
+                             --
+                             -- No noticeable difference in overall wall clock time (7/2/21),
+                             -- but a few % reduction in calls to intersectEdgeSameSymbol
+                             (RuledOutBy e', es') -> reduceCluster (e':es')
+                             (Keep, es') -> e : reduceCluster es'
 
+    ruleOut :: Edge -> [Edge] -> (RuleOutRes, [Edge])
+    ruleOut e []     = (Keep, [])
+    ruleOut e (x:xs) = let e' = intersectEdgeSameSymbol e x in
+                       if e' == x then
+                         ruleOut e xs
+                       else if e' == e then
+                         (RuledOutBy x, xs)
+                       else
+                         let (res, notRuledOut) = ruleOut e xs
+                         in (res, x : notRuledOut)
 
 intersectEdge :: Edge -> Edge -> Maybe Edge
-intersectEdge (Edge s1 _) (Edge s2 _)
-  | s1 /= s2                                        = Nothing
-intersectEdge (Edge s children1) (Edge _ children2)
-  | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
-intersectEdge e1                 e2                 =
-    Just $ mkEdge (edgeSymbol e1)
-                  (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-                  (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+intersectEdge e1 e2
+  | edgeSymbol e1 /= edgeSymbol e2 = Nothing
+  | otherwise                      = Just $ intersectEdgeSameSymbol e1 e2
+
+intersectEdgeSameSymbol :: Edge -> Edge -> Edge
+intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
+  where
+    go e1          e2
+      | e2 < e1                                         = intersectEdgeSameSymbol e2 e1
+#ifdef DEFENSIVE_CHECKS
+    go (Edge s children1) (Edge _ children2)
+      | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
+#endif
+    go e1                 e2                 =
+        mkEdge (edgeSymbol e1)
+               (zipWith intersect (edgeChildren e1) (edgeChildren e2))
+               (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+{-# NOINLINE intersectEdgeSameSymbol #-}
 
 ------------
 ------ Union
@@ -576,36 +708,41 @@ instance Pathable [Node] Node where
 
 
 ------------------------------------
------- Reducing equality constraints
+------ Reduction
 ------------------------------------
 
+withoutRedundantEdges :: Node -> Node
+withoutRedundantEdges n = mapNodes dropReds n
+  where
+    dropReds (Node es) = Node (dropRedundantEdges es)
+    dropReds x         = x
+
+
 ---------------
---- Reduction
+--- Reducing Equality Constraints
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = reduce ECLeafReduced
-
--- | TODO: Does reducing top-down result in a properly reduced FTA? Must one
---   reapply the top constraints? Top down is faster than bottom-up, right?
-reduce :: ECReduction -> Node -> Node
-reduce _   EmptyNode = EmptyNode
-reduce _   (Mu n)    = Mu n
-reduce ecr (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map (reduce ecr) (edgeChildren e)})
-                            $ map (reduceEdgeTo ecr) es
-
-reduceEdgeTo :: ECReduction -> Edge -> Edge
-reduceEdgeTo ECUnreduced   e = e
-reduceEdgeTo ECLeafReduced e = reduceEdgeIntersection e
-reduceEdgeTo ECMultiplied  e = reduceEdgeMultiply e
+reducePartially = memo (NameTag "reducePartially") go
+  where
+    go :: Node -> Node
+    go EmptyNode = EmptyNode
+    go (Mu n)    = Mu n
+    go (Node es) = Node $ map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
+                        $ map reduceEdgeIntersection es
+{-# NOINLINE reducePartially #-}
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection e = mkEdge (edgeSymbol e)
-                                  (reduceEqConstraints (edgeEcs e) (edgeChildren e))
-                                  (edgeEcs e)
+reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
+  where
+   go :: Edge -> Edge
+   go e = mkEdge (edgeSymbol e)
+                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                 (edgeEcs e)
+{-# NOINLINE reduceEdgeIntersection #-}
 
 reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
-reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
+reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
     propagateEmptyNodes ns = if any (==EmptyNode) ns then map (const EmptyNode) ns else ns
@@ -636,9 +773,6 @@ reduceEqConstraints = memo2 (NameTag "reduceEqConstraints") go
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
         dropOnes xs = zipWith (++) (inits xs) (tail $ tails xs)
-
-reduceEdgeMultiply :: Edge -> Edge
-reduceEdgeMultiply = error "TODO: reduceEdgeMultiply"
 
 ------------------------------------
 ------ Denotation
@@ -685,14 +819,14 @@ data FglNodeLabel = IdLabel Id | TransitionLabel Symbol EqConstraints
 toFgl :: Node -> Fgl.Gr FglNodeLabel ()
 toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges ++ transitionToNodeEdges)
   where
-    maxNodeOutdegree :: Int
-    maxNodeOutdegree = getMax $ crush (\(Node es) -> Max (length es)) root
+    maxNodeIndegree :: Int
+    maxNodeIndegree = maxIndegree root
 
     fglNodeId :: Node -> Fgl.Node
-    fglNodeId n = nodeIdentity n * (maxNodeOutdegree + 1)
+    fglNodeId n = nodeIdentity n * (maxNodeIndegree + 1)
 
     fglTransitionId :: Node -> Int -> Fgl.Node
-    fglTransitionId n i = nodeIdentity n * (maxNodeOutdegree + 1) + (i + 1)
+    fglTransitionId n i = nodeIdentity n * (maxNodeIndegree + 1) + (i + 1)
 
     fglNodeLabel :: Node -> Maybe (Fgl.LNode FglNodeLabel)
     fglNodeLabel n@(Node _) = Just (fglNodeId n, IdLabel $ nodeIdentity n)
@@ -703,13 +837,13 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
     onNormalNodes f _          = mempty
 
     nodeNodes, transitionNodes :: [Fgl.LNode FglNodeLabel]
-    nodeNodes       = crush (maybeToList . fglNodeLabel) root
+    nodeNodes       = crush (onNormalNodes $ (maybeToList . fglNodeLabel)) root
     transitionNodes = crush (onNormalNodes $ \n@(Node es) -> imap (\i e -> (fglTransitionId n i, TransitionLabel (edgeSymbol e) (edgeEcs e))) es) root
 
     -- | Uses the globally-unique mu node assumption
     -- Does not work if root is the mu node
     muNodeLabel :: Maybe Fgl.Node
-    muNodeLabel = getFirst $ crush (\(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
+    muNodeLabel = getFirst $ crush (onNormalNodes $ \(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
       where
         muNodeToLabel (Mu n) = First $ Just $ fglNodeId n
         muNodeToLabel _      = First Nothing
@@ -769,14 +903,13 @@ toDot = fglToDot . toFgl
 ------------------------- Debugging ---------------------------
 ---------------------------------------------------------------
 
+#ifdef PROFILE_CACHES
+resetAllEctaCaches_BrokenDoNotUse :: IO ()
+resetAllEctaCaches_BrokenDoNotUse = do
+  Memoization.resetAllCaches
+  Interned.resetCache (cache @Node)
+  Interned.resetCache (cache @Edge)
+#endif
 
--- | This should be the identity operation. If not, something has gone wrong.
-refreshNode :: Node -> Node
-refreshNode EmptyNode = EmptyNode
-refreshNode (Node es) = Node (map refreshEdge es)
-refreshNode (Mu n)    = Mu (refreshNode n)
-refreshNode Rec       = Rec
-
--- | This should be the identity operation. If not, something has gone wrong.
-refreshEdge :: Edge -> Edge
-refreshEdge e = reduceEdgeTo (edgeReduction e) $ setChildren e (map refreshNode (edgeChildren e))
+getSubnodeById :: Node -> Id -> Maybe Node
+getSubnodeById n i = getFirst $ crush (onNormalNodes $ \x -> if nodeIdentity x == i then First (Just x) else First Nothing) n
