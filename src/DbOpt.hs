@@ -323,7 +323,7 @@ cscopeT = app "scope" [ctimeT]
 
 dotT = firstT "dot"
 
-relationT n = app n [ctimeT]
+relationT n = app "relation" [ctimeT, app n []]
 
 nameT n = app n [rctimeT]
 
@@ -430,9 +430,9 @@ flipBinop op = rule lhs rhs
 bothEq x y = if x == y then x else error ("expected equal " ++ show x ++ " " ++ show y)
 
 schema' :: Symbol -> [[Symbol]] -> [Symbol]
-schema' "orders" _ = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
-schema' "customer" _ = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
-schema' "lineitem" _ = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
+schema' "relation" [_, ["orders"]] = ["o_orderkey", "o_custkey", "o_orderstatus", "o_totalprice", "o_orderdate", "o_orderpriority", "o_clerk", "o_shippriority", "o_comment"]
+schema' "relation" [_, ["customer"]] = ["c_custkey", "c_name", "c_address", "c_nationkey", "c_phone", "c_acctbal", "c_mktsegment", "c_comment"]
+schema' "relation" [_, ["lineitem"]] = ["l_orderkey", "l_partkey", "l_suppkey", "l_linenumber", "l_quantity", "l_extendedprice", "l_discount", "l_tax", "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate", "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment"]
 schema' "filter" [_, _, s] = s
 schema' "oidx" [_, _, _, v, _, _] = v
 schema' "hidx" [_, _, _, v, _] = v
@@ -458,7 +458,8 @@ data Kind = Relation | Scalar | MetaData
 
 kind :: Symbol -> [Kind] -> Kind
 kind n _
-  | n == "filter" || n == "select" || n == "depjoin" || n == "join" || n == "oidx" || n == "hidx" || n == "list" || n == "scalar" = Relation
+  | n == "filter" || n == "select" || n == "depjoin" || n == "join" ||
+    n == "oidx" || n == "hidx" || n == "list" || n == "scalar" || n == "relation" = Relation
   | n == "eq" || n == "lt" = Scalar
   | otherwise = MetaData
 
@@ -478,18 +479,24 @@ introList = frule' "intro-list" lhs rhs
     lhs = var 0
     rhs subst = do
       let node = lookupSubst 0 subst
-      if hasStructureOf node then Nothing else do
-        let schm = schemaOf node
-        return $ listT (var 0) (tupleT [scalarT $ nameT n | n <- schm])
+      if hasStructureOf node then Nothing else
+        case kindOf node of
+          Relation ->
+            do
+              let schm = schemaOf node
+              return $ listT (var 0) (tupleT [scalarT $ nameT n | n <- schm])
+          _ -> Nothing
 
 introSimpleList = frule' "intro-simple-list" lhs rhs
   where
     lhs = var 0
     rhs subst = return $ simpleListT (var 0)
 
+rtimeConstr x = appC "constrained" [rtimeT, x] (mkEqConstraints [[path [0, 1, 0], path [1, 0, 1, 0]]])
+
 forceRtime = rule (var 0) rhs
   where
-    rhs = appC "constrained" [rtimeT, var 0] (mkEqConstraints [[path [0, 1, 0], path [1, 0, 1, 0]]])
+    rhs = rtimeConstr (var 0)
 
 flipEq = flipBinop "eq"
 flipAnd = flipBinop "and"
@@ -526,11 +533,12 @@ tpch3 =
     )
     (filterT (eqT (nameT "c_mktsegment") (paramT "param0")) (relationT "customer"))
 
-containsEdgeLabel lbl =
-  crush (\(Node es) -> Any (any (\e -> edgeSymbol e == lbl) es))
+containsEdgeLabel lbl n =
+  getAny $ crush (\(Node es) -> Any (any (\e -> edgeSymbol e == lbl) es)) n
 containsConstr = containsEdgeLabel "constrained"
 
-simple = filterT (eqT (nameT "test") (nameT "test")) $ relationT "lineitem"
+simple = -- filterT (eqT (nameT "test") (nameT "test")) $
+  relationT "lineitem"
 
 simpleC = appC "constrained" [rtimeT, simple] (mkEqConstraints [[path [0, 1, 0], path [1, 0, 1, 0]]])
 
@@ -540,9 +548,9 @@ prettyDot (Just x) = Dot.prettyPrintDot $ toDot x
 ntuples :: Symbol -> [Int] -> Int
 ntuples "filter" [_, _, n] = n
 ntuples "select" [_, _, n] = n
-ntuples "oidx" [_, k, _, v, _, _] = ((v `div` k) * 30)
-ntuples "hidx" [_, k, _, v, _, _] = (v `div` k)
-ntuples "join" [_, _, a, b] = (max (a) (b))
+ntuples "oidx" [_, k, _, v, _, _] = (v `div` k) * 30
+ntuples "hidx" [_, k, _, v, _, _] = v `div` k
+ntuples "join" [_, _, a, b] = max a b
 ntuples "depjoin" [_, k, _, v] = (max (k) (v))
 ntuples "lineitem" _ = 6000000
 ntuples "orders" _ = 1500000
@@ -550,8 +558,8 @@ ntuples "customer" _ = 150000
 ntuples "constrained" xs = minimum xs
 ntuples _ _ = 0
 
-rtimeE = app "runtime" []
-ctimeE = app "comptime" []
+rtimeE = nodePat $ liftClosedPat $ app "runtime" []
+ctimeE = nodePat $ liftClosedPat $ app "comptime" []
 relationE n = app n [rtimeE]
 joinE p r r' = app "join" [ctimeT, p, r, r']
 nameE n = app n [rtimeE]
@@ -561,9 +569,14 @@ dotE t p p' = app "dot" [t, p, p']
 filterE t p q = app "filter" [t, p, q]
 depjoinE t p q = app "depjoin" [t, p, q]
 hidxE t p s q k = app "hidx" [t, p, s, q, k]
+oidxE t p s q k k' = app "oidx" [t, p, s, q, k, k']
+listE t p s q = app "list" [t, p, s, q]
+tupleE t ps = app "tuple" (t : ps)
+scalarE t p = app "scalar" [t, p]
+noneE = app "none" [rtimeE]
 selectE t p q = app "select" [t, p, q]
-cscopeE = app "k" [ctimeE]
-rscopeE = app "k" [rtimeE]
+cscopeE = nodePat $ liftClosedPat $ app "k" [ctimeE]
+rscopeE = nodePat $ liftClosedPat $ app "k" [rtimeE]
 
 tpch3E = joinE (eqE rtimeE (nameE "c_custkey") (nameE "o_custkey"))
         (joinE (eqE rtimeE (nameE "l_orderkey") (nameE "o_orderkey"))
@@ -576,25 +589,58 @@ elimJoinE = rule lhs rhs
     lhs = joinP (var 0) (var 1) (var 2)
     rhs = depjoinE ctimeE (var 1) (filterE ctimeE (var 0) (var 2))
 
-depjoinStageE = rule lhs rhs
+splitFilterE = rule lhs rhs
+  where
+    lhs = filterP (var 0 `andP` var 1) (var 2)
+    rhs = filterE ctimeE (var 0) $ filterE ctimeE (var 1) (var 2)
+
+mergeFilterE = rule lhs rhs
+  where
+    lhs = filterP (var 0) $ filterP (var 1) (var 2)
+    rhs = filterE ctimeE (var 0 `andT` var 1) (var 2)
+
+hoistFilterE = rule lhs rhs
+  where
+    lhs = joinP (var 0) (filterP (var 1) (var 2)) (var 3)
+    rhs = filterE ctimeE (var 1) $ joinE (var 0) (var 2) (var 3)
+
+flipJoinE = rule lhs rhs
+  where
+    lhs = joinP (var 0) (var 1) (var 2)
+    rhs = joinE (var 0) (var 2) (var 1)
+
+flipBinopE op = rule lhs rhs
+  where
+    lhs = app op [var 0, var 1, var 2]
+    rhs = app op [var 0, var 2, var 1]
+
+flipEqE = flipBinopE "eq"
+flipAndE = flipBinopE "and"
+
+depjoinStageE = rule' "depjoin-stage" lhs rhs
   where
     lhs = depjoinE (var 0) (meta rtimeE `as` 1) (meta rtimeE `as` 2)
     rhs = depjoinE rtimeE (var 1) (var 2)
 
-filterStageE = rule lhs rhs
+filterStageE = rule' "filter-stage" lhs rhs
   where
     lhs = filterP (meta rtimeE `as` 1) (meta rtimeE `as` 2)
     rhs = filterE rtimeE (var 1) (var 2)
 
-eqStageE = rule lhs rhs
+eqStageE = rule' "eq-stage" lhs rhs
   where
     lhs = eqP (meta rtimeE `as` 1) (meta rtimeE `as` 2)
     rhs = eqE rtimeE (var 1) (var 2)
 
-hidxStageE = rule lhs rhs
+hidxStageE = rule' "hidx-stage" lhs rhs
   where
-    lhs = hidxE (var 0) (var 1) (var 2) (meta rtimeE `as` 3) (var 4)
+    lhs = hidxE ctimeE (var 1) (var 2) (meta rtimeE `as` 3) (meta rtimeE `as` 4)
     rhs = hidxE rtimeE (var 1) (var 2) (var 3) (var 4)
+
+oidxStageE = rule' "oidx-stage" lhs rhs
+  where
+    lhs = oidxE ctimeE (var 1) (var 2) (meta rtimeE `as` 3) (meta rtimeE `as` 4) (meta rtimeE `as` 5)
+    rhs = oidxE rtimeE (var 1) (var 2) (var 3) (var 4) (var 5)
 
 filterToHidxE = rule lhs rhs
   where
@@ -604,13 +650,56 @@ filterToHidxE = rule lhs rhs
     lhs = filterP (eqP ckey rkey) rel
     rhs = hidxE ctimeE (selectE ctimeE ckey rel) cscopeE (filterE ctimeE (eqE ctimeE ckey (dotE ctimeE cscopeE ckey)) rel) rkey
 
-rewriteEgraph t =
-  repeat' 5
-  (
-    try (rewriteAll elimJoinE)
-    `andThen` try (rewriteAll filterToHidxE)
-    `andThen` try (rewriteAll depjoinStageE)
-    `andThen` try (rewriteAll filterStageE)
-    `andThen` try (rewriteAll eqStageE)
-    `andThen` try (rewriteAll hidxStageE)
-  ) $ liftClosedPat t
+filterToOidx1E = rule' "filter-to-oidx1-e" lhs rhs
+  where
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = filterP (ckey `ltP` rkey) rel
+    rhs = oidxE ctimeE (selectE ctimeE ckey rel) cscopeE (filterE ctimeE (eqE ctimeE ckey (dotE ctimeE cscopeE ckey)) rel) noneE rkey
+
+filterToOidx2E = rule' "filter-to-oidx2-e" lhs rhs
+  where
+    ckey = var 0
+    rkey = var 1
+    rel = var 2
+    lhs = filterP (rkey `ltP` ckey) rel
+    rhs = oidxE ctimeE (selectE ctimeE ckey rel) cscopeE (filterE ctimeE (eqE ctimeE ckey (dotE ctimeE cscopeE ckey)) rel) rkey noneE
+
+introListE = frule' "intro-list" lhs rhs
+  where
+    lhs = var 0
+    rhs subst = do
+      let node = lookupSubst 0 subst
+      if hasStructureOf node then Nothing else
+        case kindOf node of
+          Relation ->
+            do
+              let schm = schemaOf node
+              return $ listE rtimeE (var 0) cscopeE (tupleE rtimeE [scalarE rtimeE (dotE ctimeE cscopeE $ nameE n) | n <- schm])
+          _ -> Nothing
+
+rewriteEgraph =
+  ( repeat' 5 $
+    try (rewriteAll splitFilterE)
+    `andThen` try (rewriteAll mergeFilterE)
+    `andThen` try (rewriteAll hoistFilterE)
+    `andThen` try (rewriteAll flipAndE)
+    `andThen` try (rewriteAll flipEqE)
+    `andThen` try (rewriteAll flipJoinE)
+  )
+  `andThen` (repeat' 5 $
+            try (rewriteAll elimJoinE)
+            `andThen` (try $ rewriteAll filterToHidxE)
+            `andThen` (try $ rewriteAll filterToOidx1E)
+            `andThen` (try $ rewriteAll filterToOidx2E)
+            )
+  `andThen` (try (rewriteAll introListE))
+  `andThen`
+    (repeat' 5 $
+     try (rewriteAll filterToHidxE)
+     `andThen` try (rewriteAll depjoinStageE)
+     `andThen` try (rewriteAll filterStageE)
+     `andThen` try (rewriteAll eqStageE)
+     `andThen` try (rewriteAll hidxStageE)
+     `andThen` try (rewriteAll hidxStageE))

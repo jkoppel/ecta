@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 94e4ad4e12573ae0f7d2bd063ee16c55daa29d93af9bd67d41ff3f7167cf2fd3
+-- hash: e2291132e6eb30421b1b8d45a5b14a97aca9c0bc52acbcd644c5928f8494b942
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -155,6 +155,7 @@ test-suite unit-tests
   main-is: Spec.hs
   other-modules:
       CacheProfilingSpec
+      DbSpec
       ECTASpec
       PathsSpec
       SATSpec
