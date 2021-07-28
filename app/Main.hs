@@ -9,6 +9,7 @@ import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
 
 import Text.Pretty.Simple
+import Language.Dot.Pretty
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
@@ -61,4 +62,7 @@ prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
 #endif
 
 main :: IO ()
-main = prettyPrintAllTerms $ refold $ reduceFully $ filterType uptoSize6 baseType
+main = prettyPrintAllTerms $ refold $ reduceFully 
+-- main = putStrLn $ renderDot . toDot
+    $ filterArgs ["def", "mbs"]
+    $ filterType uptoSize6 baseType
