@@ -67,8 +67,8 @@ main = do
     let !filterNode = filterType uptoSize6 baseType
     middle1 <- getCurrentTime
     print $ "Filter type time: " ++ show (diffUTCTime middle1 start)
-    let !node = filterArgs filterNode 
-    -- let !node = filterNode
+    -- let !node = filterArgs filterNode 
+    let !node = filterNode
     middle <- getCurrentTime
     print $ "Construction time: " ++ show (diffUTCTime middle middle1)
     prettyPrintAllTerms $ refold $ reduceFully node
