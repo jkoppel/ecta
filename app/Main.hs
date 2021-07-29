@@ -7,7 +7,7 @@ import Data.List ( nub )
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
-
+import Data.Time
 import Text.Pretty.Simple
 import Language.Dot.Pretty
 
@@ -62,7 +62,16 @@ prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
 #endif
 
 main :: IO ()
-main = prettyPrintAllTerms $ refold $ reduceFully 
+main = do
+    start <- getCurrentTime
+    let !filterNode = filterType uptoSize6 baseType
+    middle1 <- getCurrentTime
+    print $ "Filter type time: " ++ show (diffUTCTime middle1 start)
+    let !node = filterArgs filterNode 
+    -- let !node = filterNode
+    middle <- getCurrentTime
+    print $ "Construction time: " ++ show (diffUTCTime middle middle1)
+    prettyPrintAllTerms $ refold $ reduceFully node
+    end <- getCurrentTime
+    print $ "Reduction time: " ++ show (diffUTCTime end middle)
 -- main = putStrLn $ renderDot . toDot
-    $ filterArgs ["def", "mbs"]
-    $ filterType uptoSize6 baseType

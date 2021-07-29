@@ -59,40 +59,48 @@ theArrowNode = Node [Edge "(->)" []]
 arrowType :: Node -> Node -> Node
 arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 
-argsOf :: Node -> Node -> Node
-argsOf n1 n2 = Node [Edge "argsOf" [n1, n2]]
-
-nullSymbol :: Node
-nullSymbol = Node [Edge "null" []]
-
 constFunc :: Symbol -> Node -> Edge
 -- constFunc s t = Edge s [t]
-constFunc s t = Edge s [t, nullSymbol]
+constFunc s t = Edge s (t : map (const unused) [1..nArgs])
 
 constArg :: Symbol -> Node -> Edge
 -- constArg = constFunc
-constArg s t = Edge s [t, Node [Edge s []]]
+constArg s t = Edge s (t : map (\n -> if n == s then used else unused) argNames)
+
+argNames :: [Symbol]
+argNames = ["g", "x", "n"]
+
+nArgs :: Int
+nArgs = length argNames
+
+used :: Node
+used = Node [Edge "used" []]
+
+unused :: Node
+unused = Node [Edge "unused" []]
+
+orNode :: Node -> Node -> Node
+orNode n1 n2 = Node [Edge "usedOr" [n1, n2]]
 
 -- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
 -- Sometimes this can be desirable, but for enumeration,
 app :: Node -> Node -> Node
-app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1 -} tau
-                               , argsOf (getPath (path [1]) n1) (getPath (path [1]) n2)
-                               , theArrowNode
-                               , n1
-                               , n2
-                               ]
+app n1 n2 = Node [mkEdge "app" ({- getPath (path [0, 2]) n1 -} tau
+                              : map (\i -> orNode (getPath (path [i]) n1) (getPath (path [i]) n2)) [1..nArgs]
+                              ++ [theArrowNode, n1, n2])
                               --  (mkEqConstraints $ [ [path [1],      path [2, 0, 0]]
                               --                     , [path [3, 0],   path [2, 0, 1]]
                               --                     , [path [0],      path [2, 0, 2]]
                               --                     ])
                               -- the second node is the union of used args
-                               (mkEqConstraints $ [ [path [2],      path [3, 0, 0]]
-                                                  , [path [4, 0],   path [3, 0, 1]]
-                                                  , [path [0],      path [3, 0, 2]]
-                                                  , [path [1, 0],   path [3, 1]]
-                                                  , [path [1, 1],   path [4, 1]]
-                                                  ])
+                               (mkEqConstraints $ [ [path [1 + nArgs],      path [2 + nArgs, 0, 0]]
+                                                  , [path [3 + nArgs, 0],   path [2 + nArgs, 0, 1]]
+                                                  , [path [0],              path [2 + nArgs, 0, 2]]
+                                                  ]
+                                                  ++ concatMap (\i -> [
+                                                    [path [i, 0],           path [2 + nArgs, i]]
+                                                  , [path [i, 1],           path [3 + nArgs, i]]
+                                                  ]) [1..nArgs])
                  ]
 
 var1, var2, var3, var4, varAcc :: Node
@@ -125,6 +133,7 @@ f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exc
 f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
 f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
 f11 = constFunc "iterate" (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1)))
+f12 = constFunc "(!!)" (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
 
 applyOperator :: Node
 applyOperator = Node [constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
@@ -138,8 +147,8 @@ arg4 = constArg "x" baseType
 arg5 = constArg "n" (constrType0 "Int")
 
 anyArg :: Node
-anyArg = Node [arg1, arg2]
--- anyArg = Node [arg3, arg4, arg5]
+-- anyArg = Node [arg1, arg2]
+anyArg = Node [arg3, arg4, arg5]
 
 speciallyTreatedFunctions :: [Symbol]
 speciallyTreatedFunctions = [  -- `($)` is hardcoded to only be in argument position
@@ -167,7 +176,7 @@ anyFunc :: Node
 --                $ map (\(k, v) -> parseHoogleComponent k v)
 --                $ take 210 -- TODO: look into which components not working well and why
 --                $ Map.toList hoogleComponents
-anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11]
+anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f9, f10]
 
 size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
@@ -198,51 +207,41 @@ uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 filterType :: Node -> Node -> Node
 filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
-constructArgsTree :: ([Symbol], [Symbol]) -> [Node]
-constructArgsTree ([x], []) = [Node [Edge x []]]
-constructArgsTree ([], [y]) = [Node [Edge y []]]
-constructArgsTree (_, []) = []
-constructArgsTree ([], _) = []
-constructArgsTree (xs, ys) = [argsOf xt yt | xt <- xsTrees, yt <- ysTrees]
+constructTree :: [Symbol] -> [Node]
+constructTree [] = []
+constructTree [x] = [Node [Edge x []]]
+constructTree xs = concatMap (\(xs, ys) -> 
+    [orNode xt yt | xt <- constructTree xs, yt <- constructTree ys]
+  ) splits
   where
-    xsTrees = argsTrees xs (length xs)
-    ysTrees = argsTrees ys (length ys)  
+    splits = zipWith splitAt [0..(length xs - 1)] (repeat xs)
 
-argsTrees :: [Symbol] -> Int -> [Node]
-argsTrees args n = concatMap (concatMap constructArgsTree . splits) (argsSizeK n)
+argTrees :: Int -> [Node]
+argTrees n = concatMap constructTree argLists
   where
-    sublists 0 _ = [[]]
-    sublists _ [x] = [[x]]
-    sublists n lst@(x:xs)
-      | length lst <= n = nubOrd (permutations lst)
-      | otherwise = nubOrd $ concatMap (allInsertions x) (sublists (n - 1) xs) ++ sublists n xs
+    insertAt :: a -> Int -> [a] -> [a]
+    insertAt elmt 0 xs = elmt : xs
+    insertAt elmt i (x:xs) = x : insertAt elmt (i - 1) xs
 
-    allInsertions x [] = [[x]]
-    allInsertions x (y:ys) = (x:y:ys) : (map (y:) (allInsertions x ys))
+    nullList = replicate (n - 1) "unused"
+    argLists = zipWith (insertAt "used") [0..(n - 1)] (repeat nullList)
 
-    -- linear combination
-    argsSizeK k 
-      | k > length args = sublists k (replicate (k - length args) "null" ++ args)
-      | otherwise = sublists k args
+argTreesUpToK :: Int -> Node
+argTreesUpToK k = union (concatMap argTrees [1..k])
 
-    splits xs = zipWith splitAt [0..(length xs - 1)] (repeat xs)
+argFilters :: [Node]
+argFilters = replicate nArgs (argTreesUpToK 6)
 
-argsTreesUpToK :: [Symbol] -> Int -> Node
-argsTreesUpToK args k = union (concatMap (argsTrees args) [(length args)..k])
-
-filterArgs :: [Symbol] -> Node -> Node
-filterArgs args n = Node [mkEdge "filter" [argsTreesUpToK args 6, n] 
-                                          (mkEqConstraints [[path [0], path [1, 1, 1]]])
+filterArgs :: Node -> Node
+filterArgs n = Node [mkEdge "filter" (argFilters ++ [n]) 
+                                     (mkEqConstraints (map (\i -> [path [i], path [nArgs, 1, i + 1]]) [0..(nArgs - 1)]))
                           ]
 -- filterArgs args n = n
 
 prettyTerm :: Term -> Term
-prettyTerm (Term "app" [_, _, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
-prettyTerm (Term "filter" [_, a])    = prettyTerm a
--- prettyTerm (Term "argsOf" [a, b]) = Term "args" [prettyTerm a, prettyTerm b]
--- prettyTerm (Term s [_, a]) = Term s [Term "args" [prettyTerm a]]
+prettyTerm (Term "app" ns) = Term "app" [prettyTerm (ns !! (2 + nArgs)), prettyTerm (ns !! (3 + nArgs))]
+prettyTerm (Term "filter" ns) = prettyTerm (last ns)
 prettyTerm (Term s _) = Term s []
--- prettyTerm t = error $ show t
 
 dropTypes :: Node -> Node
 dropTypes (Node es) = Node (map dropEdgeTypes es)
@@ -287,7 +286,7 @@ allConstructors = (nubOrd $ concat $ map getConstructors (Map.elems hoogleCompon
     getConstructors (ExportForall _ t) = getConstructors t
 
 parseHoogleComponent :: Text -> ExportType -> Edge
-parseHoogleComponent name t = Edge (Symbol name) [generalize $ exportTypeToFta t, nullSymbol]
+parseHoogleComponent name t = constFunc (Symbol name) (generalize $ exportTypeToFta t)
 
 hoogleComponents :: Map Text ExportType
 hoogleComponents = read rawHooglePlusExport
