@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 224cd222d4acb608129f70c898cc7fecf57c91323e87fb28ae60ccc03eaf1173
+-- hash: 1efd61dedd29f8a85d8255c55b004ec08806ec709d84b97c6bff80326ed0957a
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -152,6 +152,7 @@ executable compact-coupled-terms-exe
     , mtl
     , pretty-simple
     , text
+    , time
     , unordered-containers
     , vector
   if flag(profile-caches)

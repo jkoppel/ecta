@@ -92,6 +92,7 @@ executables:
     dependencies:
     - compact-coupled-terms
     - pretty-simple
+    - time
 
 tests:
   unit-tests:
