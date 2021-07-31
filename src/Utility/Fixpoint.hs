@@ -1,4 +1,4 @@
-module Utilities (
+module Utility.Fixpoint (
     fix
   , fixUnbounded
   , fixMaybe

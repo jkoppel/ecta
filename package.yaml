@@ -24,8 +24,10 @@ dependencies:
 - containers
 - hashable
 - language-dot
+- mtl
 - text
 - unordered-containers
+- vector
 default-extensions:
   - BangPatterns
   - ConstraintKinds
@@ -49,6 +51,7 @@ default-extensions:
   - RankNTypes
   - ScopedTypeVariables
   - StandaloneDeriving
+  - TupleSections
   - TypeApplications
   - TypeFamilies
   - TypeOperators
@@ -65,15 +68,15 @@ library:
   dependencies:
     - array
     - equivalence
+    - extra
     - fgl
     - hashtables
     - ilist
     - intern
     - lens
-    - mtl
-    - pretty-simple
     - raw-strings-qq
     - text
+    - vector-instances
 
 executables:
   compact-coupled-terms-exe:
@@ -85,6 +88,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - compact-coupled-terms
+    - pretty-simple
 
 tests:
   unit-tests:
@@ -96,6 +100,7 @@ tests:
     - -with-rtsopts=-N
     dependencies:
       - compact-coupled-terms
+      - equivalence
       - hspec
       - QuickCheck
 

@@ -10,6 +10,7 @@ module Data.Memoization (
   , resetAllCaches
 #ifdef PROFILE_CACHES
   , getAllCacheMetrics
+  , printAllCacheMetrics
 #endif
 
   , memoIO
@@ -20,39 +21,24 @@ module Data.Memoization (
 import Control.Monad.ST ( ST )
 import Data.IORef ( IORef, newIORef, readIORef, writeIORef, modifyIORef )
 import Data.Hashable ( Hashable )
-import Data.HashTable.Class ( HashTable )
 import qualified Data.HashTable.IO as HT
+import Data.List ( sort )
 import Data.Text ( Text )
-import qualified Data.Text as Text
+import qualified Data.Text    as Text
+import qualified Data.Text.IO as Text
 import GHC.Generics ( Generic )
 import System.IO.Unsafe (unsafePerformIO)
 
+import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
+
+import Data.Text.Extended.Pretty
 
 -----------------------------------------------------------------
 
 -------------------------------------------------------------
 ------------------ Caches and cache metrics -----------------
 -------------------------------------------------------------
-
-
---------------
----- Hashtable utils
---------------
-
-
-getKeys :: (HashTable h) => HT.IOHashTable h k v -> IO [k]
-getKeys ht = HT.foldM f [] ht
-  where f !l !(k, v) = return (k : l)
-
-resetHashTable :: AnyHashTable -> IO ()
-resetHashTable (AnyHashTable ht) = do
-  keys <- getKeys ht
-  mapM_ (\k -> HT.mutate ht k (const (Nothing, ()))) keys
-
-
-data AnyHashTable where
-  AnyHashTable :: (HashTable h, Eq k, Hashable k) => HT.IOHashTable h k v -> AnyHashTable
 
 --------------
 ---- Memo cache
@@ -107,6 +93,9 @@ instance Hashable MemoCacheTag
 mkInnerTag :: MemoCacheTag -> MemoCacheTag
 mkInnerTag (NameTag t) = NameTag (t <> "-inner")
 
+instance Pretty MemoCacheTag where
+  pretty (NameTag t) = t
+
 --------------
 ---- Global metrics store
 --------------
@@ -141,6 +130,11 @@ getAllCacheMetrics = HT.foldM (\l (k, v) -> getMetrics v >>= \v' -> return ((k, 
   where
     getMetrics :: MemoCache -> IO CacheMetrics
     getMetrics c = CacheMetrics <$> readIORef (queryCount c) <*> readIORef (missCount c)
+
+printAllCacheMetrics :: IO ()
+printAllCacheMetrics = do metrics <- getAllCacheMetrics
+                          mapM_ (\(tag, cm)-> Text.putStrLn $ "(" <> pretty tag <> ")\t" <> pretty cm)
+                                (sort metrics)
 #endif
 
 -------------------------------------------------------------
@@ -167,7 +161,6 @@ memoIO tag f = do
 memo :: (Eq a, Hashable a) => MemoCacheTag -> (a -> b) -> (a -> b)
 memo tag f = let f' = unsafePerformIO (memoIO tag f)
              in \x -> unsafePerformIO (f' x)
-
 
 memo2 :: (Eq a, Hashable a, Eq b, Hashable b) => MemoCacheTag -> (a -> b -> c) -> a -> b -> c
 memo2 tag f = memo tag (memo (mkInnerTag tag) . f)

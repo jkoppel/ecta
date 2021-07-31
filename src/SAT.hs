@@ -35,10 +35,11 @@ import GHC.Generics ( Generic )
 
 import Data.List.Index ( imap )
 
-import ECTA
-import Paths
-import Pretty
-import Utilities
+import Data.ECTA
+import Data.ECTA.Paths
+import Data.ECTA.Term
+import Data.Text.Extended.Pretty
+import Utility.Fixpoint
 
 ----------------------------------------------------------------
 
@@ -70,7 +71,7 @@ varToNegSymbol v = Symbol ("~" <> unVar v)
 -------------------------------------------------------------------
 
 -- | Our construction generalizes to arbitrary NNF formulas,
---   and possible to arbitrary SAT,
+--   and possibly to arbitrary SAT,
 --   but we don't need to bother; just CNF is good enough
 
 data CNF = And [Clause]
@@ -167,10 +168,10 @@ trueNode :: Node
 trueNode = Node [Edge "1" []]
 
 falseTerm :: Term
-falseTerm = head $ denotation falseNode
+falseTerm = head $ naiveDenotation falseNode
 
 trueTerm :: Term
-trueTerm = head $ denotation trueNode
+trueTerm = head $ naiveDenotation trueNode
 
 trueOrFalseNode :: Node
 trueOrFalseNode = Node [Edge "0" [], Edge "1" []]
@@ -189,9 +190,9 @@ negVarNode = Node [Edge "" [falseNode, bNode], Edge "" [trueNode, aNode]]
 -- assnNode:
 --  * One edge, with one child per literal (2*numVars total)
 --  * Each literal has two choices, true or false
---  * Use constrain each positive/negative pair of literals to match.
+--  * Use constraints to force each positive/negative pair of literals to match.
 --     * E.g.: x1 node = choice of (0, a) or (1, b). ~x1 node = choice of (0, b) or (1, a)
---             If x1/~x1 have indices 0/1, then the constraint 0.1=1.1 constraints
+--             If x1/~x1 have indices 0/1, then the constraint 0.1=1.1 constrains
 --             x1/~x1 to be either true/false or false/true
 --
 -- formulaNode:
@@ -252,7 +253,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ denotation $ fixUnbounded reducePartially $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded reducePartially $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula
@@ -265,6 +266,7 @@ allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ denotati
     termToAssignment :: Term -> HashMap Var Bool
     termToAssignment (Term _ [Term _ litVals, _]) = foldMap (\(var, Term "" [val, _]) -> HashMap.singleton var (termToBool val))
                                                             (zip sortedVars (evens litVals))
+    termToAssignment x    = error $ "Unexpected " <> show x
 
     termToBool :: Term -> Bool
     termToBool t | t == falseTerm = False

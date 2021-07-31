@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5a5628497e22b4cc0045039e0f8766163350bbc703b55a411209e94ffb644453
+-- hash: 181bdd37accbf8a2e5014162e836dc049547513e7e3615b64c361c2bc2cbd308
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -31,28 +31,38 @@ flag profile-caches
 
 library
   exposed-modules:
+      Data.ECTA
+      Data.ECTA.Internal.ECTA.Enumeration
+      Data.ECTA.Internal.ECTA.Operations
+      Data.ECTA.Internal.ECTA.Type
+      Data.ECTA.Internal.ECTA.Visualization
+      Data.ECTA.Internal.Paths
+      Data.ECTA.Internal.Paths.Zipper
+      Data.ECTA.Internal.Term
+      Data.ECTA.Paths
+      Data.ECTA.Term
+      Data.HashTable.Extended
       Data.Interned.Extended.HashTableBased
       Data.Interned.Extended.SingleThreaded
       Data.Memoization
       Data.Memoization.Metrics
-      ECTA
-      Internal.ECTA
-      Internal.Paths
-      Paths
-      Pretty
+      Data.Persistent.UnionFind
+      Data.Text.Extended.Pretty
       SAT
       TermSearch
-      Utilities
+      Utility.Fixpoint
+      Utility.HashJoin
   other-modules:
       Paths_compact_coupled_terms
   hs-source-dirs:
       src
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeOperators ViewPatterns
   build-depends:
       array
     , base
     , containers
     , equivalence
+    , extra
     , fgl
     , hashable
     , hashtables
@@ -61,10 +71,11 @@ library
     , language-dot
     , lens
     , mtl
-    , pretty-simple
     , raw-strings-qq
     , text
     , unordered-containers
+    , vector
+    , vector-instances
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -75,7 +86,7 @@ executable compact-coupled-terms-exe
       Paths_compact_coupled_terms
   hs-source-dirs:
       app
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeOperators ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base
@@ -83,8 +94,11 @@ executable compact-coupled-terms-exe
     , containers
     , hashable
     , language-dot
+    , mtl
+    , pretty-simple
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -93,24 +107,31 @@ test-suite unit-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      CacheProfilingSpec
+      Data.Persistent.UnionFindSpec
       ECTASpec
       PathsSpec
       SATSpec
+      Test.Generators.ECTA
+      Utility.HashJoinSpec
       Paths_compact_coupled_terms
   hs-source-dirs:
       test
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeOperators ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
     , base
     , compact-coupled-terms
     , containers
+    , equivalence
     , hashable
     , hspec
     , language-dot
+    , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
@@ -122,7 +143,7 @@ benchmark mainbench
       Paths_compact_coupled_terms
   hs-source-dirs:
       benchmarks
-  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TypeApplications TypeFamilies TypeOperators ViewPatterns
+  default-extensions: BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveDataTypeable DeriveGeneric EmptyDataDecls ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving KindSignatures LambdaCase MultiParamTypeClasses NamedFieldPuns PatternGuards PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeOperators ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base
@@ -131,8 +152,10 @@ benchmark mainbench
     , criterion
     , hashable
     , language-dot
+    , mtl
     , text
     , unordered-containers
+    , vector
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010

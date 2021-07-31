@@ -3,7 +3,7 @@
 
 module TermSearch where
 
-import Data.List ( nub )
+import Data.List ( (\\), nub )
 import           Data.Map ( Map )
 import qualified Data.Map as Map
 
@@ -11,12 +11,9 @@ import Data.Text ( Text )
 import qualified Data.Text as Text
 import Text.RawString.QQ
 
-import Debug.Trace
-import Data.Function
-import Data.List hiding (union)
-
-import ECTA
-import Paths
+import Data.ECTA
+import Data.ECTA.Paths
+import Data.ECTA.Term
 
 ------------------------------------------------------------------------------
 
@@ -27,7 +24,7 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Nod
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
     --usedConstructors = allConstructors
-    usedConstructors = [("Maybe", 1), ("List", 1)]
+    usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -62,8 +59,10 @@ arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 constFunc :: Symbol -> Node -> Edge
 constFunc s t = Edge s [t]
 
+-- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
+-- Sometimes this can be desirable, but for enumeration,
 app :: Node -> Node -> Node
-app n1 n2 = Node [mkEdge "app" [getPath (path [0, 2]) n1, theArrowNode, n1, n2]
+app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1-} tau, theArrowNode, n1, n2]
                                (mkEqConstraints $ [ [path [1],      path [2, 0, 0]]
                                                   , [path [2,0, 1], path [3, 0]]
                                                   , [path [0],      path [2, 0, 2]]
@@ -88,7 +87,7 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
     pathsForVar :: Node -> [Path]
     pathsForVar v = pathsMatching (==v) n
 
-f1, f2, f3, f4, f5, f6, f7 :: Edge
+f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
 f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
 f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
@@ -97,9 +96,12 @@ f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType 
 f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
 f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
 f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
-f9 = constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-f10 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
-f11 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+
+applyOperator :: Node
+applyOperator = Node [constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
+
 
 arg1, arg2 :: Edge
 arg1 = constFunc "def" baseType
@@ -109,24 +111,44 @@ arg4 = constFunc "x" baseType
 arg5 = constFunc "n" (constrType0 "Int")
 
 anyArg :: Node
---anyArg = Node [arg1, arg2]
-anyArg = Node [arg3, arg4, arg5]
+anyArg = Node [arg1, arg2, arg3, arg4, arg5]
+--anyArg = Node [arg3, arg4, arg5]
 
+speciallyTreatedFunctions :: [Symbol]
+speciallyTreatedFunctions = [  -- `($)` is hardcoded to only be in argument position
+                               "(Data.Function.$)", "(Data.Function.$)'ho'"
+                               -- `id` is almost entirely useless, but clogs up the graph. Currently banned
+                             , "Data.Function.id", "Data.Function.id'ho'"
+
+                             -- Seeing what happens upon banning other too-polymorphic functions
+                             , "Data.Either.either"
+                             ]
+
+-- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
+--   in the ECTA.
 anyFunc :: Node
---anyFunc = Node $ map (\(k, v) -> parseHoogleComponent k v) $ take 180 $ Map.toList hoogleComponents
---anyFunc = Node [f1, f2, f3, f4, f5, f6, f7]
-anyFunc = Node [f9, f10, f11]
+anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
+               $ map (\(k, v) -> parseHoogleComponent k v)
+               $ take 211
+               $ Map.toList hoogleComponents
+--anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f1, f10]
+--anyFunc = Node [f9, f10]
 
-size1, size2, size3, size4, size5, size6 :: Node
-size1 = union [anyArg, anyFunc]
-size2 = app size1 size1
-size3 = union [app size2 size1, app size1 size2]
-size4 = union [app size3 size1, app size2 size2, app size1 size3]
-size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1 size4]
-size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1 size5]
+size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
+size1WithoutApplyOperator = union [anyArg, anyFunc]
+size1 = union [anyArg, anyFunc, applyOperator]
+size2 = app size1WithoutApplyOperator size1
+size3 = union [app size2 size1, app size1WithoutApplyOperator size2]
+size4 = union [app size3 size1, app size2 size2, app size1WithoutApplyOperator size3]
+size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
+size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
 
-uptoSize6UniqueRep :: Node
-uptoSize6UniqueRep = union [size1, size2, size3, size4, size5, size6]
+uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
+uptoSize2 = union [size1, size2]
+uptoSize3 = union [size1, size2, size3]
+uptoSize4 = union [size1, size2, size3, size4]
+uptoSize5 = union [size1, size2, size3, size4, size5]
+uptoSize6 = union [size1, size2, size3, size4, size5, size6]
 
 uptoDepth2 :: Node
 uptoDepth2 = union [size1, app size1 size1]
