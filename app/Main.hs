@@ -70,8 +70,8 @@ main = do
     -- let !node = filterArgs filterNode 
     let !node = filterNode
     middle <- getCurrentTime
-    print $ "Construction time: " ++ show (diffUTCTime middle middle1)
+    print $ "Construction time: " ++ show (diffUTCTime middle start)
     prettyPrintAllTerms $ refold $ reduceFully node
     end <- getCurrentTime
     print $ "Reduction time: " ++ show (diffUTCTime end middle)
--- main = putStrLn $ renderDot . toDot
+    -- putStrLn $ renderDot . toDot $ node
