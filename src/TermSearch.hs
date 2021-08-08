@@ -60,23 +60,21 @@ arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 
 constFunc :: Symbol -> Node -> Edge
 -- constFunc s t = Edge s [t]
-constFunc s t = Edge s (t : map (const unused) [1..nArgs])
+constFunc s t = Edge s [t, nullNode]
 
 constArg :: Symbol -> Node -> Edge
 -- constArg = constFunc
-constArg s t = Edge s (t : map (\n -> if n == s then used else unused) argNames)
+constArg s t = Edge s [t, Node [Edge s []]]
 
 argNames :: [Symbol]
+-- argNames = ["def", "mbs"]
 argNames = ["g", "x", "n"]
 
 nArgs :: Int
 nArgs = length argNames
 
-used :: Node
-used = Node [Edge "used" []]
-
-unused :: Node
-unused = Node [Edge "unused" []]
+nullNode :: Node
+nullNode = Node [Edge "null" []]
 
 orNode :: Node -> Node -> Node
 orNode n1 n2 = Node [Edge "usedOr" [n1, n2]]
@@ -84,22 +82,29 @@ orNode n1 n2 = Node [Edge "usedOr" [n1, n2]]
 -- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
 -- Sometimes this can be desirable, but for enumeration,
 app :: Node -> Node -> Node
-app n1 n2 = Node [mkEdge "app" ({- getPath (path [0, 2]) n1 -} tau
-                              : map (\i -> orNode (getPath (path [i]) n1) (getPath (path [i]) n2)) [1..nArgs]
-                              ++ [theArrowNode, n1, n2])
+app n1 n2 = Node [mkEdge "app" ([{- getPath (path [0, 2]) n1 -} tau
+                                , orNode (getPath (path [1]) n1) (getPath (path [1]) n2)
+                                , theArrowNode, n1, n2
+                                ])
                               --  (mkEqConstraints $ [ [path [1],      path [2, 0, 0]]
                               --                     , [path [3, 0],   path [2, 0, 1]]
                               --                     , [path [0],      path [2, 0, 2]]
                               --                     ])
+                               (mkEqConstraints $ [ [path [2],      path [3, 0, 0]]
+                                                  , [path [4, 0],   path [3, 0, 1]]
+                                                  , [path [0],      path [3, 0, 2]]
+                                                  , [path [1, 0],   path [3, 1]]
+                                                  , [path [1, 1],   path [4, 1]]
+                                                  ])
                               -- the second node is the union of used args
-                               (mkEqConstraints $ [ [path [1 + nArgs],      path [2 + nArgs, 0, 0]]
-                                                  , [path [3 + nArgs, 0],   path [2 + nArgs, 0, 1]]
-                                                  , [path [0],              path [2 + nArgs, 0, 2]]
-                                                  ]
-                                                  ++ concatMap (\i -> [
-                                                    [path [i, 0],           path [2 + nArgs, i]]
-                                                  , [path [i, 1],           path [3 + nArgs, i]]
-                                                  ]) [1..nArgs])
+                              --  (mkEqConstraints $ [ [path [1 + nArgs],      path [2 + nArgs, 0, 0]]
+                              --                     , [path [3 + nArgs, 0],   path [2 + nArgs, 0, 1]]
+                              --                     , [path [0],              path [2 + nArgs, 0, 2]]
+                              --                     ]
+                              --                     ++ concatMap (\i -> [
+                              --                       [path [i, 0],           path [2 + nArgs, i]]
+                              --                     , [path [i, 1],           path [3 + nArgs, i]]
+                              --                     ]) [1..nArgs])
                  ]
 
 var1, var2, var3, var4, varAcc :: Node
@@ -151,35 +156,35 @@ anyArg :: Node
 anyArg = Node [arg3, arg4, arg5]
 
 speciallyTreatedFunctions :: [Symbol]
-speciallyTreatedFunctions = [  -- `($)` is hardcoded to only be in argument position
-                               "(Data.Function.$)"
-                               -- `id` is almost entirely useless, but clogs up the graph. Currently banned
-                             , "Data.Function.id"
+speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument position
+                              "(Data.Function.$)"
+                            -- `id` is almost entirely useless, but clogs up the graph. Currently banned
+                            , "Data.Function.id"
 
-                             -- Seeing what happens upon banning other too-polymorphic functions
-                             -- Data.Either
-                             , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
+                            -- Seeing what happens upon banning other too-polymorphic functions
+                            -- Data.Either
+                            , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
 
-                             -- GHC.List
-                             , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
-                             , "GHC.List.foldl1" -- (a -> a -> a) -> [a] -> a
-                             , "GHC.List.foldl1'" -- (a -> a -> a) -> [a] -> a
-                             , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
-                             , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
-                             , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-                             , "Nil" -- ????
-                             -- Data.Maybe
-                             , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
-                             ]
+                            -- GHC.List
+                            , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
+                            , "GHC.List.foldl1" -- (a -> a -> a) -> [a] -> a
+                            , "GHC.List.foldl1'" -- (a -> a -> a) -> [a] -> a
+                            , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
+                            , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
+                            , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
+                            , "Nil" -- ????
+                            -- Data.Maybe
+                            , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
+                            ]
 
 -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
 --   in the ECTA.
 anyFunc :: Node
-anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
-               $ map (\(k, v) -> parseHoogleComponent k v)
-              --  $ take 285 -- TODO: look into which components not working well and why
-               $ Map.toList hoogleComponents
--- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
+-- anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
+--                $ map (\(k, v) -> parseHoogleComponent k v)
+--               --  $ take 285 -- TODO: look into which components not working well and why
+--                $ Map.toList hoogleComponents
+anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f9, f10]
 
 size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
@@ -191,12 +196,20 @@ size4 = union [app size3 size1, app size2 size2, app size1WithoutApplyOperator s
 size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
 size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
 
+filterSize1, filterSize2, filterSize3, filterSize4, filterSize5, filterSize6 :: Node
+filterSize1 = filterArgs (argTrees 1) size1
+filterSize2 = filterArgs (argTrees 2) size2
+filterSize3 = filterArgs (argTrees 3) size3
+filterSize4 = filterArgs (argTrees 4) size4
+filterSize5 = filterArgs (argTrees 5) size5
+filterSize6 = filterArgs (argTrees 6) size6
+
 uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
-uptoSize2 = union [size1, size2]
-uptoSize3 = union [size1, size2, size3]
-uptoSize4 = union [size1, size2, size3, size4]
-uptoSize5 = union [size1, size2, size3, size4, size5]
-uptoSize6 = union [size1, size2, size3, size4, size5, size6]
+uptoSize2 = union [filterSize1, filterSize2]
+uptoSize3 = union [filterSize1, filterSize2, filterSize3]
+uptoSize4 = union [filterSize1, filterSize2, filterSize3, filterSize4]
+uptoSize5 = union [filterSize1, filterSize2, filterSize3, filterSize4, filterSize5]
+uptoSize6 = union [filterSize1, filterSize2, filterSize3, filterSize4, filterSize5, filterSize6]
 
 uptoDepth2 :: Node
 uptoDepth2 = union [size1, app size1 size1]
@@ -208,7 +221,7 @@ uptoDepth4 :: Node
 uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 
 filterType :: Node -> Node -> Node
-filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
+filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 1, 0]]])]
 
 constructTree :: [Symbol] -> [Node]
 constructTree [] = []
@@ -219,40 +232,42 @@ constructTree xs = concatMap (\(xs, ys) ->
   where
     splits = zipWith splitAt [0..(length xs - 1)] (repeat xs)
 
--- argsTrees :: Int -> [Node]
--- argsTrees n = concatMap constructTree argsLists
+-- argTrees :: Int -> Symbol -> Node
+-- argTrees n arg = union (concatMap constructTree argLists)
 --   where
---     -- argNames is the smallest list
---     -- we construct a large list by replicating the arg names and add nulls
---     argsLists = argNames
+--     insertAt :: a -> Int -> [a] -> [a]
+--     insertAt elmt 0 xs = elmt : xs
+--     insertAt elmt i (x:xs) = x : insertAt elmt (i - 1) xs
 
-argTrees :: Int -> [Node]
-argTrees n = concatMap constructTree argLists
+--     nullList = replicate (n - 1) "null"
+--     argLists = zipWith (insertAt arg) [0..(n - 1)] (repeat nullList)
+
+insertAt :: a -> Int -> [a] -> [a]
+insertAt elmt 0 xs = elmt : xs
+insertAt elmt i (x:xs) = x : insertAt elmt (i - 1) xs
+
+argTrees :: Int -> Node
+argTrees n 
+  | n >= nArgs = union (concatMap constructTree argLists)
+  | otherwise = EmptyNode
   where
-    insertAt :: a -> Int -> [a] -> [a]
-    insertAt elmt 0 xs = elmt : xs
-    insertAt elmt i (x:xs) = x : insertAt elmt (i - 1) xs
-
-    nullList = replicate (n - 1) "unused"
-    argLists = zipWith (insertAt "used") [0..(n - 1)] (repeat nullList)
+    nullList = replicate (n - nArgs) "null"
+    argLists = foldl (\acc arg -> concatMap (constructList arg) acc) [nullList] argNames
+    constructList arg lst = zipWith (insertAt arg) [0..(length lst)] (repeat lst)
 
 argTreesUpToK :: Int -> Node
-argTreesUpToK k = union (concatMap argTrees [1..k])
+argTreesUpToK k = union (map argTrees [1..k])
 
-argFilters :: [Node]
-argFilters = replicate nArgs (argTreesUpToK 6)
-
-filterArgs :: Node -> Node
-filterArgs n = Node [mkEdge "filter" (argFilters ++ [n]) 
-                                     (mkEqConstraints (map (\i -> [path [i], path [nArgs, 1, i + 1]]) [0..(nArgs - 1)]))
+filterArgs :: Node -> Node -> Node
+filterArgs argFilters n = Node [mkEdge "filter" ([argFilters, n]) 
+                                (mkEqConstraints [[path [0], path [1, 1]]])
                           ]
 -- filterArgs args n = n
 
 prettyTerm :: Term -> Term
-prettyTerm (Term "app" [_, _, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
-prettyTerm (Term "filter" [_, a])    = prettyTerm a
-prettyTerm (Term s [_])              = Term s []
-prettyTerm term                      = error $ "prettyTerm: unexpected term " <> show term
+prettyTerm (Term "app" ns) = Term "app" [prettyTerm (ns !! (length ns - 2)), prettyTerm (ns !! (length ns - 1))]
+prettyTerm (Term "filter" ns) = prettyTerm (last ns)
+prettyTerm (Term s _) = Term s []
 
 dropTypes :: Node -> Node
 dropTypes (Node es) = Node (map dropEdgeTypes es)
