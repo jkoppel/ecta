@@ -64,7 +64,7 @@ prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
 main :: IO ()
 main = do
     start <- getCurrentTime
-    let !filterNode = filterType uptoSize6 baseType
+    let !filterNode = filterType (relevantTermsUptoK 6) baseType
     middle1 <- getCurrentTime
     print $ "Filter type time: " ++ show (diffUTCTime middle1 start)
     -- let !node = filterArgs filterNode 
