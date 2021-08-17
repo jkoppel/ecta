@@ -25,8 +25,8 @@ tau = createMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . co
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    -- usedConstructors = allConstructors
-    usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
+    usedConstructors = allConstructors
+    -- usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -131,8 +131,8 @@ arg4 = constFunc "x" baseType
 arg5 = constFunc "n" (constrType0 "Int")
 
 anyArg :: Node
-anyArg = Node [arg1, arg2]
--- anyArg = Node [arg3, arg4, arg5]
+-- anyArg = Node [arg1, arg2]
+anyArg = Node [arg3, arg4, arg5]
 
 speciallyTreatedFunctions :: [Symbol]
 speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument position
@@ -142,28 +142,28 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
 
                             -- Seeing what happens upon banning other too-polymorphic functions
                             -- Data.Either
-                            , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
+                            -- , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
 
                             -- GHC.List
                             , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
                             , "GHC.List.foldl1" -- (a -> a -> a) -> [a] -> a
                             , "GHC.List.foldl1'" -- (a -> a -> a) -> [a] -> a
-                            , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
+                            -- , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
                             , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
                             , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-                            , "Nil" -- ????
+                            -- , "Nil"
                             -- Data.Maybe
-                            , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
+                            -- , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
+                            -- , "Data.Maybe.Nothing"
                             ]
 
 -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
 --   in the ECTA.
 anyFunc :: Node
--- anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
---                $ map (\(k, v) -> parseHoogleComponent k v)
---               --  $ take 285 -- TODO: look into which components not working well and why
---                $ Map.toList hoogleComponents
-anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
+anyFunc = Node $ filter (\e -> not (edgeSymbol e `elem` speciallyTreatedFunctions))
+               $ map (\(k, v) -> parseHoogleComponent k v)
+               $ Map.toList hoogleComponents
+-- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f9, f10]
 
 size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
