@@ -28,6 +28,8 @@ dependencies:
 - text
 - unordered-containers
 - vector
+- pretty-simple
+- time
 default-extensions:
   - BangPatterns
   - ConstraintKinds
@@ -88,8 +90,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - compact-coupled-terms
-    - pretty-simple
-    - time
 
 tests:
   unit-tests:
