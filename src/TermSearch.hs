@@ -26,8 +26,8 @@ import Utility.Fixpoint
 
 ------------------------------------------------------------------------------
 
-makeTau :: Node
-makeTau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+tau :: Node
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
