@@ -26,8 +26,8 @@ import Utility.Fixpoint
 
 ------------------------------------------------------------------------------
 
-makeTau :: [Node] -> Node
-makeTau baseNodes = createGloballyUniqueMu (\n -> union (arrowType n n : baseNodes ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+makeTau :: Node
+makeTau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
@@ -73,8 +73,10 @@ constArg = constFunc
 
 -- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
 -- Sometimes this can be desirable, but for enumeration,
-app :: [Node] -> Node -> Node -> Node
-app baseNodes n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1 -} makeTau baseNodes, theArrowNode, n1, n2]
+app :: Node -> Node -> Node
+app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1 -} tau
+                               , theArrowNode, n1, n2
+                               ]
                                (mkEqConstraints [ [path [1],      path [2, 0, 0]]
                                                 , [path [3, 0],   path [2, 0, 1]]
                                                 , [path [0],      path [2, 0, 2]]
@@ -89,11 +91,11 @@ var4   = Node [Edge "var4" []]
 varAcc = Node [Edge "acc" []]
 
 -- | TODO: Also constraint children to be (->) nodes
-generalize :: [Node] -> Node -> Node
-generalize baseNodes n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
+generalize :: Node -> Node
+generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
   where
     vars = [var1, var2, var3, var4, varAcc]
-    nWithVarsRemoved = mapNodes (\x -> if x `elem` vars then makeTau baseNodes else x) n
+    nWithVarsRemoved = mapNodes (\x -> if x `elem` vars then tau else x) n
     (Node [Edge s ns']) = nWithVarsRemoved
 
     pathsForVar :: Node -> [Path]
@@ -113,8 +115,8 @@ generalize baseNodes n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pa
 -- f11 = constFunc "iterate" (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1)))
 -- f12 = constFunc "(!!)" (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
 
-applyOperator :: [Node] -> Node
-applyOperator baseNodes = Node [constFunc "$" (generalize baseNodes $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
+applyOperator :: Node
+applyOperator = Node [constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
 
 -- args :: [(Symbol, Node)]
 -- args = [
@@ -171,35 +173,35 @@ applyOperator baseNodes = Node [constFunc "$" (generalize baseNodes $ arrowType 
 filterType :: Node -> Node -> Node
 filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
-termsK :: [Node] -> Node -> Bool -> Int -> [Node]
-termsK baseNodes anyArg _ 0 = []
-termsK baseNodes anyArg False 1 = [anyArg, anyFunc baseNodes]
-termsK baseNodes anyArg True 1 = [anyArg, anyFunc baseNodes, applyOperator baseNodes]
-termsK baseNodes anyArg _ k = map constructApp [1..(k-1)]
+termsK :: Node -> Bool -> Int -> [Node]
+termsK anyArg _ 0 = []
+termsK anyArg False 1 = [anyArg, anyFunc]
+termsK anyArg True 1 = [anyArg, anyFunc, applyOperator]
+termsK anyArg _ k = map constructApp [1..(k-1)]
   where
     constructApp :: Int -> Node
-    constructApp i = app baseNodes (union (termsK baseNodes anyArg False i)) (union (termsK baseNodes anyArg True (k-i)))
+    constructApp i = app (union (termsK anyArg False i)) (union (termsK anyArg True (k-i)))
 
 type ArgType = (Symbol, Node)
 
-relevantTermK :: [Node] -> Node -> Bool -> Int -> [ArgType] -> [Node]
-relevantTermK baseNodes anyArg includeApplyOp k [] = termsK baseNodes anyArg includeApplyOp k
-relevantTermK _ _ _ 1 [(x, t)] = [Node [constArg x t]]
-relevantTermK baseNodes anyArg _ k argNames
+relevantTermK :: Node -> Bool -> Int -> [ArgType] -> [Node]
+relevantTermK anyArg includeApplyOp k [] = termsK anyArg includeApplyOp k
+relevantTermK _ _ 1 [(x, t)] = [Node [constArg x t]]
+relevantTermK anyArg _ k argNames
   | k < length argNames = []
   | otherwise = concatMap (\i -> map (constructApp i) allSplits) [1..(k-1)]
   where
     allSplits = map (`splitAt` argNames) [0..(length argNames)]
 
     constructApp :: Int -> ([ArgType], [ArgType]) -> Node
-    constructApp i (xs, ys) = let f = union (relevantTermK baseNodes anyArg False i xs)
-                                  x = union (relevantTermK baseNodes anyArg True (k-i) ys)
-                               in app baseNodes f x
+    constructApp i (xs, ys) = let f = union (relevantTermK anyArg False i xs)
+                                  x = union (relevantTermK anyArg True (k-i) ys)
+                               in app f x
 
-relevantTermsUptoK :: [Node] -> Node -> [ArgType] -> Int -> Node
-relevantTermsUptoK baseNodes anyArg args k = union (map (union . relevantTermsForArgs) [1..k])
+relevantTermsUptoK :: Node -> [ArgType] -> Int -> Node
+relevantTermsUptoK anyArg args k = union (map (union . relevantTermsForArgs) [1..k])
   where
-    relevantTermsForArgs k = concatMap (relevantTermK baseNodes anyArg True k) (permutations args)
+    relevantTermsForArgs k = concatMap (relevantTermK anyArg True k) (permutations args)
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term "app" [prettyTerm (ns !! (length ns - 2)), prettyTerm (ns !! (length ns - 1))]
@@ -246,10 +248,10 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
                             -- , "Data.Maybe.Nothing"
                             ]
 
-anyFunc :: [Node] -> Node
-anyFunc baseNodes = Node $ filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
-                         $ map (uncurry $ parseHoogleComponent baseNodes)
-                         $ Map.toList hoogleComponents
+anyFunc :: Node
+anyFunc = Node $ filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
+               $ map (uncurry parseHoogleComponent)
+               $ Map.toList hoogleComponents
 
 ---------------------------------------------------------------------------------------
 -------------------------- Importing components from Hoogle+ --------------------------
@@ -269,19 +271,7 @@ exportTypeToFta (ExportCons s [t]) = constrType1 s (exportTypeToFta t)
 exportTypeToFta (ExportCons s [t1, t2]) = constrType2 s (exportTypeToFta t1) (exportTypeToFta t2)
 exportTypeToFta (ExportForall _ t) = exportTypeToFta t
 
-baseNodesOf :: ExportType -> [Node]
-baseNodesOf (ExportVar "a") = [var1]
-baseNodesOf (ExportVar "b") = [var2]
-baseNodesOf (ExportVar "c") = [var3]
-baseNodesOf (ExportVar "d") = [var4]
-baseNodesOf (ExportVar "acc") = [varAcc]
-baseNodesOf (ExportVar v) = error $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got " ++ show v
-baseNodesOf (ExportFun t1 t2) = baseNodesOf t1 ++ baseNodesOf t2
-baseNodesOf (ExportCons s [])  = []
-baseNodesOf (ExportCons "Fun" [t1, t2])  = baseNodesOf t1 ++ baseNodesOf t2
-baseNodesOf (ExportCons s [t]) = baseNodesOf t
-baseNodesOf (ExportCons s [t1, t2]) = baseNodesOf t1 ++ baseNodesOf t2
-baseNodesOf (ExportForall _ t) = baseNodesOf t
+
 
 allConstructors :: [(Text, Int)]
 allConstructors = nubOrd (concatMap getConstructors (Map.elems hoogleComponents)) \\ [("Fun", 2)]
@@ -292,8 +282,8 @@ allConstructors = nubOrd (concatMap getConstructors (Map.elems hoogleComponents)
     getConstructors (ExportCons nm ts) = (nm, length ts) : concatMap getConstructors ts
     getConstructors (ExportForall _ t) = getConstructors t
 
-parseHoogleComponent :: [Node] -> Text -> ExportType -> Edge
-parseHoogleComponent baseNodes name t = constFunc (Symbol name) (generalize baseNodes $ exportTypeToFta t)
+parseHoogleComponent :: Text -> ExportType -> Edge
+parseHoogleComponent name t = constFunc (Symbol name) (generalize $ exportTypeToFta t)
 
 hoogleComponents :: Map Text ExportType
 hoogleComponents = read rawHooglePlusExport
@@ -327,9 +317,8 @@ runBenchmark (Benchmark name depth (args, res)) = do
     putStrLn $ "Running benchmark " ++ Text.unpack name
     let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
     let resNode = exportTypeToFta res
-    let baseNodes = nubOrd $ concatMap (baseNodesOf . snd) args 
     let anyArg = Node (map (uncurry constArg) argNodes)
-    let filterNode = filterType (relevantTermsUptoK baseNodes anyArg argNodes depth) resNode
+    let filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
     timeout (60 * 10^6) $ prettyPrintAllTerms $ refold $ reduceFully filterNode
     end <- getCurrentTime
     print $ "Time: " ++ show (diffUTCTime end start)
