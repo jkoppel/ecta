@@ -1,0 +1,546 @@
+- name: appBoth
+  query: "f: (a -> b) -> g: (a -> c) -> x: a -> (b, c)"
+  args:
+    - f
+    - g
+    - x
+  solution: "\\f g x -> ((f x) , (g x))"
+  source: "original"
+  examples: 
+    - inputs: ["\\x -> x + 1", "\\x -> x * 3", "3"]
+      output: (4, 9)
+    - inputs: ["\\x -> x ++ x", "GHC.List.reverse", "[1,2,3]"]
+      output: ([1,2,3,1,2,3], [3,2,1])
+
+#- name: intToBS
+#  query: "Int64 -> ByteString"
+#  solution: "toLazyByteString . int64Dec"
+#  source: "original"
+
+- name: test
+  query: "b: Bool -> x: a -> Maybe a"
+  args:
+    - b
+    - x
+  solution: "\\b x -> Data.Bool.bool Data.Maybe.Nothing (Data.Maybe.Just x) b"
+  source: "original"
+  examples:
+    - inputs: ["True", "1"]
+      output: Just 1
+    - inputs: ["False", "2"]
+      output: Nothing
+
+- name: both
+  query: "f: (a -> b) -> p: (a, a) -> (b, b)"
+  args:
+    - f
+    - p
+  solution: "\\f p -> ((f (fst p)) , (f (snd p)))"
+  source: "original"
+  examples:
+    - inputs: ["\\x -> x + 1", "(43, 25)"]
+      output: (44, 26)
+    - inputs: ["\\x -> GHC.List.length x", "([1,2,3,4],[2,3,4])"]
+      output: (4, 3)
+
+- name: firstJust
+  query: "x: a -> xs: [Maybe a] -> a"
+  args:
+    - x
+    - xs
+  solution: "\\x xs -> Data.Maybe.fromMaybe x (Data.Maybe.listToMaybe (Data.Maybe.catMaybes xs))"
+  source: "study"
+  examples:
+    - inputs: ["3", "[Nothing, Just 2, Nothing]"]
+      output: "2"
+    - inputs: ["3", "[]"]
+      output: "3"
+
+# - name: groupList
+#   query: "[(k, v)] -> Map k [v]"
+
+- name: mapEither
+  query: "f: (a -> Either b c) -> xs: [a] -> ([b], [c])"
+  args:
+    - f
+    - xs
+  solution: "\\f xs -> Data.Either.partitionEithers (GHC.List.map f xs)"
+  source: "original"
+  examples:
+    - inputs: ["\\x -> if x < 10 then Left x else Right x", "[0,10,20,30]"]
+      output: ([0], [10, 20, 30])
+    - inputs: ["\\x -> if x < 10 then Left \"error\" else Right (x * 2)", "[1,3,11,20]"]
+      output: (["error", "error"], [22, 40])
+
+- name: mapMaybes
+  query: "f: (a -> Maybe b) -> xs: [a] -> Maybe b"
+  args:
+    - f
+    - xs
+  solution: "\\f xs -> Data.Maybe.listToMaybe (Data.Maybe.mapMaybe f xs)"
+  source: "original"
+  examples:
+    - inputs: ["\\x -> if x < 3 then Nothing else Just (x * x)", "[2,4,8,6]"]
+      output: Just 16
+
+- name: mergeEither
+  query: "e: Either a (Either a b) -> Either a b"
+  args:
+    - e
+  solution: "\\e -> Data.Either.either Data.Either.Left Data.Function.id e"
+  source: "original"
+  examples:
+    - inputs: ["Left 2"]
+      output: Left 2
+    - inputs: ["Right (Left 2)"]
+      output: Left 2
+    - inputs: ["Right (Right 2.2)"]
+      output: Right 2.2
+
+- name: app2
+  query: "f: (a -> b -> c) -> g: (a -> b) -> x: a -> c"
+  args:
+    - f
+    - g
+    - x
+  solution: "\\f g x -> f x (g x)"
+  source: "hoogle"
+  examples:
+    - inputs: ["\\x y -> x + y", "\\x -> x * x", "3"]
+      output: "12"
+    - inputs: ["\\x y -> GHC.List.length x * GHC.List.length y", "\\x -> x ++ x", "[1,2,3]"]
+      output: "18"
+
+- name: singletonList
+  query: "x: a -> [a]"
+  args:
+    - x
+  solution: "\\x -> x : []"
+  source: "hoogle"
+  examples:
+    - inputs: ["2"]
+      output: "[2]"
+    - inputs: ["\"abc\""]
+      output: "[\"abc\"]"
+
+- name: headLast
+  query: "xs: [a] -> (a, a)"
+  args:
+    - xs
+  solution: "\\xs -> (GHC.List.head xs, GHC.List.last xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[1,2,3,4]"]
+      output: (1, 4)
+
+- name: headRest
+  query: "xs: [a] -> (a, [a])"
+  args:
+    - xs
+  solution: "\\xs -> Data.Maybe.fromJust (GHC.List.uncons xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[1,2,3,4]"]
+      output: (1, [2,3,4])
+
+- name: coundPredMatch
+  query: "xs: [a] -> p: (a -> Bool) -> Int"
+  args:
+    - xs
+    - p
+  solution: "\\xs p -> GHC.List.length (GHC.List.filter p xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[1,2,3,4,5]", "\\x -> x `mod` 2 == 0"]
+      output: "2"
+    - inputs: ["[[1,2,3], [2,3,4,5], [3,4,5,6,7]]", "\\xs -> 2 `GHC.List.elem` xs"]
+      output: "2"
+
+- name: splitStr
+  query: "str: String -> c: Char -> [String]"
+  args:
+    - str
+    - c
+  solution: "\\xs x -> GHC.List.words (GHC.List.map (\\y -> Data.Bool.bool y ' ' (y == x)) xs)"
+  source: "hoogle"
+  examples: []
+
+- name: splitAtFirst
+  query: "x: a -> xs: [a] -> ([a], [a])"
+  args:
+    - x
+    - xs
+  solution: "\\x xs -> GHC.List.splitAt (Data.Maybe.fromMaybe 0 (GHC.List.elemIndex x xs)) xs"
+  source: "hoogle"
+  examples:
+    - inputs: ["1", "[2,3,1,4,1,5]"]
+      output: ([2,3],[4,1,5])
+
+- name: mbToEither
+  query: "x: a -> mb: Maybe b -> Either a b"
+  args:
+    - x
+    - mb
+  solution: "\\x mb -> Data.Maybe.maybe (Data.Either.Left x) Data.Either.Right mb"
+  source: "original"
+  examples:
+    - inputs: ["1", Nothing]
+      output: Left 1
+    - inputs: ["3", Just 2]
+      output: Right 2
+
+- name: cartProduct
+  query: "xs: [a] -> ys: [b] -> [[(a, b)]]"
+  args:
+    - xs
+    - ys
+  solution: "\\xs ys -> GHC.List.map (\\x -> GHC.List.map ((,) x) ys) xs"
+  source: "original"
+  examples:
+    - inputs: ["[1,2,3]","[2,3,4]"]
+      output: "[[(1,2), (1,3), (1,4)], [(2,2), (2,3), (2,4)], [(3,2), (3,3), (3,4)]]"
+
+- name: multiAppPair
+  query: "tp: (a -> b, a -> c) -> x: a -> (b, c)"
+  args:
+    - tp
+    - x
+  solution: "\\tp x -> (((fst tp) x) , ((snd tp) x))"
+  source: "original"
+  examples:
+    - inputs: ["(\\x -> x * 3, \\x -> x * x)", "2"]
+      output: (6, 4)
+
+# No useful solution. Head of map ?
+- name: hoogle01
+  query: "f: (a -> b) -> xs: [a] -> b"
+  args:
+    - f
+    - xs
+  solution: "\\f xs -> f (GHC.List.head xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["\\xs -> GHC.List.length xs", "[[1,2,3], [1,2,3,4,5,6,7]]"]
+      output: "3"
+    - inputs: ["\\x -> [x, x]", "[6,5,4]"]
+      output: "[6, 6]"
+
+- name: firstMatch
+  query: "xs: [a] -> p: (a -> Bool) -> a"
+  args:
+    - xs
+    - p
+  solution: "\\xs p -> GHC.List.head (GHC.List.filter p xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[1,2,3,4,5]", "\\x -> x `mod` 2 == 0"]
+      output: "2"
+    - inputs: ["[[1,2,3], [2,3,4,5], [3,4,5,6,7]]", "\\xs -> 2 `GHC.List.elem` xs"]
+      output: "[1,2,3]"
+
+- name: firstMaybe
+  query: "mbs: [Maybe a] -> a"
+  args:
+    - mbs
+  solution: "\\arg0 -> GHC.List.head (Data.Maybe.catMaybes arg0)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[Nothing, Just 1, Just 2]"]
+      output: "1"
+
+- name: rights
+  query: "es: [Either a b] -> Either a [b]"
+  args:
+    - es
+  solution: "\\arg0 -> Data.Either.Right (Data.Either.rights arg0)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[Left 1, Right 2, Right 3]"]
+      output: "Right [2, 3]"
+
+- name: firstKey
+  query: "xs: [(a, b)] -> a"
+  args:
+    - xs
+  solution: "\\arg0 -> Data.Tuple.fst (GHC.List.head arg0)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[(1, [1,2,3]), (2, [2,3,4]), (4, [4,5,6])]"]
+      output: "1"
+
+- name: applyPair
+  query: "p: (a -> b, a) -> b"
+  args:
+    - p
+  solution: "\\arg0 -> (fst arg0) (snd arg0)"
+  source: "stackOverflow"
+  examples:
+    - inputs: ["(\\x -> x * x, 10)"]
+      output: "100"
+
+# No solution?
+# - name: cross
+#   query: "(a, b) -> (a, b) -> (a, b)"
+#   source: "hoogle"
+
+- name: firstRight
+  query: "es: [Either a b] -> Either a b"
+  args:
+    - es
+  solution: "\\arg0 -> Right (GHC.List.head (Data.Either.rights arg0))"
+  source: "hoogle"
+  examples:
+    - inputs: ["[Left 1, Left 2, Right 3, Left 3, Right 4]"]
+      output: "Right 3"
+
+- name: maybe
+  query: "mb: Maybe a -> x: a -> Maybe a"
+  args:
+    - mb
+    - x
+  solution: "\\mb x -> Just (Data.Maybe.fromMaybe x mb)"
+  source: "hoogle"
+  examples:
+    - inputs: ["Nothing", "2"]
+      output: "Just 2"
+    - inputs: ["Just 1", "2"]
+      output: "Just 1"
+
+- name: app3
+  query: "f: (a -> b -> c -> d) -> x: a -> y: c -> z: b -> d"
+  args:
+    - f
+    - x
+    - y
+    - z
+  solution: "\\f x y z -> f x z y"
+  source: "hoogle"
+  examples:
+    - inputs: ["\\x y z -> x + y - z", "2", "34", "12"]
+      output: "-20"
+
+- name: appendN
+  query: "n: Int -> xs: [a] -> [a]"
+  args:
+    - n
+    - xs
+  solution: "\\n xs -> GHC.List.concat (GHC.List.replicate n xs)"
+  source: "study"
+  examples:
+    - inputs: ["2", "[1,2,3]"]
+      output: "[1,2,3,1,2,3]"
+
+- name: flatten
+  query: "xss: [[[a]]] -> [a]"
+  args:
+    - xs
+  solution: "\\xs -> GHC.List.concat (GHC.List.concat xs)"
+  source: "stackOverflow"
+  examples:
+    - inputs: ["[[[1,2,3], [2,3,4]],[[1,2]]]"]
+      output: "[1,2,3,2,3,4,1,2]"
+
+- name: takeNdropM
+  query: "n: Int -> m: Int -> xs: [a] -> ([a], [a])"
+  args:
+    - n
+    - m
+    - xs
+  solution: "\\n m l -> (GHC.List.take n l, GHC.List.drop m l)"
+  source: "stackOverflow"
+  examples:
+    - inputs: ["3", "5", "[1,2,3,4,5,6,7]"]
+      output: "([1,2,3], [6,7])"
+
+- name: map
+  query: "f: (a -> b) -> xs: [a] -> [b]"
+  args:
+    - f
+    - xs
+  solution: "\\f xs -> GHC.List.map f xs"
+  source: "original"
+  examples:
+    - inputs: ["\\x -> x * x", "[1,2,3]"]
+      output: "[1,4,9]"
+
+- name: replFuncs
+  query: "f: (a -> b) -> n: Int-> [a -> b]"
+  args:
+    - f
+    - n
+  solution: "\\f n -> GHC.List.replicate n f"
+  source: "original"
+  examples: []
+
+- name: mbAppFirst
+  query: "x: b -> f: (a -> b) -> xs: [a] -> b"
+  args:
+    - x
+    - f
+    - xs
+  solution: "\\x f xs -> Data.Maybe.maybe x f (Data.Maybe.listToMaybe xs)"
+  source: "original"
+  examples:
+    - inputs: ["2", "\\x -> x * x", "[3,4,5]"]
+      output: "9"
+    - inputs: ["2", "\\x -> x * x", "[]"]
+      output: "2"
+
+- name: mapTwice
+  query: "f: (a -> b) -> g: (b -> c) -> xs: [a] -> [c]"
+  args:
+    - f
+    - g
+    - xs
+  solution: "\\f g xs -> GHC.List.map g (GHC.List.map f xs)"
+  source: "original"
+  examples:
+    - inputs: ["GHC.List.length", "\\x -> x * x", "[[1,2,3], [1,2,3,4], [1,2,3,4,5]]"]
+      output: "[9, 16, 25]"
+
+- name: zipWithResult
+  query: "f: (a -> b) -> xs: [a]-> [(a, b)]"
+  args:
+    - f
+    - xs
+  solution: "\\f xs -> GHC.List.zip xs (GHC.List.map f xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["\\x -> x * 3", "[1,2,3]"]
+      output: "[(1,3), (2,6), (3,9)]"
+
+- name: resolveEither
+  query: "e: Either a b -> f: (a -> b) -> b"
+  args:
+    - e
+    - f
+  solution: "\\x f -> Data.Either.either f Data.Function.id x"
+  source: "original"
+  examples:
+    - inputs: ["Left 3", "\\x -> x + 1"]
+      output: "4"
+    - inputs: ["Right 3", "\\x -> x * x"]
+      output: "3"
+
+- name: applyNtimes
+  query: "f: (a -> a) -> x: a -> n: Int -> a"
+  args:
+    - f
+    - x
+  solution: "\\f x n -> GHC.List.foldr (Data.Function.$) x (GHC.List.replicate n f)"
+  source: "study"
+  examples:
+    - inputs: ["\\x -> x ++ x", "\"f-\"", "3"]
+      output: "\"f-f-f-f-f-f-f-f-\""
+
+- name: eitherTriple
+  query: "e1: Either a b -> e2: Either a b -> Either a b"
+  args:
+    - e1
+    - e2
+  solution: "\\e1 e2 -> Data.Bool.bool e2 e1 (Data.Either.isLeft e1)"
+  source: "hoogle"
+  examples:
+    - inputs: ["Left 1", "Left 2"]
+      output: "Left 1"
+    - inputs: ["Left 1", "Right 2"]
+      output: "Left 1"
+    - inputs: ["Right 2", "Right 3"]
+      output: "Right 3"
+
+- name: pipe
+  query: "fs: [(a -> a)] -> x: a -> a"
+  args:
+    - fs
+    - x
+  solution: "\\xs x -> GHC.List.foldr (Data.Function.$) x xs"
+  source: "hoogle"
+  examples:
+    - inputs: ["[\\x -> x + 1, \\x -> x * 2, \\x -> x * x]", "3"]
+      output: "19"
+
+- name: indexesOf
+  query: "f: ([(a, Int)] -> [(a, Int)]) -> xs: [a] -> ys: [Int] -> [Int]"
+  args:
+    - f
+    - xs
+    - ys
+  solution: "\\f xs ys -> GHC.List.map Data.Tuple.snd (f (GHC.List.zip xs ys))"
+  source: "stackOverflow"
+  examples:
+    - inputs: ["map (\\(x, y) -> (x, y * y))", "[1,2,3]", "[9,8,7]"]
+      output: "[81, 64, 49]"
+
+- name: lookup
+  query: "Eq a => xs: [(a, b)] -> k: a -> b"
+  args:
+    - xs
+    - k
+  solution: "\\xs k -> Data.Maybe.fromJust (GHC.List.lookup k xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["[(1,2), (2,3), (4,6)]", "2"]
+      output: "3"
+
+- name: mbElem
+  query: "Eq a => x: a -> xs: [a] -> Maybe a"
+  args:
+    - x
+    - xs
+  solution: "\\x xs -> Data.Bool.bool Data.Maybe.Nothing (Data.Maybe.Just x) (GHC.List.elem x xs)"
+  source: "hoogle"
+  examples:
+    - inputs: ["2", "[1,3,5,7,9]"]
+      output: "Nothing"
+    - inputs: ["3", "[1,3,5,7,9]"]
+      output: "Just 3"
+
+# - name: convert
+#   query: Int -> Int -> Float
+
+- name: areEq
+  query: "Eq a => x: a -> y: a -> Maybe a"
+  args:
+    - x
+    - y
+  solution: "\\x y -> Data.Bool.bool Data.Maybe.Nothing (Data.Maybe.Just x) (x == y)"
+  source: "hoogle"
+  examples:
+    - inputs: ["1", "2"]
+      output: "Nothing"
+    - inputs: ["1", "1"]
+      output: "Just 1"
+
+- name: containsEdge
+  query: "vs: [Int] -> edge: (Int, Int) -> Bool"
+  args:
+    - vs
+    - edge
+  solution: "\\vs edge -> (fst edge `GHC.List.elem` vs) && (snd edge `GHC.List.elem` vs)"
+  source: "stackOverflow"
+  examples:
+    - inputs: ["[1,2,3,4]", "(1,2)"]
+      output: "True"
+    - inputs: ["[1,2,3,4]", "(5,6)"]
+      output: "False"
+
+- name: dedupe
+  query: "Eq a => xs: [a] -> [a]"
+  args:
+    - xs
+  solution: "\\xs -> GHC.List.map GHC.List.head (Data.List.group xs)"
+  source: "study"
+  examples:
+    - inputs: ["\"aaabbbccc\""]
+      output: "\"abc\""
+
+- name: inverseMap
+  query: "fs: [a -> b] -> x: a -> [b]"
+  args:
+    - fs
+    - x
+  solution: "\\fs x -> GHC.List.zipWith (Data.Function.$) fs (GHC.List.repeat x)"
+  source: "study"
+  examples:
+    - inputs: ["[\\x -> x + 3, \\x -> x * x]", "4"]
+      output: "[7, 16]"
