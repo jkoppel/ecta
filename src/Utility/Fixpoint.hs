@@ -4,6 +4,8 @@ module Utility.Fixpoint (
   , fixMaybe
   ) where
 
+import Debug.Trace
+
 --------------------------------------------------------------
 
 fix :: (Show a, Eq a) => Int -> (a -> a) -> a -> a
