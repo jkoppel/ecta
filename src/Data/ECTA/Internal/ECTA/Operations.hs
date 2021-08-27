@@ -265,10 +265,10 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
   where
     go e1          e2
       | e2 < e1                                         = intersectEdgeSameSymbol e2 e1
-#ifdef DEFENSIVE_CHECKS
-    go (Edge s children1) (Edge _ children2)
-      | length children1 /= length children2            = error ("Different lengths encountered for children of symbol " ++ show s)
-#endif
+
+
+
+
     go e1                 e2                 =
         mkEdge (edgeSymbol e1)
                (zipWith intersect (edgeChildren e1) (edgeChildren e2))
@@ -383,7 +383,7 @@ reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
 reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
-    propagateEmptyNodes ns = if any (==EmptyNode) ns then map (const EmptyNode) ns else ns
+    propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
     go :: EqConstraints -> [Node] -> [Node]
     go ecs origNs = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
@@ -397,7 +397,7 @@ reduceEqConstraints = go
         intersectList ns = foldr intersect (head ns) (tail ns)
 
         atPaths :: [Node] -> [Path] -> [Node]
-        atPaths ns ps = map (\p -> getPath p ns) ps
+        atPaths ns ps = map (`getPath` ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
         reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
@@ -410,7 +410,7 @@ reduceEqConstraints = go
         --toIntersect ns ps = replicate (length ps) $ intersectList $ map (nodeDropRedundantEdges . flip getPath ns) ps
         --toIntersect ns ps = map intersectList $ dropOnes $ map (nodeDropRedundantEdges . flip getPath ns) ps
         --toIntersect ns ps = replicate (length ps) $ intersectList $ map (flip getPath ns) ps
-        toIntersect ns ps = map intersectList $ dropOnes $ map (flip getPath ns) ps
+        toIntersect ns ps = map intersectList $ dropOnes $ map (`getPath` ns) ps
 
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]
