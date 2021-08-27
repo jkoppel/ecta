@@ -319,8 +319,7 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
         let resNode = exportTypeToFta res
         let anyArg = Node (map (uncurry constArg) argNodes)
-        -- let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
-        let !filterNode = filterType (uptoSize4 anyArg) resNode
+        let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
         nodeCons <- getCurrentTime
         print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
         
