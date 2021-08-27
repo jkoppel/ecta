@@ -55,13 +55,16 @@ instance IsString Symbol where
 ---------------------------------------------------------------
 
 data Term = Term !Symbol ![Term]
-  deriving ( Eq, Ord, Show, Generic )
+  deriving ( Eq, Ord, Generic )
 
 instance Hashable Term
 
 instance Pretty Term where
   pretty (Term s [])            = pretty s
-  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
+  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate ", " $ map pretty ts) <> ")"
+  
+instance Show Term where
+  show t = show (pretty t)
 
 ---------------------
 ------ Term ops

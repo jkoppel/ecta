@@ -55,6 +55,7 @@ import Control.Lens ( use, ix, (%=), (.=) )
 import Control.Lens.TH ( makeLenses )
 
 import Data.List.Index ( imapM )
+import Debug.Trace ( traceShow, trace )
 
 import Data.ECTA.Internal.ECTA.Operations
 import Data.ECTA.Internal.ECTA.Type
@@ -294,6 +295,7 @@ enumerateEdge scs e = do
 ---------------------
 
 data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
+    deriving (Show)
 
 -- Can speed this up with bitvectors
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
@@ -388,8 +390,8 @@ getAllTruncatedTerms n = map (termFragToTruncatedTerm . fst) $
 
 getAllTerms :: Node -> [Term]
 getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
-                  enumerateFully
-                  expandUVar (intToUVar 0)
+                  trace "start enumerating" $ enumerateFully
+                  trace "start expanding" $ expandUVar (intToUVar 0)
 
 
 -- | Inefficient enumeration

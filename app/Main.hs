@@ -7,6 +7,7 @@ import Data.List ( nub )
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
+import System.Environment (getArgs)
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
@@ -56,4 +57,7 @@ main = do
     -- end <- getCurrentTime
     -- print $ "Reduction time: " ++ show (diffUTCTime end middle)
     -- putStrLn $ renderDot . toDot $ node
-    mapM_ runBenchmark benchmarks
+    -- mapM_ runBenchmark benchmarks
+    benchStr <- getArgs
+    let bench = read (head benchStr) :: Benchmark
+    runBenchmark bench
