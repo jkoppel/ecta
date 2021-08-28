@@ -65,6 +65,8 @@ import qualified Data.IntMap as IntMap
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
 
+import Debug.Trace
+
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
@@ -379,7 +381,7 @@ instance Pathable [Node] Node where
 ------------------------------------
 
 withoutRedundantEdges :: Node -> Node
-withoutRedundantEdges n = mapNodes dropReds n
+withoutRedundantEdges n = trace "withoutRedundantEdges" $ mapNodes dropReds n
   where
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
@@ -450,7 +452,7 @@ reduceEqConstraints = go
         _atPaths ns ps = map (\p -> getPath p ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+        reduceEClass pec ns = trace ("reduceEClass: " ++ show (length ps)) $ foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
