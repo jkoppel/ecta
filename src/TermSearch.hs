@@ -135,10 +135,10 @@ termsK :: Node -> Bool -> Int -> [Node]
 termsK anyArg _ 0 = []
 termsK anyArg False 1 = [anyArg, anyFunc]
 termsK anyArg True 1 = [anyArg, anyFunc, applyOperator]
--- termsK anyArg _ 2 = [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
---                     , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
---                     , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
---                     ]
+termsK anyArg _ 2 = [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
+                    , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
+                    , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
+                    ]
 termsK anyArg _ k = map constructApp [1..(k-1)]
   where
     constructApp :: Int -> Node
@@ -195,7 +195,7 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
 
                             -- Seeing what happens upon banning other too-polymorphic functions
                             -- Data.Either
-                            , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
+                            -- , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
 
                             -- GHC.List
                             , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
@@ -204,10 +204,10 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
                             -- , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
                             , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
                             , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-                            , "Nil"
+                            -- , "Nil"
                             -- Data.Maybe
-                            , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
-                            , "Data.Maybe.Nothing"
+                            -- , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
+                            -- , "Data.Maybe.Nothing"
                             ]
 
 hoogleComps :: [Edge]
