@@ -394,8 +394,8 @@ getAllTruncatedTerms n = map (termFragToTruncatedTerm . fst) $
 
 getAllTerms :: Node -> [Term]
 getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
-                  trace "start enumerating" $ enumerateFully
-                  trace "start expanding" $ expandUVar (intToUVar 0)
+                  enumerateFully
+                  expandUVar (intToUVar 0)
 
 
 -- | Inefficient enumeration
