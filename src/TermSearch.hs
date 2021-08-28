@@ -155,18 +155,18 @@ applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var
 -- -- anyFunc = Node [f9, f10]
 
 -- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
-size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
-size1 anyArg = union [anyArg, anyFunc, applyOperator]
-size2 anyArg = app (size1WithoutApplyOperator anyArg) (size1 anyArg)
-size3 anyArg = union [app (size2 anyArg) (size1 anyArg), app (size1WithoutApplyOperator anyArg) (size2 anyArg)]
-size4 anyArg = union [app (size3 anyArg) (size1 anyArg), app (size2 anyArg) (size2 anyArg), app (size1WithoutApplyOperator anyArg) (size3 anyArg)]
+-- size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
+-- size1 anyArg = union [anyArg, anyFunc, applyOperator]
+-- size2 anyArg = app (size1WithoutApplyOperator anyArg) (size1 anyArg)
+-- size3 anyArg = union [app (size2 anyArg) (size1 anyArg), app (size1WithoutApplyOperator anyArg) (size2 anyArg)]
+-- size4 anyArg = union [app (size3 anyArg) (size1 anyArg), app (size2 anyArg) (size2 anyArg), app (size1WithoutApplyOperator anyArg) (size3 anyArg)]
 -- size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
 -- size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
 
 -- uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
 -- uptoSize2 = union [size1, size2]
 -- uptoSize3 = union [size1, size2, size3]
-uptoSize4 anyArg = union (map ($ anyArg) [size1, size2, size3, size4])
+-- uptoSize4 anyArg = union (map ($ anyArg) [size1, size2, size3, size4])
 -- uptoSize5 = union [size1, size2, size3, size4, size5]
 -- uptoSize6 = union [size1, size2, size3, size4, size5, size6]
 
@@ -186,10 +186,10 @@ termsK :: Node -> Bool -> Int -> [Node]
 termsK anyArg _ 0 = []
 termsK anyArg False 1 = [anyArg, anyFunc]
 termsK anyArg True 1 = [anyArg, anyFunc, applyOperator]
--- termsK anyArg _ 2 = [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
---                     , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
---                     , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
---                     ]
+termsK anyArg _ 2 = [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
+                    , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
+                    , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
+                    ]
 termsK anyArg _ k = map constructApp [1..(k-1)]
   where
     constructApp :: Int -> Node
@@ -246,7 +246,7 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
 
                             -- Seeing what happens upon banning other too-polymorphic functions
                             -- Data.Either
-                            , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
+                            -- , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
 
                             -- GHC.List
                             , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
@@ -255,10 +255,10 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
                             -- , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
                             , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
                             , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-                            , "Nil"
+                            -- , "Nil"
                             -- Data.Maybe
-                            , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
-                            , "Data.Maybe.Nothing"
+                            -- , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
+                            -- , "Data.Maybe.Nothing"
                             ]
 
 hoogleComps :: [Edge]

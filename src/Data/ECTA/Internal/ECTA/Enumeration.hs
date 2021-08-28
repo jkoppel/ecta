@@ -352,14 +352,16 @@ enumerateFully = do
   case muv of
     ExpansionStuck   -> mzero
     ExpansionDone    -> return ()
-    ExpansionNext uv -> do UVarUnenumerated (Just n) scs <- getUVarValue uv
-                           if scs == Sequence.Empty then
-                             case n of
-                               Mu _ -> return ()
-                               _    -> enumerateOutUVar uv >> enumerateFully
-                            else
-                             enumerateOutUVar uv >> enumerateFully
-
+    ExpansionNext uv -> do t <- getUVarValue uv
+                           case t of
+                             UVarUnenumerated (Just n) scs ->
+                              if scs == Sequence.Empty then
+                                case n of
+                                  Mu _ -> return ()
+                                  _    -> enumerateOutUVar uv >> enumerateFully
+                                else
+                                enumerateOutUVar uv >> enumerateFully
+                             _ -> return ()
 ---------------------
 -------- Expanding an enumerated term fragment into a term
 ---------------------
@@ -389,8 +391,8 @@ getAllTruncatedTerms n = map (termFragToTruncatedTerm . fst) $
 
 getAllTerms :: Node -> [Term]
 getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
-                  trace "start enumerating" $ enumerateFully
-                  trace "start expanding" $ expandUVar (intToUVar 0)
+                  enumerateFully
+                  expandUVar (intToUVar 0)
 
 
 -- | This works, albeit very inefficiently, for ECTAs without a Mu node

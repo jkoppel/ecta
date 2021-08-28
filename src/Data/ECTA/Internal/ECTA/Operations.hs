@@ -198,7 +198,7 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = trace "intersect" $ memo2 (NameTag "intersect") doIntersect
+intersect = memo2 (NameTag "intersect") doIntersect
 {-# NOINLINE intersect #-}
 
 
@@ -211,14 +211,14 @@ intersect = trace "intersect" $ memo2 (NameTag "intersect") doIntersect
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
-doIntersect (Mu n)    (Mu _)    = trace "doIntersect 2" $ Mu n -- | And here I use the crazy "globally unique mu" assumption
-doIntersect (Mu n1)   n2        = trace "doIntersect 3" $ doIntersect (unfoldRec n1) n2
-doIntersect n1        (Mu n2)   = trace "doIntersect 4" $ doIntersect n1             (unfoldRec n2)
+doIntersect (Mu n)    (Mu _)    = Mu n -- | And here I use the crazy "globally unique mu" assumption
+doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
+doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
-  | n1 == n2                            = trace "doIntersect 5" $ n1
-  | n2 <  n1                            = trace "doIntersect 6" $ intersect n2 n1
+  | n1 == n2                            = n1
+  | n2 <  n1                            = intersect n2 n1
                                           -- | `hash` gives a unique ID of the symbol because they're interned
-  | otherwise                           = trace "doIntersect 7" $ let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
+  | otherwise                           = let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
                                           in Node joined
                                              --Node $ dropRedundantEdges joined
                                              --mkNodeAlreadyNubbed $ dropRedundantEdges joined
@@ -352,7 +352,7 @@ instance Pathable [Node] Node where
 ------------------------------------
 
 withoutRedundantEdges :: Node -> Node
-withoutRedundantEdges n = trace "withoutRedundantEdges" $ mapNodes dropReds n
+withoutRedundantEdges n = mapNodes dropReds n
   where
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
@@ -363,21 +363,21 @@ withoutRedundantEdges n = trace "withoutRedundantEdges" $ mapNodes dropReds n
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = trace "reducePartially" $ memo (NameTag "reducePartially") go
+reducePartially = memo (NameTag "reducePartially") go
   where
     go :: Node -> Node
     go EmptyNode  = EmptyNode
     go (Mu n)     = Mu n
     go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
-                                          $ trace ("edges length: " ++ show (length es)) $ map reduceEdgeIntersection es
+                                          $ map reduceEdgeIntersection es
 {-# NOINLINE reducePartially #-}
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection = trace "reduceEdgeIntersection" $ memo (NameTag "reduceEdgeIntersection") go
+reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
   where
    go :: Edge -> Edge
    go e = mkEdge (edgeSymbol e)
-                 (reduceEqConstraints (edgeEcs e) (trace ("edgeChildren length: " ++ show (length $ edgeChildren e)) edgeChildren e))
+                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
                  (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
@@ -388,7 +388,7 @@ reduceEqConstraints = go
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
     go :: EqConstraints -> [Node] -> [Node]
-    go ecs origNs = trace "reduceEqConstraints" $ propagateEmptyNodes $ foldr reduceEClass withNeededChildren (trace ("eclasses length: " ++ show (length eclasses)) eclasses)
+    go ecs origNs = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
@@ -402,7 +402,7 @@ reduceEqConstraints = go
         atPaths ns ps = map (`getPath` ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = trace ("reduceEClass: " ++ show (length ps)) $ foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
