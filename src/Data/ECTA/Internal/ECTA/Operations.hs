@@ -63,6 +63,8 @@ import qualified Data.Set as Set
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
 
+import Debug.Trace
+
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
@@ -218,7 +220,7 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") doIntersect
+intersect = trace "intersect" $ memo2 (NameTag "intersect") doIntersect
 {-# NOINLINE intersect #-}
 
 
@@ -377,7 +379,7 @@ instance Pathable [Node] Node where
 ------------------------------------
 
 withoutRedundantEdges :: Node -> Node
-withoutRedundantEdges n = mapNodes dropReds n
+withoutRedundantEdges n = trace "withoutRedundantEdges" $ mapNodes dropReds n
   where
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
@@ -388,7 +390,7 @@ withoutRedundantEdges n = mapNodes dropReds n
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = memo (NameTag "reducePartially") go
+reducePartially = trace "reducePartially" $ memo (NameTag "reducePartially") go
   where
     go :: Node -> Node
     go EmptyNode  = EmptyNode
@@ -399,11 +401,11 @@ reducePartially = memo (NameTag "reducePartially") go
 {-# NOINLINE reducePartially #-}
 
 reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
+reduceEdgeIntersection = trace "reduceEdgeIntersection" $ memo (NameTag "reduceEdgeIntersection") go
   where
    go :: Edge -> Edge
    go e = mkEdge (edgeSymbol e)
-                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                 (reduceEqConstraints (edgeEcs e) (trace ("edgeChildren length: " ++ show (length $ edgeChildren e)) edgeChildren e))
                  (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
@@ -414,7 +416,7 @@ reduceEqConstraints = go
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
     go :: EqConstraints -> [Node] -> [Node]
-    go ecs origNs = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
+    go ecs origNs = trace "reduceEqConstraints" $ propagateEmptyNodes $ foldr reduceEClass withNeededChildren (trace ("eclasses length: " ++ show (length eclasses)) eclasses)
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
@@ -428,7 +430,7 @@ reduceEqConstraints = go
         _atPaths ns ps = map (\p -> getPath p ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+        reduceEClass pec ns = trace ("reduceEClass: " ++ show (length ps)) $ foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
