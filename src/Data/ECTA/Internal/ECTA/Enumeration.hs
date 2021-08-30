@@ -116,6 +116,7 @@ data UVarValue = UVarUnenumerated { contents    :: !(Maybe Node)
   deriving ( Eq, Ord, Show )
 
 intersectUVarValue :: UVarValue -> UVarValue -> UVarValue
+intersectUVarValue v1 v2 | v1 == v2 = v1
 intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarUnenumerated mn2 scs2) =
   let newContents = case (mn1, mn2) of
                       (Nothing, x      ) -> x
@@ -126,8 +127,13 @@ intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarUnenumerated mn2 scs2) =
 
 intersectUVarValue UVarEliminated            _                         = error "intersectUVarValue: Unexpected UVarEliminated"
 intersectUVarValue _                         UVarEliminated            = error "intersectUVarValue: Unexpected UVarEliminated"
-intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
+intersectUVarValue v@(UVarEnumerated _)      (UVarUnenumerated _ _)    = v
+intersectUVarValue (UVarUnenumerated _ _)    v@(UVarEnumerated _)      = v
+intersectUVarValue v1                        v2                        = error $ "intersectUVarValue: Intersecting with enumerated value not implemented " ++ show (v1, v2)
 
+isUnenumerated :: UVarValue -> Bool
+isUnenumerated (UVarUnenumerated _ _) = True
+isUnenumerated _                      = False
 
 -----------------------
 ------- Top-level state
@@ -194,7 +200,7 @@ getUVarRepresentative :: UVar -> EnumerateM UVar
 getUVarRepresentative uv = do uf <- use uvarRepresentative
                               let (uv', uf') = UnionFind.find uv uf
                               uvarRepresentative .= uf'
-                              return uv'
+                              trace ("returns representative " ++ show uv' ++ " for " ++ show uv) $ return uv'
 
 ---------------------
 -------- Creating UVar's
@@ -211,17 +217,20 @@ pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
 
 assimilateUvarVal :: UVar -> SuspendedConstraint -> EnumerateM ()
 assimilateUvarVal uvTarg (SuspendedConstraint pt uvSrc)
-                                | uvTarg == uvSrc      = return ()
-                                | otherwise            = do
+  | uvTarg == uvSrc      = return ()
+  | otherwise            = do
   values <- use uvarValues
-  let srcVal  = Sequence.index values (uvarToInt uvSrc)
-  let targVal = Sequence.index values (uvarToInt uvTarg)
+  -- let srcVal  = Sequence.index values (uvarToInt uvSrc)
+  -- let targVal = Sequence.index values (uvarToInt uvTarg)
+  srcVal <- getUVarValue uvSrc
+  targVal <- getUVarValue uvTarg
   case srcVal of
     UVarEliminated -> return () -- Happens from duplicate constraints
     _              -> do
       let v = intersectUVarValue srcVal targVal
-      guard (contents v /= Just EmptyNode)
-      uvarValues.(ix $ uvarToInt uvTarg) .= v
+      guard (not (isUnenumerated v) || contents v /= Just EmptyNode)
+      targRep <- getUVarRepresentative uvTarg
+      uvarValues.(ix $ uvarToInt targRep) .= v
       uvarValues.(ix $ uvarToInt uvSrc)  .= UVarEliminated
 
 
@@ -229,9 +238,11 @@ mergeNodeIntoUVarVal :: UVar -> Node -> Seq SuspendedConstraint -> EnumerateM ()
 mergeNodeIntoUVarVal uv n scs = do
   uv' <- getUVarRepresentative uv
   let idx = uvarToInt uv'
+  trace ("intersecting " ++ show uv ++ " with " ++ show idx) $ return ()
   uvarValues.(ix idx) %= intersectUVarValue (UVarUnenumerated (Just n) scs)
   newValues <- use uvarValues
-  guard (contents (Sequence.index newValues idx) /= Just EmptyNode)
+  let newValue = newValues `Sequence.index` idx
+  guard (not (isUnenumerated newValue) || contents newValue /= Just EmptyNode)
 
 
 ---------------------
@@ -266,28 +277,29 @@ enumerateNode :: Seq SuspendedConstraint -> Node -> EnumerateM TermFragment
 enumerateNode _   EmptyNode = mzero
 enumerateNode scs n         =
   let (hereConstraints, descendantConstraints) = Sequence.partition (\(SuspendedConstraint pt _) -> isTerminalPathTrie pt) scs
-  in case hereConstraints of
+  in trace ("enumerateNode: " ++ show n ++ "\nconstraints:" ++ show (hereConstraints, descendantConstraints)) $ case hereConstraints of
        Sequence.Empty -> case n of
                            Mu _    -> TermFragmentUVar <$> addUVarValue (Just n)
 
-                           Node es -> enumerateEdge scs =<< lift es
+                           Node es -> do t <- enumerateEdge scs =<< lift es
+                                         trace ("returns " ++ show t ++ " for " ++ show n) $ return t
 
-       (x :<| xs)     -> do forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
+       (x :<| xs)     -> do forM_ xs $ \sc -> trace ("union " ++ show (scGetUVar x) ++ " and " ++ show (scGetUVar sc)) (uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc))
                             uv <- getUVarRepresentative (scGetUVar x)
                             mapM_ (assimilateUvarVal uv) hereConstraints
                             mergeNodeIntoUVarVal uv n descendantConstraints
 
-                            return $ TermFragmentUVar uv
+                            return $ trace ("returns " ++ show (TermFragmentUVar uv) ++ " for " ++ show n) $ TermFragmentUVar uv
 
 enumerateEdge :: Seq SuspendedConstraint -> Edge -> EnumerateM TermFragment
-enumerateEdge scs e = do
+enumerateEdge scs e = trace ("enumerateEdge: " ++ show e) $ do
   let highestConstraintIndex = getMax $ foldMap (\sc -> Max $ fromMaybe (-1) $ getMaxNonemptyIndex $ scGetPathTrie sc) scs
   guard $ highestConstraintIndex < length (edgeChildren e)
 
   newScs <- Sequence.fromList <$> mapM pecToSuspendedConstraint (unsafeGetEclasses $ edgeEcs e)
-  let scs' = scs <> newScs
-  TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
-
+  let scs' = scs <> trace ("newScs: " ++ show newScs) newScs
+  t <- TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
+  trace ("returns " ++ show t ++ " for " ++ show e) $ return t
 
 ---------------------
 -------- Enumeration-loop control
@@ -300,12 +312,20 @@ data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
 firstExpandableUVar = do
     values <- use uvarValues
-    let candidates = Sequence.foldMapWithIndex
-                      (\i -> \case (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> IntMap.empty
-                                   (UVarUnenumerated (Just (Mu _)) _             ) -> IntMap.singleton i (Any False)
-                                   (UVarUnenumerated (Just _)      _)              -> IntMap.singleton i (Any False)
-                                   _                                               -> IntMap.empty)
-                      values
+    -- let candidates = Sequence.foldMapWithIndex
+    --                   (\i -> \case (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> IntMap.empty
+    --                                (UVarUnenumerated (Just (Mu _)) _             ) -> IntMap.singleton i (Any False)
+    --                                (UVarUnenumerated (Just _)      _)              -> IntMap.singleton i (Any False)
+    --                                _                                               -> IntMap.empty)
+    --                   values
+    candidateMaps <- mapM (\i -> do v <- getUVarValue (intToUVar i)
+                                    case v of
+                                        (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> return IntMap.empty
+                                        (UVarUnenumerated (Just (Mu _)) _             ) -> return $ IntMap.singleton i (Any False)
+                                        (UVarUnenumerated (Just _)      _)              -> return $ IntMap.singleton i (Any False)
+                                        _                                               -> return IntMap.empty)
+                              [0..(Sequence.length values - 1)]
+    let candidates = IntMap.unions candidateMaps
 
     if IntMap.null candidates then
       return ExpansionDone
@@ -333,7 +353,6 @@ enumerateOutUVar uv = do UVarUnenumerated (Just n) scs <- getUVarValue uv
                                 Mu x -> enumerateNode scs (unfoldRec x)
                                 _    -> enumerateNode scs n
 
-
                          uvarValues.(ix $ uvarToInt uv') .= UVarEnumerated t
                          refreshReferencedUVars
                          return t
@@ -349,19 +368,17 @@ enumerateOutFirstExpandableUVar = do
 enumerateFully :: EnumerateM ()
 enumerateFully = do
   muv <- firstExpandableUVar
-  case muv of
+  case trace ("enumerateFully: " ++ show muv) muv of
     ExpansionStuck   -> mzero
     ExpansionDone    -> return ()
-    ExpansionNext uv -> do t <- getUVarValue uv
-                           case t of
-                             UVarUnenumerated (Just n) scs ->
-                              if scs == Sequence.Empty then
-                                case n of
-                                  Mu _ -> return ()
-                                  _    -> enumerateOutUVar uv >> enumerateFully
-                                else
-                                enumerateOutUVar uv >> enumerateFully
-                             _ -> return ()
+    ExpansionNext uv -> do UVarUnenumerated (Just n) scs <- getUVarValue uv
+                           if scs == Sequence.Empty then
+                            case n of
+                              Mu _ -> return ()
+                              _    -> enumerateOutUVar uv >> enumerateFully
+                           else
+                            enumerateOutUVar uv >> enumerateFully
+    
 ---------------------
 -------- Expanding an enumerated term fragment into a term
 ---------------------
@@ -372,7 +389,7 @@ expandTermFrag (TermFragmentUVar uv)   = do val <- getUVarValue uv
                                             case val of
                                               UVarEnumerated t                 -> expandTermFrag t
                                               UVarUnenumerated (Just (Mu _)) _ -> return $ Term "Mu" []
-                                              _                                -> error "expandTermFrag: Non-recursive, unenumerated node encountered"
+                                              _                                -> error $ "expandTermFrag: Non-recursive, unenumerated node encountered: " ++ show uv
 
 expandUVar :: UVar -> EnumerateM Term
 expandUVar uv = do UVarEnumerated t <- getUVarValue uv
