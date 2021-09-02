@@ -4,7 +4,8 @@
 
 module TermSearch where
 
-import Data.List ((\\), permutations, isInfixOf)
+import Data.List ((\\), permutations, isInfixOf, subsequences)
+import qualified Data.List as L
 import Data.List.Extra (nubOrd)
 import           Data.Map ( Map )
 import qualified Data.Map as Map
@@ -30,13 +31,13 @@ import Utility.Fixpoint
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    -- usedConstructors = allConstructors
-    usedConstructors = [("Either", 2), ("Pair", 2)]
+    usedConstructors = allConstructors
+    -- usedConstructors = [("Either", 2), ("Pair", 2)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -123,11 +124,11 @@ f14 = constFunc "Left" (generalize $ arrowType var1 (constrType2 "Either" var1 v
 f15 = constFunc "id" (generalize $ arrowType var1 var1)
 f16 = constFunc "(,)" (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
 f17 = constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
--- f18 = constFunc "fromJust" (generalize $ arrowType (maybeType var1) var1)
+f18 = constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
 
 applyOperator :: Node
 applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-                    --  , constFunc "Data.Function.id" (generalize $ arrowType var1 var1)
+                     , constFunc "Data.Function.id" (generalize $ arrowType var1 var1)
                      ]
 
 -- args :: [(Symbol, Node)]
@@ -156,7 +157,7 @@ applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var
 -- --   in the ECTA.
 -- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f13, f14, f15]
-anyFunc = Node [f16]
+-- anyFunc = Node [f16, f17, f18]
 
 -- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
 size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
@@ -208,9 +209,13 @@ relevantTermK anyArg includeApplyOp k [] = termsK anyArg includeApplyOp k
 relevantTermK _ _ 1 [(x, t)] = [Node [constArg x t]]
 relevantTermK anyArg _ k argNames
   | k < length argNames = []
-  | otherwise = concatMap (\i -> map (constructApp i) allSplits) [1..(k-1)]
+  | otherwise = concatMap (\i -> map (constructApp i) allSubsets) [1..(k-1)]
   where
     allSplits = map (`splitAt` argNames) [0..(length argNames)]
+    allSubsets = allSplits
+    -- allSubsets = nubOrd $ 
+    --              concatMap (\(xs, ys) -> map ((, ys) . L.union xs) (subsequences argNames)) allSplits 
+    --           ++ concatMap (\(xs, ys) -> map ((xs, ) . L.union ys) (subsequences argNames)) allSplits
 
     constructApp :: Int -> ([ArgType], [ArgType]) -> Node
     constructApp i (xs, ys) = let f = union (relevantTermK anyArg False i xs)
@@ -272,8 +277,8 @@ hoogleComps = filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
             $ map (uncurry parseHoogleComponent)
             $ Map.toList hoogleComponents
 
--- anyFunc :: Node
--- anyFunc = Node hoogleComps
+anyFunc :: Node
+anyFunc = Node hoogleComps
 
 fromJustFunc :: Node
 fromJustFunc = Node [ constFunc "Data.Maybe.fromJust" (generalize $ arrowType (maybeType var1) var1)
@@ -348,8 +353,8 @@ checkSolution target [] = return ()
 checkSolution target (s:solutions)
   | show (prettyTerm s) == target = print (prettyTerm s)
   | otherwise = do
-    print (prettyTerm s)
-    error "stop"
+    -- print (prettyTerm s)
+    -- error "stop"
     checkSolution target solutions
 
 prettyPrintAllTerms :: String -> Node -> IO ()
@@ -366,8 +371,8 @@ prettyPrintAllTerms solStr n = do let ts = getAllTerms n
 runBenchmark :: Benchmark -> IO ()
 runBenchmark (Benchmark name depth solStr (args, res)) = do
     let names = []
-    let hardBenchmarks = []
-    -- let hardBenchmarks = ["both", "multiAppPair", "cartProduct", "headLast", "takeNdropM", "areEq"]
+    -- let hardBenchmarks = []
+    let hardBenchmarks = ["both", "multiAppPair", "cartProduct", "headLast", "takeNdropM", "areEq"]
     when (name `elem` names || null names)
       (do
         start <- getCurrentTime
@@ -375,15 +380,15 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
         let resNode = exportTypeToFta res
         let anyArg = Node (map (uncurry constArg) argNodes)
-        -- let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
-        let filterNode = filterType (uptoSize7 anyArg) resNode
-        putStrLn $ renderDot . toDot $ filterNode
+        let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
+        -- let filterNode = filterType (uptoSize7 anyArg) resNode
+        -- putStrLn $ renderDot . toDot $ filterNode
         
         timeout (200 * 10^6) $ do
             let reducedNode = if name `elem` hardBenchmarks 
                               then (withoutRedundantEdges . reducePartially) filterNode
                               else reduceFully filterNode
-            putStrLn $ renderDot . toDot $ reducedNode
+            -- putStrLn $ renderDot . toDot $ reducedNode
             let foldedNode = refold reducedNode
             -- putStrLn $ renderDot . toDot $ reducedNode
             prettyPrintAllTerms solStr foldedNode

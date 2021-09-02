@@ -213,7 +213,7 @@ getUVarRepresentative :: UVar -> EnumerateM UVar
 getUVarRepresentative uv = do uf <- use uvarRepresentative
                               let (uv', uf') = UnionFind.find uv uf
                               uvarRepresentative .= uf'
-                              trace ("returns representative " ++ show uv' ++ " for " ++ show uv) $ return uv'
+                              return uv'
 
 ---------------------
 -------- Creating UVar's
@@ -238,11 +238,8 @@ assimilateUvarVal uvTarg uvSrc
   case srcVal of
     UVarEliminated -> return () -- Happens from duplicate constraints
     _              -> do
-      trace ("assimilateUvarVal: intersecting " ++ show srcVal ++ " with " ++ show targVal) $ return ()
       let v = intersectUVarValue srcVal targVal
-      trace ("assimilateUvarVal: intersection result: " ++ show v) $ return ()
       guard (contents v /= Just EmptyNode)
-      trace ("assimilateUvarVal: assign " ++ show uvTarg ++ " to be " ++ show v) $ return ()
       uvarValues.(ix $ uvarToInt uvTarg) .= v
       uvarValues.(ix $ uvarToInt uvSrc)  .= UVarEliminated
 
@@ -251,11 +248,9 @@ mergeNodeIntoUVarVal :: UVar -> Node -> Seq SuspendedConstraint -> EnumerateM ()
 mergeNodeIntoUVarVal uv n scs = do
   let idx = uvarToInt uv
   v <- getUVarValue uv
-  trace ("mergeNodeIntoUVarVal: intersecting " ++ show v ++ " with " ++ show (UVarUnenumerated (Just n) scs)) $ return ()
   uvarValues.(ix idx) %= intersectUVarValue (UVarUnenumerated (Just n) scs)
   newValues <- use uvarValues
   let newValue = newValues `Sequence.index` idx
-  trace ("mergeNodeIntoUVarVal: intersection result: " ++ show newValue) $ return ()
   guard (contents newValue /= Just EmptyNode)
 
 
@@ -291,30 +286,28 @@ enumerateNode :: Seq SuspendedConstraint -> Node -> EnumerateM TermFragment
 enumerateNode _   EmptyNode = mzero
 enumerateNode scs n         =
   let (hereConstraints, descendantConstraints) = Sequence.partition (\(SuspendedConstraint pt _) -> isTerminalPathTrie pt) scs
-  in trace ("enumerateNode: " ++ show n ++ "\nconstraints:" ++ show (hereConstraints, descendantConstraints)) $ case hereConstraints of
+  in case hereConstraints of
        Sequence.Empty -> case n of
                            Mu _    -> TermFragmentUVar <$> addUVarValue (Just n)
 
-                           Node es -> do t <- (\e -> trace ("choice: " ++ show e) (enumerateEdge scs e)) =<< lift es
-                                         trace ("returns " ++ show t ++ " for " ++ show n) $ return t
+                           Node es -> enumerateEdge scs =<< lift es
 
        (x :<| xs)     -> do oldReps <- forM hereConstraints $ \sc -> getUVarRepresentative (scGetUVar sc)
-                            forM_ xs $ \sc -> trace ("union " ++ show (scGetUVar x) ++ " and " ++ show (scGetUVar sc)) (uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc))
+                            forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
                             uv <- getUVarRepresentative (scGetUVar x)
                             mapM_ (assimilateUvarVal uv) oldReps
                             mergeNodeIntoUVarVal uv n descendantConstraints
 
-                            return $ trace ("returns " ++ show (TermFragmentUVar uv) ++ " for " ++ show n) $ TermFragmentUVar uv
+                            return $ TermFragmentUVar uv
 
 enumerateEdge :: Seq SuspendedConstraint -> Edge -> EnumerateM TermFragment
-enumerateEdge scs e = trace ("enumerateEdge: " ++ show e) $ do
+enumerateEdge scs e = do
   let highestConstraintIndex = getMax $ foldMap (\sc -> Max $ fromMaybe (-1) $ getMaxNonemptyIndex $ scGetPathTrie sc) scs
   guard $ highestConstraintIndex < length (edgeChildren e)
 
   newScs <- Sequence.fromList <$> mapM pecToSuspendedConstraint (unsafeGetEclasses $ edgeEcs e)
-  let scs' = scs <> trace ("newScs: " ++ show newScs) newScs
-  t <- TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
-  trace ("returns " ++ show t ++ " for " ++ show e) $ return t
+  let scs' = scs <> newScs
+  TermFragmentNode (edgeSymbol e) <$> imapM (\i n -> enumerateNode (descendScs i scs') n) (edgeChildren e)
 
 ---------------------
 -------- Enumeration-loop control
@@ -362,7 +355,6 @@ enumerateOutUVar uv = do UVarUnenumerated (Just n) scs <- getUVarValue uv
                                 Mu x -> enumerateNode scs (unfoldRec x)
                                 _    -> enumerateNode scs n
 
-                         trace ("enumerateOutUVar: assign " ++ show uv' ++ " to be " ++ show t) $ return ()
                          uvarValues.(ix $ uvarToInt uv') .= UVarEnumerated n t
                          refreshReferencedUVars
                          return t
@@ -378,7 +370,7 @@ enumerateOutFirstExpandableUVar = do
 enumerateFully :: EnumerateM ()
 enumerateFully = do
   muv <- firstExpandableUVar
-  case trace ("enumerateFully: " ++ show muv) muv of
+  case muv of
     ExpansionStuck   -> mzero
     ExpansionDone    -> return ()
     ExpansionNext uv -> do UVarUnenumerated (Just n) scs <- getUVarValue uv
