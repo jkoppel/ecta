@@ -35,8 +35,8 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2] ++ map (N
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    usedConstructors = allConstructors
-    -- usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
+    -- usedConstructors = allConstructors
+    usedConstructors = [("Either", 2), ("Pair", 2)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -121,6 +121,9 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
 f13 = constFunc "either" (generalize $ arrowType (arrowType var1 var3) (arrowType (arrowType var2 var3) (arrowType (constrType2 "Either" var1 var2) var3)))
 f14 = constFunc "Left" (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
 f15 = constFunc "id" (generalize $ arrowType var1 var1)
+f16 = constFunc "(,)" (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
+f17 = constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
+-- f18 = constFunc "fromJust" (generalize $ arrowType (maybeType var1) var1)
 
 applyOperator :: Node
 applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
@@ -152,23 +155,26 @@ applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var
 -- -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
 -- --   in the ECTA.
 -- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
-anyFunc = Node [f13, f14, f15]
+-- anyFunc = Node [f13, f14, f15]
+anyFunc = Node [f16]
 
 -- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
 size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
-size1 anyArg = union [anyArg, anyFunc, applyOperator]
+size1 anyArg = union [anyArg, anyFunc]
 size2 anyArg = app (size1WithoutApplyOperator anyArg) (size1 anyArg)
 size3 anyArg = union [app (size2 anyArg) (size1 anyArg), app (size1WithoutApplyOperator anyArg) (size2 anyArg)]
 size4 anyArg = union [app (size3 anyArg) (size1 anyArg), app (size2 anyArg) (size2 anyArg), app (size1WithoutApplyOperator anyArg) (size3 anyArg)]
--- size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
--- size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
+size5 anyArg = union [app (size4 anyArg) (size1 anyArg), app (size3 anyArg) (size2 anyArg), app (size2 anyArg) (size3 anyArg), app (size1WithoutApplyOperator anyArg) (size4 anyArg)]
+size6 anyArg = union [app (size5 anyArg) (size1 anyArg), app (size4 anyArg) (size2 anyArg), app (size3 anyArg) (size3 anyArg), app (size2 anyArg) (size4 anyArg), app (size1WithoutApplyOperator anyArg) (size5 anyArg)]
+size7 anyArg = union [app (size6 anyArg) (size1 anyArg), app (size5 anyArg) (size2 anyArg), app (size4 anyArg) (size3 anyArg), app (size3 anyArg) (size4 anyArg), app (size2 anyArg) (size5 anyArg), app (size1WithoutApplyOperator anyArg) (size6 anyArg)]
 
 -- uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
 -- uptoSize2 = union [size1, size2]
 -- uptoSize3 = union [size1, size2, size3]
 uptoSize4 anyArg = union (map ($ anyArg) [size1, size2, size3, size4])
--- uptoSize5 = union [size1, size2, size3, size4, size5]
+uptoSize5 anyArg = union (map ($ anyArg) [size1, size2, size3, size4, size5])
 -- uptoSize6 = union [size1, size2, size3, size4, size5, size6]
+uptoSize7 anyArg = union (map ($ anyArg) [size1, size2, size3, size4, size5, size6, size7])
 
 -- uptoDepth2 :: Node
 -- uptoDepth2 = union [size1, app size1 size1]
@@ -269,8 +275,6 @@ hoogleComps = filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
 -- anyFunc :: Node
 -- anyFunc = Node hoogleComps
 
--- anyFunc = Node [f13, f14, f15]
-
 fromJustFunc :: Node
 fromJustFunc = Node [ constFunc "Data.Maybe.fromJust" (generalize $ arrowType (maybeType var1) var1)
                     , constFunc "Data.Maybe.maybeToList" (generalize $ arrowType (maybeType var1) (listType var1))
@@ -345,6 +349,7 @@ checkSolution target (s:solutions)
   | show (prettyTerm s) == target = print (prettyTerm s)
   | otherwise = do
     print (prettyTerm s)
+    error "stop"
     checkSolution target solutions
 
 prettyPrintAllTerms :: String -> Node -> IO ()
@@ -371,15 +376,14 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let resNode = exportTypeToFta res
         let anyArg = Node (map (uncurry constArg) argNodes)
         -- let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
-        let !filterNode = filterType (uptoSize4 anyArg) resNode
-        nodeCons <- getCurrentTime
-        print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
+        let filterNode = filterType (uptoSize7 anyArg) resNode
+        putStrLn $ renderDot . toDot $ filterNode
         
         timeout (200 * 10^6) $ do
             let reducedNode = if name `elem` hardBenchmarks 
                               then (withoutRedundantEdges . reducePartially) filterNode
                               else reduceFully filterNode
-            -- putStrLn $ renderDot . toDot $ reducedNode
+            putStrLn $ renderDot . toDot $ reducedNode
             let foldedNode = refold reducedNode
             -- putStrLn $ renderDot . toDot $ reducedNode
             prettyPrintAllTerms solStr foldedNode
