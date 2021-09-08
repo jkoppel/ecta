@@ -142,7 +142,11 @@ intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarEnumerated n2 t) =
       newConstraints = termFragToSuspendedConstraint t <> scs1
   in UVarUnenumerated newContents newConstraints
 intersectUVarValue v1@(UVarEnumerated _ _) v2@(UVarUnenumerated _ _) = intersectUVarValue v2 v1
-intersectUVarValue v1                        v2                        = error $ "intersectUVarValue: Intersecting with enumerated value not implemented " ++ show (v1, v2)
+intersectUVarValue (UVarEnumerated n1 t1) (UVarEnumerated n2 t2) = 
+    let newContents = Just (intersect n1 n2)
+        newConstraints = termFragToSuspendedConstraint t1 <> termFragToSuspendedConstraint t2
+    in UVarUnenumerated newContents newConstraints
+-- intersectUVarValue v1                        v2                        = error $ "intersectUVarValue: Intersecting with enumerated value not implemented " ++ show (v1, v2)
 
 isUnenumerated :: UVarValue -> Bool
 isUnenumerated (UVarUnenumerated _ _) = True
