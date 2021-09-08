@@ -368,7 +368,7 @@ reducePartially = memo (NameTag "reducePartially") go
     go :: Node -> Node
     go EmptyNode  = EmptyNode
     go (Mu n)     = Mu n
-    go n@(Node _) = trace ("reducePartially: " ++ show n) $ modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
+    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
                                           $ map reduceEdgeIntersection es
 {-# NOINLINE reducePartially #-}
 
