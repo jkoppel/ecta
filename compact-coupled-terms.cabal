@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 181bdd37accbf8a2e5014162e836dc049547513e7e3615b64c361c2bc2cbd308
+-- hash: e887917aa6633ee51357b36e9d9aeebda278e82a04d9199db019e591963500fd
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -140,6 +140,7 @@ benchmark mainbench
   type: exitcode-stdio-1.0
   main-is: Benchmarks.hs
   other-modules:
+      TestData
       Paths_compact_coupled_terms
   hs-source-dirs:
       benchmarks
