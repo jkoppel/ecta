@@ -61,7 +61,13 @@ import Data.List.Index ( imap )
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
+
+-- | Switch the comments on these lines to switch to ekmett's original `intern` library
+--   instead of our single-threaded hashtable-based reimplementation.
 import Data.Interned.Extended.HashTableBased ( Id, intern )
+--import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+--import Data.Interned.Extended.SingleThreaded ( intern )
+
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin

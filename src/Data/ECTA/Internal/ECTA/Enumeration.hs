@@ -237,7 +237,8 @@ mergeNodeIntoUVarVal uv n scs = do
 -------- Variant maintainer
 ---------------------
 
--- This thing here might be a performance issue.
+-- This thing here might be a performance issue. UPDATE: Yes it is; clocked at 1/3 the time and 1/2 the
+-- allocations of enumerateFully
 --
 -- It exists because it was easier to code / might actually be faster
 -- to update referenced uvars here than inline in firstExpandableUVar.
