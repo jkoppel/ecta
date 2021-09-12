@@ -1,6 +1,7 @@
 module PathsSpec ( spec ) where
 
 import Data.List ( (\\), nub, sort, subsequences )
+import Data.Semigroup ( Max(..) )
 import qualified Data.Vector as Vector
 
 import Test.Hspec
@@ -66,6 +67,10 @@ instance Arbitrary PathTrie where
   shrink (PathTrie vec)             = let l = Vector.toList vec
                                       in l ++ (map (PathTrie . Vector.fromList) (subsequences l \\ [l]))
 
+instance Arbitrary PathEClass where
+  arbitrary = PathEClass <$> fromPathTrie <$> arbitrary
+
+  shrink pec = map (PathEClass . fromPathTrie) $ shrink (getPathTrie pec)
 
 -----------------------------------
 ------ Constructing test inputs
@@ -139,6 +144,10 @@ spec = do
   describe "PathEClass" $ do
     it "both ways of getting list of paths from a PathEClass are identical" $ do
       property $ \pt -> fromPathTrie (getPathTrie (PathEClass (fromPathTrie pt))) == getOrigPaths (PathEClass (fromPathTrie pt))
+
+    it "PEC depth is max list length plus 1" $
+      property $ \pec -> (getOrigPaths pec /= []) ==>
+                           pecDepth pec == 1 + getMax (foldMap (Max . length . unPath) (getOrigPaths pec))
 
 
   describe "mkEqConstraints" $ do

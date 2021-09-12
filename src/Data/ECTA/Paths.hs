@@ -16,11 +16,13 @@ module Data.ECTA.Paths (
   , fromPathTrie
   , pathTrieDescend
   , pathTrieAscend
+  , pathTrieDepth
 
   , PathEClass(getPathTrie)
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
+  , pecDepth
 
     -- * Equality constraints over paths
   , EqConstraints(EmptyConstraints)

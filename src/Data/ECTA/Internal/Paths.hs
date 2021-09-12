@@ -25,11 +25,13 @@ module Data.ECTA.Internal.Paths (
   , fromPathTrie
   , pathTrieDescend
   , pathTrieAscend
+  , pathTrieDepth
 
   , PathEClass(PathEClass, ..)
   , unPathEClass
   , hasSubsumingMember
   , completedSubsumptionOrdering
+  , pecDepth
 
   , EqConstraints(.., EmptyConstraints)
   , rawMkEqConstraints
@@ -290,6 +292,12 @@ pathTrieAscend TerminalPathTrie i = PathTrieSingleChild i TerminalPathTrie
 pathTrieAscend pt@(PathTrieSingleChild _ _) i = PathTrieSingleChild i pt
 pathTrieAscend pt@(PathTrie v) i = error "pathTrieAscend: not implemented for PathTrie"
 
+pathTrieDepth :: PathTrie -> Int
+pathTrieDepth EmptyPathTrie              = 0
+pathTrieDepth TerminalPathTrie           = 1
+pathTrieDepth (PathTrieSingleChild _ pt) = 1 + pathTrieDepth pt
+pathTrieDepth (PathTrie v)               = 1 + getMax (Vector.foldMap (Max . pathTrieDepth) v)
+
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
 --------------------------------------------------------------------------
@@ -359,6 +367,10 @@ completedSubsumptionOrdering pec1 pec2
                        --   right-to-left), which for that particular workload produces better
                        --   constraint-propagation
                        | otherwise                    = compare pec2 pec1
+
+pecDepth :: PathEClass -> Int
+pecDepth = pathTrieDepth . getPathTrie
+
 
 --------------------------------
 ---------- Equality constraints

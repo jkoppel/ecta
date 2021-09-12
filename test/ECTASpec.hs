@@ -6,6 +6,7 @@ import qualified Data.HashSet as HashSet
 import Data.HashSet ( HashSet )
 import Data.IORef ( newIORef, readIORef, modifyIORef )
 import Data.List ( and, nub, sort )
+import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -51,9 +52,6 @@ doubleNodeSymbols (Node es) = Node $ map doubleEdgeSymbol es
     doubleEdgeSymbol :: Edge -> Edge
     doubleEdgeSymbol (Edge (Symbol s) ns) = Edge (Symbol (Text.append s s)) ns
 
-testBigNode :: Node
-testBigNode = uptoDepth4
-
 testUnreducedConstraint :: Edge
 testUnreducedConstraint = mkEdge "foo" [Node [Edge "A" [], Edge "B" []], Node [Edge "B" [], Edge "C" []]] (mkEqConstraints [[path [0], path [1]]])
 
@@ -78,7 +76,7 @@ spec :: Spec
 spec = do
   describe "Pathable" $ do
     it "Node.getPath root" $
-      getPath (path []) testBigNode `shouldBe` testBigNode
+      property $ \(n :: Node) -> getPath (path []) n `shouldBe` n
 
     it "Node.getPath one-level" $
       getPath (path [0]) ex1 `shouldBe` (constTerms ["1", "2"])
@@ -171,7 +169,7 @@ spec = do
     it "refold folds the simplest unrolled input" $
       refold (Node [Edge "f" [infiniteLineNode]]) `shouldBe` infiniteLineNode
 
-  describe "traversals" $
+  describe "traversals" $ do
     it "mapNodes hits each node exactly once" $
       -- Note: If the Arbitrary Node instance is changed to return empty or mu nodes, this will need to change
       property $ \n -> unsafePerformIO $ do v <- newIORef 0
@@ -179,6 +177,15 @@ spec = do
                                             let k = nodeCount n'
                                             numInvocations <- k `seq` readIORef v
                                             return $ k == numInvocations
+
+    it "adding node above 1 node increases depth by 1" $
+      property $ \n -> n /= EmptyNode ==>
+                          1 + depth n == depth (Node [Edge "f" [n]])
+
+    it "adding node above 3 nodes increases max depth by 1" $
+      property $ \n1 n2 n3 -> all (/= EmptyNode) [n1, n2, n3] ==>
+                                (1 + getMax (foldMap (Max . depth) [n1, n2, n3])) == depth (Node [Edge "w" [n1, n2, n3]])
+
 
   describe "enumeration" $ do
     it "naive and sophisticated enumeration are equivalent on nodes without mu" $

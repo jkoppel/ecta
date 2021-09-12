@@ -21,6 +21,7 @@ module Data.ECTA (
   , unfoldBounded
   , crush
   , onNormalNodes
+  , depth
   , nodeCount
   , edgeCount
   , maxIndegree

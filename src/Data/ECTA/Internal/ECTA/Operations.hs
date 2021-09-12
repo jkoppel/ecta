@@ -15,6 +15,7 @@ module Data.ECTA.Internal.ECTA.Operations (
   , unfoldBounded
 
   -- * Size operations
+  , depth
   , nodeCount
   , edgeCount
   , maxIndegree
@@ -86,7 +87,7 @@ pathsMatching f n@(Node es) = (concat $ map pathsMatchingEdge es)
     pathsMatchingEdge :: Edge -> [Path]
     pathsMatchingEdge (Edge _ ns) = concat $ imap (\i x -> map (ConsPath i) $ pathsMatching f x) ns
 
-mapNodes ::(Node -> Node) -> Node -> Node
+mapNodes :: (Node -> Node) -> Node -> Node
 mapNodes f n = go n
   where
     -- | Memoized separately for each mapNodes invocation
@@ -158,6 +159,15 @@ unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case Mu n -> unfoldRec n
 ------------
 ------ Size operations
 ------------
+
+depth :: Node -> Int
+depth = memo (NameTag "depth") go
+  where
+    go :: Node -> Int
+    go EmptyNode = 0
+    go (Mu n)    = depth n
+    go Rec       = 1
+    go (Node es) = 1 + getMax (foldMap (\e -> foldMap (Max . depth) $ edgeChildren e) es)
 
 nodeCount :: Node -> Int
 nodeCount = getSum . crush (onNormalNodes $ const $ Sum 1)
