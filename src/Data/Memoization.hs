@@ -14,8 +14,14 @@ module Data.Memoization (
 #endif
 
   , memoIO
+  , memo2IO
   , memo
   , memo2
+
+  , memoIOCatchCycles
+  , memoCatchCycles
+  , memo2IOCatchCycles
+  , memo2CatchCycles
   ) where
 
 import Control.Monad.ST ( ST )
@@ -141,8 +147,10 @@ printAllCacheMetrics = do metrics <- getAllCacheMetrics
 ------------------------ Memoization ------------------------
 -------------------------------------------------------------
 
+------------- Normal variants -----------------
 
-memoIO :: forall a b. (Eq a, Hashable a) => MemoCacheTag -> (a -> b) -> IO (a -> IO b)
+-- | TODO: Benchmark performance difference of taking `a -> IO b` vs. `a -> b`.
+memoIO :: forall a b. (Eq a, Hashable a) => MemoCacheTag -> (a -> IO b) -> IO (a -> IO b)
 memoIO tag f = do
     ht :: HT.BasicHashTable a b <- HT.new
     cache <- initMetrics tag (AnyHashTable ht)
@@ -150,17 +158,62 @@ memoIO tag f = do
                   v <- HT.lookup ht x
                   case v of
                     Nothing -> do bumpMissCount cache
-                                  let r = f x
+                                  r <- f x
                                   HT.insert ht x r
                                   return r
 
                     Just r  -> return r
     return f'
 
+-- Warning: Might be slower than memo2 because it wraps/unwraps a pair. Not yet benchmarked.
+memo2IO :: (Eq a, Hashable a, Eq b, Hashable b) => MemoCacheTag -> (a -> b -> IO c) -> IO (a -> b -> IO c)
+memo2IO tag f = curry <$> memoIO tag (uncurry f)
 
 memo :: (Eq a, Hashable a) => MemoCacheTag -> (a -> b) -> (a -> b)
-memo tag f = let f' = unsafePerformIO (memoIO tag f)
+memo tag f = let f' = unsafePerformIO (memoIO tag (pure . f))
              in \x -> unsafePerformIO (f' x)
 
 memo2 :: (Eq a, Hashable a, Eq b, Hashable b) => MemoCacheTag -> (a -> b -> c) -> a -> b -> c
 memo2 tag f = memo tag (memo (mkInnerTag tag) . f)
+
+------------- Cycle-catching variants -----------------
+
+data ResultOrCycle a = Cycle | Result a
+
+memoIOCatchCycles :: forall a b. (Eq a, Hashable a) => MemoCacheTag -> (a -> Text) -> (a -> IO b) -> IO (a -> IO b)
+memoIOCatchCycles tag mkDebugStr f = do
+    ht :: HT.BasicHashTable a (ResultOrCycle b) <- HT.new
+    cache <- initMetrics tag (AnyHashTable ht)
+    let f' x = do bumpQueryCount cache
+                  v <- HT.lookup ht x
+                  case v of
+                    Nothing -> do bumpMissCount cache
+                                  HT.insert ht x Cycle
+                                  r <- f x
+                                  HT.insert ht x (Result r)
+                                  return r
+
+                    Just r  -> case r of
+                                 Cycle     -> error $ Text.unpack $ pretty tag
+                                                                    <> ": Caught cycle when computing on input "
+                                                                    <> mkDebugStr x
+                                 Result r' -> return r'
+    return f'
+
+memo2IOCatchCycles :: forall a b c. (Eq a, Hashable a, Eq b, Hashable b)
+                   => MemoCacheTag -> (a -> Text) -> (b -> Text) -> (a -> b -> IO c) -> IO (a -> b -> IO c)
+memo2IOCatchCycles tag mkDebugStrA mkDebugStrB f =
+  curry <$> memoIOCatchCycles tag
+                              (\(a, b) -> mkDebugStrA a <> " " <> mkDebugStrB b)
+                              (uncurry f)
+
+memoCatchCycles :: (Eq a, Hashable a) => MemoCacheTag -> (a -> Text) -> (a -> b) -> (a -> b)
+memoCatchCycles tag mkDebugStr f = let f' = unsafePerformIO (memoIOCatchCycles tag mkDebugStr (pure . f))
+                                   in \x -> unsafePerformIO (f' x)
+
+-- | This function uses pairs instead of currying because the cycle-detector must see both arguments simultaneously
+memo2CatchCycles :: (Eq a, Hashable a, Eq b, Hashable b)
+                 => MemoCacheTag -> (a -> Text) -> (b -> Text) -> (a -> b -> c) -> (a -> b -> c)
+memo2CatchCycles tag mkDebugStrA mkDebugStrB f =
+  let f' = unsafePerformIO (memo2IOCatchCycles tag mkDebugStrA mkDebugStrB (\a b -> pure $ f a b))
+  in \x y -> unsafePerformIO (f' x y)

@@ -67,6 +67,14 @@ bug062721NonIdempotentEqConstraintReductionGen = return $ snd bug062721NonIdempo
 infiniteLineNode :: Node
 infiniteLineNode = Mu (Node [Edge "f" [Rec]])
 
+-- | This is an ECTA for which the naive static reduction algorithm does not terminate
+replicator :: Node
+replicator = Node [mkEdge "g" [basicNode, basicNode] constraint]
+  where
+    basicNode = Node [mkEdge "g" [muNode, muNode] constraint]
+    constraint = mkEqConstraints [[path [1], path [0, 1], path [0, 0]]]
+    muNode = Mu (Node [Edge "g" [Rec, Rec]])
+
 --------------------------------------------------------------
 ----------------------------- Main ---------------------------
 --------------------------------------------------------------
