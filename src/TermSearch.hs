@@ -30,6 +30,8 @@ import Data.ECTA.Paths
 import Data.ECTA.Term
 import Utility.Fixpoint
 
+import Language.Dot ( renderDot )
+
 ------------------------------------------------------------------------------
 
 tau :: Node
@@ -460,10 +462,10 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let filterNode = filterType (uptoSize7 anyArg) resNode
         -- putStrLn $ renderDot . toDot $ filterNode
         
-        timeout (200 * 10^6) $ do
-            let reducedNode = if name `elem` hardBenchmarks 
-                              then (withoutRedundantEdges . reducePartially) filterNode
-                              else reduceFully filterNode
+        timeout (1800 * 10^6) $ do
+            reducedNode <- if name `elem` hardBenchmarks
+                           then return $ (withoutRedundantEdges . reducePartially) filterNode
+                           else reduceFullyAndLog filterNode
             putStrLn $ renderDot . toDot $ reducedNode
             let !foldedNode = refold reducedNode
             reduceTime <- getCurrentTime
@@ -475,3 +477,16 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         end <- getCurrentTime
         print $ "Time: " ++ show (diffUTCTime end start)
         hFlush stdout)
+  where
+    reduceFullyAndLog :: Node -> IO Node
+    reduceFullyAndLog = go 0
+      where
+        go i n = do putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
+                    if i == 0 then putStrLn (renderDot $ toDot n) else return ()
+                    let d = constraintAdjustedDepth n
+                    putStrLn $ "Depth: " ++ show d
+                    let n' = {- withoutRedundantEdges $ -} reducePartially n
+                    if n == n' then
+                      return n
+                    else
+                      go (i + 1) n'

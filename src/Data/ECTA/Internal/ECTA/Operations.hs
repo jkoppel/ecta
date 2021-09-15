@@ -16,6 +16,7 @@ module Data.ECTA.Internal.ECTA.Operations (
 
   -- * Size operations
   , depth
+  , constraintAdjustedDepth
   , nodeCount
   , edgeCount
   , maxIndegree
@@ -65,9 +66,22 @@ import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
 import Data.Interned.Extended.HashTableBased ( Id, intern )
-import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
+--import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+--import Data.Interned.Extended.SingleThreaded ( intern )
+import Data.Memoization ( MemoCacheTag(..), memo, memo2, memoCatchCycles, memoIOCatchCycles, memo2IOCatchCycles, memo2IO, memo2CatchCycles )
 import Utility.Fixpoint
 import Utility.HashJoin
+
+
+import qualified Data.Graph.Inductive as Fgl
+import Data.List.Index ( imap, imapM )
+import qualified Language.Dot.Syntax as Dot
+import qualified Data.Text as Text
+import Data.Maybe ( fromJust, maybeToList )
+import Language.Dot ( renderDot )
+import Data.Text.Extended.Pretty
+
+import System.IO.Unsafe ( unsafePerformIO )
 
 ------------------------------------------------------------------------------------
 
@@ -166,8 +180,25 @@ depth = memo (NameTag "depth") go
     go :: Node -> Int
     go EmptyNode = 0
     go (Mu n)    = depth n
-    go Rec       = 1
+    go Rec       = 0
     go (Node es) = 1 + getMax (foldMap (\e -> foldMap (Max . depth) $ edgeChildren e) es)
+
+
+-- | This is an awkward name for the depth an ECTA would be if all recursive nodes were
+--   unrolled to expose the deepest nodes touched by constraints.
+--   On the assumption that the globally unique recursive node is depth 1, intersection should never increase this number.
+constraintAdjustedDepth :: Node -> Int
+constraintAdjustedDepth = memo (NameTag "constraintDepth") go
+  where
+    go :: Node -> Int
+    go EmptyNode = 0
+    go (Mu n)    = constraintAdjustedDepth n
+    go Rec       = 0
+    go (Node es) = 1 + getMax (   (foldMap (\e -> foldMap (Max . constraintAdjustedDepth) $ edgeChildren e) es)
+                               <>  foldMap (\e -> foldMap (Max . adjustForPossibleUnroll . pecDepth) $ unsafeGetEclasses $ edgeEcs e) es)
+
+    adjustForPossibleUnroll = (+ assumedGlobalMuNodeDepth)
+    assumedGlobalMuNodeDepth = 1
 
 nodeCount :: Node -> Int
 nodeCount = getSum . crush (onNormalNodes $ const $ Sum 1)
@@ -208,8 +239,12 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") doIntersect
-{-# NOINLINE intersect #-}
+intersect n1 n2 = unsafePerformIO (intersect' n1 n2)
+
+intersect' :: Node -> Node -> IO Node
+--intersect = memo2CatchCycles (NameTag "intersect") (renderDot . toDot) (renderDot . toDot) doIntersect
+intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . renderDot . toDot) (Text.pack . renderDot . toDot) doIntersect
+{-# NOINLINE intersect' #-}
 
 
 -- 7/4/21: The unrolling strategy for intersection totally does not generalize beyond
@@ -218,18 +253,20 @@ intersect = memo2 (NameTag "intersect") doIntersect
 -- The following will enter an infinite recursion:
 --  > t = createGloballyUniqueMu (\n -> Node  [Edge "a" [Node [Edge "a" [n]]]])
 --  > intersect t (Node [Edge "a" [t]])
-doIntersect :: Node -> Node -> Node
-doIntersect EmptyNode _         = EmptyNode
-doIntersect _         EmptyNode = EmptyNode
-doIntersect (Mu n)    (Mu _)    = Mu n -- | And here I use the crazy "globally unique mu" assumption
+doIntersect :: Node -> Node -> IO Node
+--doIntersect  n1@(Node _) n2@(Node _) | trace ("Intersecting " ++ show (nodeIdentity n1) ++ ", " ++ show (nodeIdentity n2)) False = undefined
+doIntersect EmptyNode _         = pure EmptyNode
+doIntersect _         EmptyNode = pure EmptyNode
+doIntersect (Mu n)    (Mu _)    = pure $ Mu n -- | And here I use the crazy "globally unique mu" assumption
 doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
 doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
-  | n1 == n2                            = n1
-  | n2 <  n1                            = intersect n2 n1
+  | n1 == n2                            = pure n1
+  | n2 <  n1                            = intersect' n2 n1
                                           -- | `hash` gives a unique ID of the symbol because they're interned
-  | otherwise                           = let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
-                                          in Node joined
+  | otherwise                           = --let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
+                                          --in Node joined
+                                          Node <$> mapM (uncurry intersectEdgeSameSymbol) [(e1, e2) | e1 <- es1, e2 <- es2, edgeSymbol e1 == edgeSymbol e2]
                                              --Node $ dropRedundantEdges joined
                                              --mkNodeAlreadyNubbed $ dropRedundantEdges joined
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
@@ -258,7 +295,7 @@ dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> 
 
     ruleOut :: Edge -> [Edge] -> (RuleOutRes, [Edge])
     ruleOut e []     = (Keep, [])
-    ruleOut e (x:xs) = let e' = intersectEdgeSameSymbol e x in
+    ruleOut e (x:xs) = let e' = unsafePerformIO $ intersectEdgeSameSymbol e x in
                        if e' == x then
                          ruleOut e xs
                        else if e' == e then
@@ -270,9 +307,9 @@ dropRedundantEdges origEs = concatMap reduceCluster $ {- traceShow (map (\es -> 
 intersectEdge :: Edge -> Edge -> Maybe Edge
 intersectEdge e1 e2
   | edgeSymbol e1 /= edgeSymbol e2 = Nothing
-  | otherwise                      = Just $ intersectEdgeSameSymbol e1 e2
+  | otherwise                      = Just $ unsafePerformIO $ intersectEdgeSameSymbol e1 e2
 
-intersectEdgeSameSymbol :: Edge -> Edge -> Edge
+intersectEdgeSameSymbol :: Edge -> Edge -> IO Edge
 intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
   where
     go e1          e2
@@ -281,10 +318,10 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
 
 
 
-    go e1                 e2                 =
-        mkEdge (edgeSymbol e1)
-               (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-               (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+    go e1                 e2                 = do
+        mkEdge (edgeSymbol e1) <$>
+               (sequence $ zipWith intersect' (edgeChildren e1) (edgeChildren e2))
+               <*> pure (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
 {-# NOINLINE intersectEdgeSameSymbol #-}
 
 ------------
@@ -373,14 +410,20 @@ withoutRedundantEdges n = mapNodes dropReds n
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = memo (NameTag "reducePartially") go
+reducePartially n = unsafePerformIO $ reducePartially' n
+
+reducePartially' :: Node -> IO Node
+reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially") (Text.pack . show . (getSum . onNormalNodes (Sum .nodeIdentity))) go
   where
-    go :: Node -> Node
-    go EmptyNode  = EmptyNode
-    go (Mu n)     = Mu n
-    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
-                                          $ map reduceEdgeIntersection es
-{-# NOINLINE reducePartially #-}
+    go :: Node -> IO Node
+    go EmptyNode  = pure EmptyNode
+    go (Mu n)     = pure $ Mu n
+    --go n@(Node _) | trace ("reducePartially: " ++ show (nodeIdentity n)) False = undefined
+    --go n@(Node _) = fmap (modifyNode n) $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially' (edgeChildren e)})
+    --                                      $ map reduceEdgeIntersection es
+    go (Node es) = let es' = map reduceEdgeIntersection es
+                   in Node <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
+{-# NOINLINE reducePartially' #-}
 
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
@@ -434,3 +477,103 @@ reduceEqConstraints = go
 
 getSubnodeById :: Node -> Id -> Maybe Node
 getSubnodeById n i = getFirst $ crush (onNormalNodes $ \x -> if nodeIdentity x == i then First (Just x) else First Nothing) n
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------
+
+data FglNodeLabel = IdLabel Id | TransitionLabel Symbol EqConstraints
+  deriving ( Eq, Ord, Show )
+
+toFgl :: Node -> Fgl.Gr FglNodeLabel ()
+toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges ++ transitionToNodeEdges)
+  where
+    maxNodeIndegree :: Int
+    maxNodeIndegree = maxIndegree root
+
+    fglNodeId :: Node -> Fgl.Node
+    fglNodeId n = nodeIdentity n * (maxNodeIndegree + 1)
+
+    fglTransitionId :: Node -> Int -> Fgl.Node
+    fglTransitionId n i = nodeIdentity n * (maxNodeIndegree + 1) + (i + 1)
+
+    fglNodeLabel :: Node -> Maybe (Fgl.LNode FglNodeLabel)
+    fglNodeLabel n@(Node _) = Just (fglNodeId n, IdLabel $ nodeIdentity n)
+    fglNodeLabel _          = Nothing
+
+    onNormalNodes :: (Monoid a) => (Node -> a) -> (Node -> a)
+    onNormalNodes f n@(Node _) = f n
+    onNormalNodes f _          = mempty
+
+    nodeNodes, transitionNodes :: [Fgl.LNode FglNodeLabel]
+    nodeNodes       = crush (onNormalNodes $ (maybeToList . fglNodeLabel)) root
+    transitionNodes = crush (onNormalNodes $ \n@(Node es) -> imap (\i e -> (fglTransitionId n i, TransitionLabel (edgeSymbol e) (edgeEcs e))) es) root
+
+    -- | Uses the globally-unique mu node assumption
+    -- Does not work if root is the mu node
+    muNodeLabel :: Maybe Fgl.Node
+    muNodeLabel = getFirst $ crush (onNormalNodes $ \(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
+      where
+        muNodeToLabel (Mu n) = First $ Just $ fglNodeId n
+        muNodeToLabel _      = First Nothing
+
+    nodeToTransitionEdges, transitionToNodeEdges :: [Fgl.LEdge ()]
+    nodeToTransitionEdges = crush (onNormalNodes $ \n@(Node es) -> imap (\i _ -> (fglNodeId n, fglTransitionId n i, ())) es) root
+    transitionToNodeEdges = crush (onNormalNodes $ \n@(Node es) -> concat $
+                                                                      imap (\i e ->
+                                                                              map (edgeTo n i) (edgeChildren e)
+                                                                           )
+                                                                           es)
+                                  root
+      where
+        edgeTo :: Node -> Int -> Node -> Fgl.LEdge ()
+        edgeTo n i n'@(Node _) = (fglTransitionId n i, fglNodeId n', ())
+        edgeTo n i n'@(Mu _)   = (fglTransitionId n i, fromJust muNodeLabel, ())
+        edgeTo n i    Rec      = (fglTransitionId n i, fromJust muNodeLabel, ())
+
+
+fglToDot :: Fgl.Gr FglNodeLabel () -> Dot.Graph
+fglToDot g = Dot.Graph Dot.StrictGraph Dot.DirectedGraph Nothing (nodeStmts ++ edgeStmts)
+  where
+    nodeStmts :: [Dot.Statement]
+    nodeStmts = map renderNode  $ Fgl.labNodes g
+
+    edgeStmts :: [Dot.Statement]
+    edgeStmts = map renderEdge $ Fgl.labEdges g
+
+    renderNode :: Fgl.LNode FglNodeLabel -> Dot.Statement
+    renderNode (fglId, l) = Dot.NodeStatement (Dot.NodeId (Dot.IntegerId $ toInteger fglId) Nothing)
+                                              [ Dot.AttributeSetValue (Dot.NameId "label") (renderNodeLabel l)
+                                              , Dot.AttributeSetValue (Dot.NameId "shape")
+                                                                      (case l of
+                                                                        IdLabel _           -> Dot.StringId "ellipse"
+                                                                        TransitionLabel _ _ -> Dot.StringId "box")
+                                              ]
+
+    renderEdge :: Fgl.LEdge () -> Dot.Statement
+    renderEdge (a, b, _) = Dot.EdgeStatement [ea, eb] []
+      where
+        ea = Dot.ENodeId Dot.NoEdge       (Dot.NodeId (Dot.IntegerId $ toInteger a) Nothing)
+        eb = Dot.ENodeId Dot.DirectedEdge (Dot.NodeId (Dot.IntegerId $ toInteger b) Nothing)
+
+    renderNodeLabel :: FglNodeLabel -> Dot.Id
+    renderNodeLabel (IdLabel l)             = Dot.StringId ("q" ++ show l)
+    renderNodeLabel (TransitionLabel s ecs) =
+         Dot.StringId (Text.unpack $ pretty s <> " (" <> pretty ecs <> ")")
+
+-- | To visualize an FTA:
+-- 1) Call `prettyPrintDot $ toDot fta` from GHCI
+-- 2) Copy the output to viz-js.jom or another GraphViz implementation
+toDot :: Node -> Dot.Graph
+toDot = fglToDot . toFgl
+

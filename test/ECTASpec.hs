@@ -172,6 +172,13 @@ spec = do
       in (ns' == ns'') && ns' == [f $ f $ f $ f infiniteLineNode, f $ f $ f $ infiniteLineNode]
          `shouldBe` True
 
+    it "reduction does not change constraintAdjustedDepth" $
+      property $ \i ->
+        let ecs  = (mkEqConstraints [[path (0 : replicate i 0), path (1 : replicate i 0)]])
+            n   = Node [mkEdge "g" [infiniteLineNode, infiniteLineNode] ecs]
+            n'  = reducePartially n
+        in constraintAdjustedDepth n == constraintAdjustedDepth n'
+
 
   describe "folding" $
     it "refold folds the simplest unrolled input" $

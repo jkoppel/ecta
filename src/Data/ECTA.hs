@@ -22,6 +22,7 @@ module Data.ECTA (
   , crush
   , onNormalNodes
   , depth
+  , constraintAdjustedDepth
   , nodeCount
   , edgeCount
   , maxIndegree
