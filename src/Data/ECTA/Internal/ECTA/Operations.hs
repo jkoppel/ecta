@@ -50,13 +50,13 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
-import Data.List ( inits, tails )
-import Data.Maybe ( catMaybes )
+import Data.List ( inits, tails, nub )
+import Data.Maybe ( catMaybes, listToMaybe )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
-
+import Control.Monad (msum, zipWithM)
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
 
@@ -111,7 +111,7 @@ mapNodes f n = go n
 
     go' :: (Node -> Node) -> Node -> Node
     go' f EmptyNode = EmptyNode
-    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' f (Node es) = f $ (Node $ nub $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
     go' f (Mu n)    = f $ (Mu $ go n)
     go' f Rec       = f Rec
 
@@ -155,13 +155,18 @@ nodeEdges (Mu n)    = nodeEdges (unfoldRec n)
 nodeEdges _         = []
 
 refold :: Node -> Node
-refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
-                                                _    -> First Nothing)
-                                         n
+refold n = let muNode = getMu n
            in case muNode of
                 Nothing     -> n
                 Just m -> let unfoldedNode = unfoldRec m
                           in fixUnbounded (mapNodes (\x -> if x == unfoldedNode then Mu m else x)) n
+
+  where
+    getMu :: Node -> Maybe Node
+    getMu EmptyNode = Nothing
+    getMu Rec = Nothing
+    getMu (Mu n) = Just n
+    getMu (Node es) = msum $ concatMap (\(Edge _ ns) -> map getMu ns) es
 
 unfoldBounded :: Int -> Node -> Node
 unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
@@ -175,13 +180,18 @@ unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case Mu n -> unfoldRec n
 ------------
 
 depth :: Node -> Int
-depth = memo (NameTag "depth") go
+depth = memo (NameTag "depth") $ \n -> unsafePerformIO $ do
+  -- putStrLn $ "depth of: " ++ show n
+  let d = go n
+  -- putStrLn $ "depth result: " ++ show d
+  return d
   where
     go :: Node -> Int
     go EmptyNode = 0
     go (Mu n)    = depth n
     go Rec       = 0
-    go (Node es) = 1 + getMax (foldMap (\e -> foldMap (Max . depth) $ edgeChildren e) es)
+    go (Node es) = let m = getMax (foldMap (foldMap (Max . depth) . edgeChildren) es)
+                    in if m < 0 then 1 else m + 1
 
 
 -- | This is an awkward name for the depth an ECTA would be if all recursive nodes were
@@ -243,7 +253,12 @@ intersect n1 n2 = unsafePerformIO (intersect' n1 n2)
 
 intersect' :: Node -> Node -> IO Node
 --intersect = memo2CatchCycles (NameTag "intersect") (renderDot . toDot) (renderDot . toDot) doIntersect
-intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . renderDot . toDot) (Text.pack . renderDot . toDot) doIntersect
+intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . show) (Text.pack . show) $ \n1 n2 -> do
+  n <- doIntersect n1 n2
+  -- putStrLn $ "INTERSECTING GET " ++ show n
+  n' <- return $ refold n
+  -- putStrLn $ "REFOLD " ++ show n ++ " GET " ++ show n'
+  return $ nodeDropRedundantEdges n'
 {-# NOINLINE intersect' #-}
 
 
@@ -258,15 +273,18 @@ doIntersect :: Node -> Node -> IO Node
 doIntersect EmptyNode _         = pure EmptyNode
 doIntersect _         EmptyNode = pure EmptyNode
 doIntersect (Mu n)    (Mu _)    = pure $ Mu n -- | And here I use the crazy "globally unique mu" assumption
-doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
-doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
+-- if Mu is globally unique, then we don't need to unroll it.
+doIntersect (Mu n1)   n2        = pure n2 -- doIntersect (unfoldRec n1) n2
+doIntersect n1        (Mu n2)   = pure n1 -- doIntersect n1             (unfoldRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = pure n1
-  | n2 <  n1                            = intersect' n2 n1
+  | n2 <  n1                            = do -- putStrLn "swap params"
+                                             intersect' n2 n1
                                           -- | `hash` gives a unique ID of the symbol because they're interned
   | otherwise                           = --let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
                                           --in Node joined
-                                          Node <$> mapM (uncurry intersectEdgeSameSymbol) [(e1, e2) | e1 <- es1, e2 <- es2, edgeSymbol e1 == edgeSymbol e2]
+                                          do -- putStrLn "intersect many edges"
+                                             Node . nub <$> mapM (uncurry intersectEdgeSameSymbol) [(e1, e2) | e1 <- es1, e2 <- es2, edgeSymbol e1 == edgeSymbol e2]
                                              --Node $ dropRedundantEdges joined
                                              --mkNodeAlreadyNubbed $ dropRedundantEdges joined
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
@@ -274,6 +292,7 @@ doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show 
 
 nodeDropRedundantEdges :: Node -> Node
 nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
+nodeDropRedundantEdges n = n
 
 data RuleOutRes = Keep | RuledOutBy Edge
 
@@ -331,7 +350,7 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
 union :: [Node] -> Node
 union ns = case filter (/= EmptyNode) ns of
              []  -> EmptyNode
-             ns' -> Node (concat $ map nodeEdges ns')
+             ns' -> Node (nub $ concat $ map nodeEdges ns')
 
 ----------------------
 ------ Path operations
@@ -341,7 +360,8 @@ requirePath :: Path -> Node -> Node
 requirePath EmptyPath       n         = n
 requirePath _               EmptyNode = EmptyNode
 requirePath p               (Mu n)    = requirePath p (unfoldRec n)
-requirePath (ConsPath p ps) (Node es) = Node $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
+requirePath (ConsPath p ps) (Node es) = Node $ nub
+                                             $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
                                              $ filter (\e -> length (edgeChildren e) > p)
                                                       es
 
@@ -352,17 +372,17 @@ requirePathList (ConsPath p ps) ns = ns & ix p %~ requirePath ps
 instance Pathable Node Node where
   type Emptyable Node = Node
 
+  getPath EmptyPath        n         = n
   getPath _                EmptyNode = EmptyNode
   getPath p                (Mu n)    = getPath p (unfoldRec n)
-  getPath EmptyPath        n         = n
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
       goEdge (Edge _ ns) = ns ^? ix p
 
+  getAllAtPath EmptyPath       n         = [n]
   getAllAtPath _               EmptyNode = []
   getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
-  getAllAtPath EmptyPath       n         = [n]
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -371,7 +391,7 @@ instance Pathable Node Node where
   modifyAtPath f EmptyPath       n         = f n
   modifyAtPath _ _               EmptyNode = EmptyNode
   modifyAtPath f p               (Mu n)    = modifyAtPath f p (unfoldRec n)
-  modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
+  modifyAtPath f (ConsPath p ps) (Node es) = Node (nub $ map goEdge es)
     where
       goEdge :: Edge -> Edge
       goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
@@ -422,7 +442,9 @@ reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially
     --go n@(Node _) = fmap (modifyNode n) $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially' (edgeChildren e)})
     --                                      $ map reduceEdgeIntersection es
     go (Node es) = let es' = map reduceEdgeIntersection es
-                   in Node <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
+                   in do
+                    --  putStrLn $ "reducePartially: " ++ show es'
+                     Node . nub <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
 {-# NOINLINE reducePartially' #-}
 
 reduceEdgeIntersection :: Edge -> Edge

@@ -39,6 +39,7 @@ import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
 
 import Data.Text.Extended.Pretty
+import Data.Hashable (hash)
 
 -----------------------------------------------------------------
 
@@ -155,6 +156,7 @@ memoIO tag f = do
     ht :: HT.BasicHashTable a b <- HT.new
     cache <- initMetrics tag (AnyHashTable ht)
     let f' x = do bumpQueryCount cache
+                  -- putStrLn $ Text.unpack $ pretty tag
                   v <- HT.lookup ht x
                   case v of
                     Nothing -> do bumpMissCount cache
@@ -186,17 +188,35 @@ memoIOCatchCycles tag mkDebugStr f = do
     cache <- initMetrics tag (AnyHashTable ht)
     let f' x = do bumpQueryCount cache
                   v <- HT.lookup ht x
+                  -- putStrLn $ Text.unpack $ pretty tag <> ": " <> mkDebugStr x
+                  -- HT.toList ht >>= (\l -> putStrLn $ "hash table size: " ++ show (length l)) 
                   case v of
                     Nothing -> do bumpMissCount cache
                                   HT.insert ht x Cycle
+                                  -- putStrLn $ Text.unpack $ pretty tag <> ": Cycle is stored"
+                                  -- HT.toList ht >>= (\l -> putStrLn $ "hash table size: " ++ show (length l)) 
+                                  -- if hash x == -7234408894621341532
+                                  --   then putStrLn $ Text.unpack $ pretty tag <> ": same hash value " <> mkDebugStr x
+                                  --   else return () -- putStrLn $ Text.unpack $ pretty tag <> ": different hash value " <> mkDebugStr x
+
                                   r <- f x
                                   HT.insert ht x (Result r)
+                                  -- putStrLn $ Text.unpack $ pretty tag <> ": Result is updated"
+                                  -- HT.toList ht >>= (\l -> putStrLn $ "hash table size: " ++ show (length l)) 
+                                  -- HT.toList ht >>= (print . map (mkDebugStr . fst))
+                                  -- v <- HT.lookup ht x
+                                  -- case v of
+                                  --   Nothing -> putStrLn $ Text.unpack $ pretty tag <> ": Nothing is stored"
+                                  --   Just Cycle -> putStrLn $ Text.unpack $ pretty tag <> ": Cycle is not updated"
+                                  --   Just (Result _) -> putStrLn $ Text.unpack $ pretty tag <> ": Result is stored"
                                   return r
 
                     Just r  -> case r of
                                  Cycle     -> error $ Text.unpack $ pretty tag
                                                                     <> ": Caught cycle when computing on input "
                                                                     <> mkDebugStr x
+                                                                    <> ". Its hash value is "
+                                                                    <> pretty (hash x)
                                  Result r' -> return r'
     return f'
 
@@ -204,7 +224,7 @@ memo2IOCatchCycles :: forall a b c. (Eq a, Hashable a, Eq b, Hashable b)
                    => MemoCacheTag -> (a -> Text) -> (b -> Text) -> (a -> b -> IO c) -> IO (a -> b -> IO c)
 memo2IOCatchCycles tag mkDebugStrA mkDebugStrB f =
   curry <$> memoIOCatchCycles tag
-                              (\(a, b) -> mkDebugStrA a <> " " <> mkDebugStrB b)
+                              (\(a, b) -> mkDebugStrA a <> " AND " <> mkDebugStrB b)
                               (uncurry f)
 
 memoCatchCycles :: (Eq a, Hashable a) => MemoCacheTag -> (a -> Text) -> (a -> b) -> (a -> b)
