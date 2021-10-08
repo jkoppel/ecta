@@ -256,9 +256,9 @@ intersect' :: Node -> Node -> IO Node
 intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . show) (Text.pack . show) $ \n1 n2 -> do
   n <- doIntersect n1 n2
   -- putStrLn $ "INTERSECTING GET " ++ show n
-  n' <- return $ refold n
+  return $ refold $ nodeDropRedundantEdges n
   -- putStrLn $ "REFOLD " ++ show n ++ " GET " ++ show n'
-  return $ nodeDropRedundantEdges n'
+  -- return n'
 {-# NOINLINE intersect' #-}
 
 
@@ -284,7 +284,7 @@ doIntersect n1@(Node es1) n2@(Node es2)
   | otherwise                           = --let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
                                           --in Node joined
                                           do -- putStrLn "intersect many edges"
-                                             Node . nub <$> mapM (uncurry intersectEdgeSameSymbol) [(e1, e2) | e1 <- es1, e2 <- es2, edgeSymbol e1 == edgeSymbol e2]
+                                             Node <$> mapM (uncurry intersectEdgeSameSymbol) [(e1, e2) | e1 <- es1, e2 <- es2, edgeSymbol e1 == edgeSymbol e2]
                                              --Node $ dropRedundantEdges joined
                                              --mkNodeAlreadyNubbed $ dropRedundantEdges joined
 doIntersect n1 n2 = error ("doIntersect: Unexpected " ++ show n1 ++ " " ++ show n2)
@@ -350,7 +350,7 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
 union :: [Node] -> Node
 union ns = case filter (/= EmptyNode) ns of
              []  -> EmptyNode
-             ns' -> Node (nub $ concat $ map nodeEdges ns')
+             ns' -> Node (concat $ map nodeEdges ns')
 
 ----------------------
 ------ Path operations
@@ -360,8 +360,7 @@ requirePath :: Path -> Node -> Node
 requirePath EmptyPath       n         = n
 requirePath _               EmptyNode = EmptyNode
 requirePath p               (Mu n)    = requirePath p (unfoldRec n)
-requirePath (ConsPath p ps) (Node es) = Node $ nub
-                                             $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
+requirePath (ConsPath p ps) (Node es) = Node $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
                                              $ filter (\e -> length (edgeChildren e) > p)
                                                       es
 
@@ -391,7 +390,7 @@ instance Pathable Node Node where
   modifyAtPath f EmptyPath       n         = f n
   modifyAtPath _ _               EmptyNode = EmptyNode
   modifyAtPath f p               (Mu n)    = modifyAtPath f p (unfoldRec n)
-  modifyAtPath f (ConsPath p ps) (Node es) = Node (nub $ map goEdge es)
+  modifyAtPath f (ConsPath p ps) (Node es) = Node (dropRedundantEdges $ map goEdge es)
     where
       goEdge :: Edge -> Edge
       goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
@@ -444,7 +443,7 @@ reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially
     go (Node es) = let es' = map reduceEdgeIntersection es
                    in do
                     --  putStrLn $ "reducePartially: " ++ show es'
-                     Node . nub <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
+                     Node . dropRedundantEdges <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
 {-# NOINLINE reducePartially' #-}
 
 reduceEdgeIntersection :: Edge -> Edge

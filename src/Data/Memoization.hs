@@ -195,7 +195,7 @@ memoIOCatchCycles tag mkDebugStr f = do
                                   HT.insert ht x Cycle
                                   -- putStrLn $ Text.unpack $ pretty tag <> ": Cycle is stored"
                                   -- HT.toList ht >>= (\l -> putStrLn $ "hash table size: " ++ show (length l)) 
-                                  -- if hash x == -7234408894621341532
+                                  -- if hash x == -7234408592456439682
                                   --   then putStrLn $ Text.unpack $ pretty tag <> ": same hash value " <> mkDebugStr x
                                   --   else return () -- putStrLn $ Text.unpack $ pretty tag <> ": different hash value " <> mkDebugStr x
 

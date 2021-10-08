@@ -169,7 +169,7 @@ applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var
 -- --   in the ECTA.
 -- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f13, f14, f15]
-anyFunc = Node [f10, f16, f17, f18, f19]
+-- anyFunc = Node [f10, f16, f17, f18, f19]
 
 -- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
 size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
@@ -345,7 +345,7 @@ hoogleComps = filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
             $ Map.toList groupedComponents
 
 anyFunc :: Node
--- anyFunc = Node hoogleComps
+anyFunc = Node hoogleComps
 
 fromJustFunc :: Node
 fromJustFunc = Node [ constFunc "Data.Maybe.fromJust" (generalize $ arrowType (maybeType var1) var1)
@@ -466,7 +466,8 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let filterNode = filterType (uptoSize7 anyArg) resNode
         -- putStrLn $ renderDot . toDot $ filterNode
 
-        timeout (300 * 10^6) $ do
+        -- timeout (3600 * 10^6) $ do
+        do
             reducedNode <- if name `elem` hardBenchmarks
                            then return $ (withoutRedundantEdges . reducePartially) filterNode
                            else reduceFullyAndLog filterNode
@@ -488,18 +489,19 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         go i n = do putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
                     -- if i == 0 then putStrLn (renderDot $ toDot n) else return ()
                     -- print each application individually
-                    -- let Node es = n
-                    -- let filterEdge = head es
-                    -- let Node es' = edgeChildren filterEdge !! 1
-                    -- mapM_ (\(j, e) -> writeFile (show i ++ "." ++ show j) (renderDot $ toDot $ Node [e])) (zip [0..] es')
+                    let Node es = n
+                    let filterEdge = head es
+                    let Node es' = edgeChildren filterEdge !! 1
+                    when (i==14) $ mapM_ (\(j, e) -> writeFile (show i ++ "." ++ show j) (renderDot $ toDot $ Node [e])) (zip [0..] es')
 
-                    let d = constraintAdjustedDepth n
-                    putStrLn $ "Depth: " ++ show d
+                    when (i==14) (error "stop")
+                    -- let d = constraintAdjustedDepth n
+                    -- putStrLn $ "Depth: " ++ show d
                     let n' = {- withoutRedundantEdges $ -} reducePartially n
                     if n == n' then
                       return n
                     else
                       go (i + 1) n'
 
-testNode1 = (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "List" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "->" [(Node [(Edge "(->)" [])]),(Node [(Edge "List" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])]),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])])
-testNode2 = (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "List" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "->" [(Node [(Edge "(->)" [])]),(Node [(Edge "List" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])]),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))]),(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])])
+testNode1 = (Node [(Edge "->" [(Node [(Edge "(->)" [])]),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])])])])])])])])])])])])])])])])])])])]),(Node [(Edge "Pair" [(Node [(Edge "var2" [])]),(Node [(Edge "var2" [])])])])])]) 
+testNode2 = (Node [(Edge "->" [(Node [(Edge "(->)" [])]),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Node [(Edge "Pair" [(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])])),(Mu (Node [(Edge "var2" []),(Edge "var1" []),(Edge "var3" []),(Edge "var4" []),(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "List" [Rec]),(Edge "Pair" [Rec,Rec])]))])])])])])])])])])])])])])])])])])])])])])]),(Node [(Edge "Pair" [(Node [(Edge "var2" [])]),(Node [(Edge "var2" [])])])])])])
