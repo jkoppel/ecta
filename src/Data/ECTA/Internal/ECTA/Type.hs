@@ -19,17 +19,17 @@ module Data.ECTA.Internal.ECTA.Type (
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
-import Data.List ( sort )
+import Data.List ( sort, concatMap )
 
 import GHC.Generics ( Generic )
 
-import Data.List.Extra ( nubSort )
+import Data.List.Extra ( nubSort, nubOrd )
 
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased
---import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
---import Data.Interned.Extended.SingleThreaded ( intern )
+-- import Data.Interned.Extended.HashTableBased
+import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
@@ -210,11 +210,33 @@ removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
-mkEdge s ns ecs
+mkEdge s ns ecs = 
+
+mkEdge' :: Symbol -> [Node] -> EqConstraints -> Edge
+mkEdge' s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
-mkEdge s ns ecs
    | otherwise                       = intern $ UninternedEdge s ns ecs
 
+occursCheck :: Symbol -> [Node] -> EqConstraints -> Edge
+occursCheck s ns ecs = mkEdge s ns (mkEqConstraints $ unionsPaths paths)
+  where
+    paths = ecsGetPaths ecs
+    
+    getPrefixPaths :: [[Path]] -> [Path]
+    getPrefixPaths = nubOrd . concatMap . concatMap pathNoEmptyInits
+
+    getPrefixNodes :: [Path] -> [Node]
+    getPrefixNodes ps = filter (/= EmptyNode) (map (\p -> (p, getPath p ns) (getPrefixPaths ps)))
+    
+    nodeGroups :: [Node] -> [[Node]]
+    nodeGroups ns = clusterByHash (\(p, n) -> hash n) ns
+    
+    -- union paths that represent the same node
+    unionPaths :: [[Path]] -> [[Path]]
+    unionPaths ps = foldl overlapConstraint ps (nodeGroups (getPrefixNodes ps))
+
+    overlapConstraint :: [Node] -> [[Path]] -> [[Path]]
+    overlapConstraint ng accEcs = map (\ecs -> if any (\(p, _) -> p `elem` ecs) ng then ecs ++ map fst ng else ecs) accEcs
 
 -------------------
 ------ Node constructors

@@ -118,6 +118,9 @@ pathHeadUnsafe (Path ps) = head ps
 pathTailUnsafe :: Path -> Path
 pathTailUnsafe (Path ps) = Path (tail ps)
 
+pathNonEmptyInits :: Path -> [Path]
+pathNonEmptyInits (Path ps) = map Path (tail (inits ps))
+
 instance Pretty Path where
   pretty (Path ps) = Text.intercalate "." (map (Text.pack . show) ps)
 

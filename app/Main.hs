@@ -17,6 +17,8 @@ import Data.Memoization as Memoization
 import Data.Persistent.UnionFind
 import TermSearch
 
+import Language.Dot.Pretty
+
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()
@@ -63,3 +65,4 @@ main = do
     benchStr <- getArgs
     let bench = read (head benchStr) :: Benchmark
     runBenchmark bench
+    -- putStrLn $ renderDot . toDot $ reduceFully replicator 

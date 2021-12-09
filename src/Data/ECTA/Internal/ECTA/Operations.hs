@@ -65,10 +65,10 @@ import Debug.Trace
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
-import Data.Interned.Extended.HashTableBased ( Id, intern )
---import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
---import Data.Interned.Extended.SingleThreaded ( intern )
-import Data.Memoization ( MemoCacheTag(..), memo, memo2, memoCatchCycles, memoIOCatchCycles, memo2IOCatchCycles, memo2IO, memo2CatchCycles )
+-- import Data.Interned.Extended.HashTableBased ( Id, intern )
+import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.SingleThreaded ( intern )
+import Data.Memoization ( MemoCacheTag(..), memo, memo2, memoCatchCycles, memoIOCatchCycles, memo2IOCatchCycles, memoIO, memo2IO, memo2CatchCycles )
 import Utility.Fixpoint
 import Utility.HashJoin
 
@@ -82,6 +82,7 @@ import Language.Dot ( renderDot )
 import Data.Text.Extended.Pretty
 
 import System.IO.Unsafe ( unsafePerformIO )
+import System.IO (hFlush, stdout)
 
 ------------------------------------------------------------------------------------
 
@@ -239,8 +240,13 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect n1 n2 = unsafePerformIO (intersect' n1 n2)
-
+intersect n1 n2 = unsafePerformIO (do
+  -- trace ("intersecting " ++ show n1 ++ " and " ++ show n2) (return ())
+  hFlush stdout
+  n <- intersect' n1 n2
+  -- trace ("intersection result: " ++ show n) (return n))
+  return n)
+  
 intersect' :: Node -> Node -> IO Node
 --intersect = memo2CatchCycles (NameTag "intersect") (renderDot . toDot) (renderDot . toDot) doIntersect
 intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . renderDot . toDot) (Text.pack . renderDot . toDot) doIntersect
@@ -413,7 +419,7 @@ reducePartially :: Node -> Node
 reducePartially n = unsafePerformIO $ reducePartially' n
 
 reducePartially' :: Node -> IO Node
-reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially") (Text.pack . show . (getSum . onNormalNodes (Sum .nodeIdentity))) go
+reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially") (Text.pack . show . (getSum . onNormalNodes (Sum .nodeIdentity))) (\n -> trace ("Reducing " ++ show n) (go n))
   where
     go :: Node -> IO Node
     go EmptyNode  = pure EmptyNode
@@ -449,7 +455,7 @@ reduceEqConstraints = go
         withNeededChildren = foldr requirePathList origNs (concatMap unPathEClass eclasses)
 
         intersectList :: [Node] -> Node
-        intersectList ns = foldr intersect (head ns) (tail ns)
+        intersectList ns = trace ("intersectList: " ++ show ns) $ foldr intersect (head ns) (tail ns)
 
         atPaths :: [Node] -> [Path] -> [Node]
         atPaths ns ps = map (`getPath` ns) ps

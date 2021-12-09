@@ -35,7 +35,7 @@ import Language.Dot ( renderDot )
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
@@ -442,6 +442,27 @@ prettyPrintAllTerms solStr n = do let ts = getAllTerms n
                               Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
                               Text.putStrLn ""
 #endif
+
+replicator :: Node
+replicator = Node [
+    mkEdge "Pair" [
+      Node [
+        -- mkEdge "Pair" [tau, tau]
+        -- (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+        Edge "Pair" [tau, tau]
+      ],
+      Node [
+        -- mkEdge "Pair" [tau, tau]
+        -- (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+        Edge "Pair" [tau, tau]
+      ]
+    ]
+    (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+  ]
+-- replicator = Node [
+--         mkEdge "Pair" [tau, tau]
+--         (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+--       ]
 
 runBenchmark :: Benchmark -> IO ()
 runBenchmark (Benchmark name depth solStr (args, res)) = do
