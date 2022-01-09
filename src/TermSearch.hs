@@ -23,25 +23,27 @@ import Data.Time
 import System.Timeout
 import Control.Monad (when)
 import Language.Dot ( renderDot )
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, stdout, hPutStr, IOMode(..), withFile)
 
 import Data.ECTA
 import Data.ECTA.Paths
 import Data.ECTA.Term
+import Data.ECTA.Internal.ECTA.Type
 import Utility.Fixpoint
+import Minimization
 
 import Language.Dot ( renderDot )
 
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var4] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    -- usedConstructors = allConstructors
-    usedConstructors = [("List", 1), ("Pair", 2)]
+    usedConstructors = allConstructors
+    -- usedConstructors = [("List", 1), ("Pair", 2)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]
@@ -165,7 +167,7 @@ applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var
 -- --   in the ECTA.
 -- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
 -- anyFunc = Node [f13, f14, f15]
-anyFunc = Node [f10, f16, f17, f18, f19]
+-- anyFunc = Node [f10, f16, f17, f18, f19]
 
 -- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
 size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
@@ -268,60 +270,60 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
                             -- , "Data.Either.either" -- Either a b -> (a -> c) -> (b -> c) -> c
 
                             -- GHC.List
-                            , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
-                            , "GHC.List.scanl"
-                            , "GHC.List.scanl'"
-                            , "GHC.List.scanl1"
+                            -- , "GHC.List.scanr" -- (a -> b -> b) -> b -> [a] -> [b]
+                            -- , "GHC.List.scanl"
+                            -- , "GHC.List.scanl'"
+                            -- , "GHC.List.scanl1"
                             -- , "GHC.List.foldl"
-                            , "GHC.List.foldl'"
-                            , "GHC.List.foldl1" -- (a -> a -> a) -> [a] -> a
-                            , "GHC.List.foldl1'" -- (a -> a -> a) -> [a] -> a
+                            -- , "GHC.List.foldl'"
+                            -- , "GHC.List.foldl1" -- (a -> a -> a) -> [a] -> a
+                            -- , "GHC.List.foldl1'" -- (a -> a -> a) -> [a] -> a
                             -- , "GHC.List.foldr" -- (a -> b -> b) -> b -> [a] -> b
-                            , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
-                            , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
-                            , "GHC.List.head"
-                            , "GHC.List.last"
-                            , "GHC.List.maximum"
-                            , "GHC.List.minimum"
-                            , "GHC.List.any"
-                            , "GHC.List.all"
-                            , "GHC.List.and"
-                            , "GHC.List.concat"
-                            , "GHC.List.cycle"
-                            , "GHC.List.drop"
-                            , "GHC.List.elem"
-                            , "GHC.List.init"
-                            , "GHC.List.length"
-                            , "GHC.List.notElem"
-                            , "GHC.List.null"
-                            , "GHC.List.or"
-                            , "GHC.List.product"
-                            , "GHC.List.replicate"
-                            , "GHC.List.repeat"
-                            , "GHC.List.reverse"
-                            , "GHC.List.sum"
-                            , "GHC.List.tail"
-                            , "GHC.List.take"
-                            , "GHC.List.uncons"
-                            , "(GHC.List.!!)"
-                            , "(GHC.List.++)"
+                            -- , "GHC.List.foldr1" -- (a -> a -> a) -> [a] -> a
+                            -- , "GHC.List.zipWith3" -- (a -> b -> c -> d) -> [a] -> [b] -> [c] -> [d]
+                            -- , "GHC.List.head"
+                            -- , "GHC.List.last"
+                            -- , "GHC.List.maximum"
+                            -- , "GHC.List.minimum"
+                            -- , "GHC.List.any"
+                            -- , "GHC.List.all"
+                            -- , "GHC.List.and"
+                            -- , "GHC.List.concat"
+                            -- , "GHC.List.cycle"
+                            -- , "GHC.List.drop"
+                            -- , "GHC.List.elem"
+                            -- , "GHC.List.init"
+                            -- , "GHC.List.length"
+                            -- , "GHC.List.notElem"
+                            -- , "GHC.List.null"
+                            -- , "GHC.List.or"
+                            -- , "GHC.List.product"
+                            -- , "GHC.List.replicate"
+                            -- , "GHC.List.repeat"
+                            -- , "GHC.List.reverse"
+                            -- , "GHC.List.sum"
+                            -- , "GHC.List.tail"
+                            -- , "GHC.List.take"
+                            -- , "GHC.List.uncons"
+                            -- , "(GHC.List.!!)"
+                            -- , "(GHC.List.++)"
                             -- higher order functions
-                            , "GHC.List.break"
-                            , "GHC.List.takeWhile"
-                            , "GHC.List.dropWhile"
-                            , "GHC.List.map"
-                            , "GHC.List.filter"
-                            , "GHC.List.concatMap"
-                            , "GHC.List.iterate"
-                            , "GHC.List.iterate'"
-                            , "GHC.List.lookup"
-                            , "GHC.List.span"
-                            , "GHC.List.splitAt"
-                            , "GHC.List.unzip"
-                            , "GHC.List.unzip3"
-                            , "GHC.List.zip"
-                            , "GHC.List.zip3"
-                            , "GHC.List.zipWith"
+                            -- , "GHC.List.break"
+                            -- , "GHC.List.takeWhile"
+                            -- , "GHC.List.dropWhile"
+                            -- , "GHC.List.map"
+                            -- , "GHC.List.filter"
+                            -- , "GHC.List.concatMap"
+                            -- , "GHC.List.iterate"
+                            -- , "GHC.List.iterate'"
+                            -- , "GHC.List.lookup"
+                            -- , "GHC.List.span"
+                            -- , "GHC.List.splitAt"
+                            -- , "GHC.List.unzip"
+                            -- , "GHC.List.unzip3"
+                            -- , "GHC.List.zip"
+                            -- , "GHC.List.zip3"
+                            -- , "GHC.List.zipWith"
                             -- , "Nil"
                             -- Data.Maybe
                             -- , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
@@ -341,7 +343,7 @@ hoogleComps = filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
             $ Map.toList groupedComponents
 
 anyFunc :: Node
--- anyFunc = Node hoogleComps
+anyFunc = Node hoogleComps
 
 fromJustFunc :: Node
 fromJustFunc = Node [ constFunc "Data.Maybe.fromJust" (generalize $ arrowType (maybeType var1) var1)
@@ -479,18 +481,19 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
         let resNode = exportTypeToFta res
         let anyArg = Node (map (uncurry constArg) argNodes)
-        -- let filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
-        let filterNode = filterType (uptoSize7 anyArg) resNode
+        let filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
+        -- let filterNode = filterType (uptoSize7 anyArg) resNode
         -- putStrLn $ renderDot . toDot $ filterNode
         
-        timeout (1800 * 10^6) $ do
+        -- checkReductionTime filterNode
+        timeout (120 * 10^6) $ do
             reducedNode <- if name `elem` hardBenchmarks
                            then return $ (withoutRedundantEdges . reducePartially) filterNode
                            else reduceFullyAndLog filterNode
-            putStrLn $ renderDot . toDot $ reducedNode
+            -- putStrLn $ renderDot . toDot $ reducedNode
             let !foldedNode = refold reducedNode
             reduceTime <- getCurrentTime
-            putStrLn $ "Reduction time: " ++ show (diffUTCTime reduceTime start)
+            -- putStrLn $ "Reduction time: " ++ show (diffUTCTime reduceTime start)
             hFlush stdout
             -- putStrLn $ renderDot . toDot $ reducedNode
             prettyPrintAllTerms solStr foldedNode
@@ -502,12 +505,27 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
     reduceFullyAndLog :: Node -> IO Node
     reduceFullyAndLog = go 0
       where
-        go i n = do putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
-                    if i == 0 then putStrLn (renderDot $ toDot n) else return ()
+        go i n = do -- putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
+                    -- if i == 0 then putStrLn (renderDot $ toDot n) else return ()
+                    -- let Node es = n
+                    -- let nn = (edgeChildren (es !! 0)) !! 1
+                    -- let Node es = nn
+                    -- mapM_ (\(e, j) -> withFile (show i ++ "." ++ show j) WriteMode (\hdl -> hPutStr hdl (renderDot $ toDot $ Node [e]))) (zip es [0..])
                     let d = constraintAdjustedDepth n
-                    putStrLn $ "Depth: " ++ show d
-                    let n' = {- withoutRedundantEdges $ -} reducePartially n
+                    -- putStrLn $ "Depth: " ++ show d
+                    let n' = withoutRedundantEdges $ reducePartially n
+                    -- n' <- minReductionFail n
+                    -- let Node es = n'
+                    -- let nn = (edgeChildren (es !! 0)) !! 1
+                    -- let Node es = nn
+                    -- mapM_ (\(e, j) -> withFile (show i ++ "." ++ show j ++ ".after") WriteMode (\hdl -> hPutStr hdl (renderDot $ toDot $ Node [e]))) (zip es [0..])
                     if n == n' then
                       return n
                     else
                       go (i + 1) n'
+
+testNode1 :: Node
+testNode1 = (Node [(Edge "->" [(Node [(Edge "(->)" [])]),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])])),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))]),(Edge "var2" []),(Edge "var3" []),(Edge "List" [(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))]),(Edge "var1" []),(Edge "Pair" [(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])])),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))])])
+
+testNode2 :: Node
+testNode2 = (Node [(Edge "->" [(Node [(Edge "(->)" [])]),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])])),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))]),(Edge "var2" []),(Edge "var3" []),(Edge "List" [(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))]),(Edge "var1" []),(Edge "Pair" [(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])])),(Mu (Node [(Edge "->" [(Node [(Edge "(->)" [])]),Rec,Rec]),(Edge "Pair" [Rec,Rec]),(Edge "var2" []),(Edge "var3" []),(Edge "var1" []),(Edge "List" [Rec])]))])])

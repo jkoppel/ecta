@@ -10,6 +10,7 @@ module Data.ECTA.Internal.Paths (
   , Pathable(..)
   , pathHeadUnsafe
   , pathTailUnsafe
+  , pathStrictInits
   , isSubpath
   , isStrictSubpath
   , substSubpath
@@ -49,7 +50,7 @@ module Data.ECTA.Internal.Paths (
 import Control.Monad ( (=<<) )
 import qualified Data.Array as Array
 import Data.Function ( on )
-import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy )
+import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy, inits )
 import Data.Monoid ( Any(..), Endo(..) )
 import Data.Hashable ( Hashable )
 import Data.Semigroup ( Max(..) )
@@ -63,6 +64,7 @@ import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
+import Data.Aeson ( ToJSON, FromJSON )
 
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Text.Extended.Pretty
@@ -92,6 +94,8 @@ unPath :: Path -> [Int]
 unPath (Path p) = p
 
 instance Hashable Path
+instance ToJSON Path
+instance FromJSON Path
 
 {-
 instance Show Path where
@@ -118,8 +122,9 @@ pathHeadUnsafe (Path ps) = head ps
 pathTailUnsafe :: Path -> Path
 pathTailUnsafe (Path ps) = Path (tail ps)
 
-pathNonEmptyInits :: Path -> [Path]
-pathNonEmptyInits (Path ps) = map Path (tail (inits ps))
+-- | inits excluding empty and itself
+pathStrictInits :: Path -> [Path]
+pathStrictInits (Path ps) = map Path (init (tail (inits ps)))
 
 instance Pretty Path where
   pretty (Path ps) = Text.intercalate "." (map (Text.pack . show) ps)
@@ -205,6 +210,8 @@ data PathTrie = EmptyPathTrie
   deriving ( Eq, Show, Generic )
 
 instance Hashable PathTrie
+instance ToJSON PathTrie
+instance FromJSON PathTrie
 
 isEmptyPathTrie :: PathTrie -> Bool
 isEmptyPathTrie EmptyPathTrie = True
@@ -333,6 +340,8 @@ instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
 
 instance Hashable PathEClass
+instance ToJSON PathEClass
+instance FromJSON PathEClass
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
 hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
@@ -385,6 +394,8 @@ data EqConstraints = EqConstraints { getEclasses :: [PathEClass] -- | Must be so
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable EqConstraints
+instance ToJSON EqConstraints
+instance FromJSON EqConstraints
 
 instance Pretty EqConstraints where
   pretty ecs = "{" <> (Text.intercalate "," $ map pretty (getEclasses ecs)) <> "}"

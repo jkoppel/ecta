@@ -4,14 +4,11 @@
 module Data.ECTA.Internal.ECTA.Operations (
   -- * Traversal
     pathsMatching
-  , mapNodes
   , crush
   , onNormalNodes
 
   -- * Unfolding
-  , unfoldRec
   , refold
-  , nodeEdges
   , unfoldBounded
 
   -- * Size operations
@@ -20,9 +17,6 @@ module Data.ECTA.Internal.ECTA.Operations (
   , nodeCount
   , edgeCount
   , maxIndegree
-
-  -- * Union
-  , union
 
   -- * Membership
   , nodeRepresents
@@ -51,7 +45,7 @@ module Data.ECTA.Internal.ECTA.Operations (
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
 import Data.List ( inits, tails )
-import Data.Maybe ( catMaybes )
+import Data.List.Extra ( nubOrd )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
@@ -65,9 +59,9 @@ import Debug.Trace
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
--- import Data.Interned.Extended.HashTableBased ( Id, intern )
-import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
-import Data.Interned.Extended.SingleThreaded ( intern )
+import Data.Interned.Extended.HashTableBased ( Id, intern )
+-- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Memoization ( MemoCacheTag(..), memo, memo2, memoCatchCycles, memoIOCatchCycles, memo2IOCatchCycles, memoIO, memo2IO, memo2CatchCycles )
 import Utility.Fixpoint
 import Utility.HashJoin
@@ -102,19 +96,6 @@ pathsMatching f n@(Node es) = (concat $ map pathsMatchingEdge es)
     pathsMatchingEdge :: Edge -> [Path]
     pathsMatchingEdge (Edge _ ns) = concat $ imap (\i x -> map (ConsPath i) $ pathsMatching f x) ns
 
-mapNodes :: (Node -> Node) -> Node -> Node
-mapNodes f n = go n
-  where
-    -- | Memoized separately for each mapNodes invocation
-    go :: Node -> Node
-    go = memo (NameTag "mapNodes") (go' f)
-    {-# NOINLINE go #-}
-
-    go' :: (Node -> Node) -> Node -> Node
-    go' f EmptyNode = EmptyNode
-    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
-    go' f (Mu n)    = f $ (Mu $ go n)
-    go' f Rec       = f Rec
 
 -- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
 -- combinators in the KURE and compstrat libraries.
@@ -143,17 +124,6 @@ onNormalNodes _ _          = mempty
 -----------------------
 ------ Folding
 -----------------------
-
-unfoldRec :: Node -> Node
-unfoldRec = memo (NameTag "unfoldRec") go
-  where
-    go n = mapNodes (\x -> if x == Rec then Mu n else x) n
-
-
-nodeEdges :: Node -> [Edge]
-nodeEdges (Node es) = es
-nodeEdges (Mu n)    = nodeEdges (unfoldRec n)
-nodeEdges _         = []
 
 refold :: Node -> Node
 refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
@@ -241,15 +211,15 @@ edgeRepresents e t@(Term s ts) =    s == edgeSymbol e
 
 intersect :: Node -> Node -> Node
 intersect n1 n2 = unsafePerformIO (do
-  -- trace ("intersecting " ++ show n1 ++ " and " ++ show n2) (return ())
-  hFlush stdout
+  -- trace ("intersecting " ++ show (nodeIdentity n1) ++ " and " ++ show (nodeIdentity n2)) (return ())
+  -- hFlush stdout
   n <- intersect' n1 n2
-  -- trace ("intersection result: " ++ show n) (return n))
-  return n)
+  -- trace ("intersection result: " ++ show (nodeIdentity n)) (return ())
+  return $ refold n)
   
 intersect' :: Node -> Node -> IO Node
 --intersect = memo2CatchCycles (NameTag "intersect") (renderDot . toDot) (renderDot . toDot) doIntersect
-intersect' = unsafePerformIO $ memo2IOCatchCycles (NameTag "intersect") (Text.pack . renderDot . toDot) (Text.pack . renderDot . toDot) doIntersect
+intersect' = unsafePerformIO $ memo2IO (NameTag "intersect") doIntersect
 {-# NOINLINE intersect' #-}
 
 
@@ -330,15 +300,6 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
                <*> pure (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
 {-# NOINLINE intersectEdgeSameSymbol #-}
 
-------------
------- Union
-------------
-
-union :: [Node] -> Node
-union ns = case filter (/= EmptyNode) ns of
-             []  -> EmptyNode
-             ns' -> Node (concat $ map nodeEdges ns')
-
 ----------------------
 ------ Path operations
 ----------------------
@@ -354,51 +315,6 @@ requirePath (ConsPath p ps) (Node es) = Node $ map (\e -> setChildren e (require
 requirePathList :: Path -> [Node] -> [Node]
 requirePathList EmptyPath       ns = ns
 requirePathList (ConsPath p ps) ns = ns & ix p %~ requirePath ps
-
-instance Pathable Node Node where
-  type Emptyable Node = Node
-
-  getPath _                EmptyNode = EmptyNode
-  getPath p                (Mu n)    = getPath p (unfoldRec n)
-  getPath EmptyPath        n         = n
-  getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
-    where
-      goEdge :: Edge -> Maybe Node
-      goEdge (Edge _ ns) = ns ^? ix p
-
-  getAllAtPath _               EmptyNode = []
-  getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
-  getAllAtPath EmptyPath       n         = [n]
-  getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
-    where
-      goEdge :: Edge -> Maybe Node
-      goEdge (Edge _ ns) = ns ^? ix p
-
-  modifyAtPath f EmptyPath       n         = f n
-  modifyAtPath _ _               EmptyNode = EmptyNode
-  modifyAtPath f p               (Mu n)    = modifyAtPath f p (unfoldRec n)
-  modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
-    where
-      goEdge :: Edge -> Edge
-      goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
-
-instance Pathable [Node] Node where
-  type Emptyable Node = Node
-
-  getPath EmptyPath       ns = union ns
-  getPath (ConsPath p ps) ns = case ns ^? ix p of
-                                 Nothing -> EmptyNode
-                                 Just n  -> getPath ps n
-
-  getAllAtPath EmptyPath       ns = []
-  getAllAtPath (ConsPath p ps) ns = case ns ^? ix p of
-                                      Nothing -> []
-                                      Just n  -> getAllAtPath ps n
-
-  modifyAtPath f EmptyPath       ns = ns
-  modifyAtPath f (ConsPath p ps) ns = ns & ix p %~ modifyAtPath f ps
-
-
 
 ------------------------------------
 ------ Reduction
@@ -419,7 +335,9 @@ reducePartially :: Node -> Node
 reducePartially n = unsafePerformIO $ reducePartially' n
 
 reducePartially' :: Node -> IO Node
-reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially") (Text.pack . show . (getSum . onNormalNodes (Sum .nodeIdentity))) (\n -> trace ("Reducing " ++ show n) (go n))
+reducePartially' = unsafePerformIO $ memoIO (NameTag "reducePartially") (\n -> do
+  -- trace ("Reducing " ++ show (nodeIdentity n)) $ return ()
+  go n)
   where
     go :: Node -> IO Node
     go EmptyNode  = pure EmptyNode
@@ -431,13 +349,36 @@ reducePartially' = unsafePerformIO $ memoIOCatchCycles (NameTag "reducePartially
                    in Node <$> mapM (\e -> mapM reducePartially' (edgeChildren e) >>= \ns' -> pure $ intern $ (uninternedEdge e) {uEdgeChildren = ns'}) es'
 {-# NOINLINE reducePartially' #-}
 
+-- | check whether the intersection result equals to any ancestors
+occursCheck :: [Node] -> Node -> [Path] -> Bool
+occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps))
+  where
+    getPrefixPaths :: [Path] -> [Path]
+    getPrefixPaths = nubOrd . concatMap pathStrictInits
+
+    getPrefixNodes :: [Path] -> [(Path, Node)]
+    getPrefixNodes ps = map (\p -> (p, getPath p oldNodes)) (getPrefixPaths ps)
+
+    -- only do this for nodes that is not a Mu
+    nodeGroups :: [(Path, Node)] -> [[(Path, Node)]]
+    nodeGroups ns = let res = clusterByHash (hash . snd) ns
+                     -- in trace ("nodeGroups: " ++ show res) res
+                     in res
+    -- -- union paths that represent the same node
+    -- unionPaths :: [Path] -> [Path]
+    -- unionPaths ps = let res = foldl overlapConstraint ps (nodeGroups (getPrefixNodes ps))
+    --                  in trace ("old paths: " ++ show ps ++ "\nnew paths: " ++ show res) $ res
+
+    hasOverlap :: [(Path, Node)] -> Bool
+    hasOverlap ng = newNode `elem` (map snd ng)
+
 reduceEdgeIntersection :: Edge -> Edge
 reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
   where
-   go :: Edge -> Edge
-   go e = mkEdge (edgeSymbol e)
-                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
-                 (edgeEcs e)
+    go :: Edge -> Edge
+    go e = mkEdge (edgeSymbol e)
+                  (reduceEqConstraints (edgeEcs e) (edgeChildren e))
+                  (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
 reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
@@ -455,13 +396,20 @@ reduceEqConstraints = go
         withNeededChildren = foldr requirePathList origNs (concatMap unPathEClass eclasses)
 
         intersectList :: [Node] -> Node
-        intersectList ns = trace ("intersectList: " ++ show ns) $ foldr intersect (head ns) (tail ns)
+        intersectList ns = foldr intersect (head ns) (tail ns)
 
         atPaths :: [Node] -> [Path] -> [Node]
         atPaths ns ps = map (`getPath` ns) ps
 
+        -- TODO: try to run it on more examples
+        -- don't put a node itself as its descendant
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+        -- reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> let intersected = intersect nsRestIntersected (getPath p ns')
+        --                                                                 newNode = intersected -- if trace "occursCheck" (occursCheck ns' intersected ps) then EmptyNode else intersected
+        --                                                              in modifyAtPath (const newNode) p ns')
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
+                                                                                         -- in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
+                                                                                         in intersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where

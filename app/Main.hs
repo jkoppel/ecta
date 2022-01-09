@@ -6,8 +6,10 @@ module Main where
 import Data.List ( nub )
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import System.IO ( hFlush, stdout )
+import System.IO ( hFlush, stdout, withFile, IOMode(..) )
 import System.Environment (getArgs)
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString.Lazy as BS
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
@@ -49,20 +51,16 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 main :: IO ()
 main = do
-    -- start <- getCurrentTime
-    -- let !filterNode = filterType (relevantTermsUptoK 6) baseType
-    -- middle1 <- getCurrentTime
-    -- print $ "Filter type time: " ++ show (diffUTCTime middle1 start)
-    -- -- let !node = filterArgs filterNode 
-    -- let !node = filterNode
-    -- middle <- getCurrentTime
-    -- print $ "Construction time: " ++ show (diffUTCTime middle start)
-    -- prettyPrintAllTerms $ refold $ reduceFully node
-    -- end <- getCurrentTime
-    -- print $ "Reduction time: " ++ show (diffUTCTime end middle)
-    -- putStrLn $ renderDot . toDot $ node
-    -- mapM_ runBenchmark benchmarks
     benchStr <- getArgs
     let bench = read (head benchStr) :: Benchmark
     runBenchmark bench
+    
+    -- print $ intersect testNode1 testNode2
     -- putStrLn $ renderDot . toDot $ reduceFully replicator 
+
+    -- withFile "graph.pkl" ReadMode $ \hdl -> do
+    --     contents <- BS.hGetContents hdl
+    --     let mbNode = Aeson.decode contents :: Maybe Node
+    --     case mbNode of
+    --         Nothing -> error "cannot decode node"
+    --         Just n -> putStrLn $ renderDot . toDot $ reducePartially n

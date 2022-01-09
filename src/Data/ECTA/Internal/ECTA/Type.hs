@@ -15,25 +15,38 @@ module Data.ECTA.Internal.ECTA.Type (
   , nodeIdentity
   , modifyNode
   , createGloballyUniqueMu
+
+  -- * Node operations
+  , unfoldRec
+  , nodeEdges
+  , union
+  , mapNodes
   ) where
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort, concatMap )
+import Control.Lens ( (&), ix, (^?), (%~) )
+import Data.Maybe ( catMaybes )
 
 import GHC.Generics ( Generic )
+import Data.Aeson ( ToJSON, FromJSON )
 
 import Data.List.Extra ( nubSort, nubOrd )
 
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
--- import Data.Interned.Extended.HashTableBased
-import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
-import Data.Interned.Extended.SingleThreaded ( intern )
+import Data.Interned.Extended.HashTableBased
+-- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
 
+import Data.Memoization ( MemoCacheTag(..), memo )
+import Utility.HashJoin
+
+import Debug.Trace
 ---------------------------------------------------------------------------------------------
 
 
@@ -45,6 +58,7 @@ import Data.ECTA.Internal.Term
 data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
+            deriving (Generic)
 
 instance Show Edge where
   show e | edgeEcs e == EmptyConstraints = "(Edge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ ")"
@@ -82,6 +96,7 @@ data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | EmptyNode
           | Mu !Node
           | Rec
+          deriving (Generic)
 
 instance Eq Node where
   (InternedNode n1 _) == (InternedNode n2 _) = n1 == n2
@@ -119,6 +134,9 @@ instance Hashable Node where
 
 nodeIdentity :: Node -> Id
 nodeIdentity (InternedNode n _) = n
+nodeIdentity EmptyNode          = -1
+nodeIdentity (Mu n)             = -2
+nodeIdentity Rec                = -3
 
 setChildren :: Edge -> [Node] -> Edge
 setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
@@ -126,6 +144,83 @@ setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
 dropEcs :: Edge -> Edge
 dropEcs e = Edge (edgeSymbol e) (edgeChildren e)
 
+
+----------------------
+------ Node operations
+----------------------
+
+unfoldRec :: Node -> Node
+unfoldRec = memo (NameTag "unfoldRec") go
+  where
+    go n = mapNodes (\x -> if x == Rec then Mu n else x) n
+
+union :: [Node] -> Node
+union ns = case filter (/= EmptyNode) ns of
+             []  -> EmptyNode
+             ns' -> Node (concat $ map nodeEdges ns')
+
+mapNodes :: (Node -> Node) -> Node -> Node
+mapNodes f n = go n
+  where
+    -- | Memoized separately for each mapNodes invocation
+    go :: Node -> Node
+    go = memo (NameTag "mapNodes") (go' f)
+    {-# NOINLINE go #-}
+
+    go' :: (Node -> Node) -> Node -> Node
+    go' f EmptyNode = EmptyNode
+    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' f (Mu n)    = f $ (Mu $ go n)
+    go' f Rec       = f Rec
+
+nodeEdges :: Node -> [Edge]
+nodeEdges (Node es) = es
+nodeEdges (Mu n)    = nodeEdges (unfoldRec n)
+nodeEdges _         = []
+
+
+instance Pathable Node Node where
+  type Emptyable Node = Node
+
+  getPath _                EmptyNode = EmptyNode
+  getPath EmptyPath        n         = n
+  getPath p                (Mu n)    = getPath p (unfoldRec n)
+  getPath (ConsPath p ps) (Node es)  = union $ nubOrd $ map (getPath ps) (catMaybes (map goEdge es))
+    where
+      goEdge :: Edge -> Maybe Node
+      goEdge (Edge _ ns) = ns ^? ix p
+
+  getAllAtPath _               EmptyNode = []
+  getAllAtPath EmptyPath       n         = [n]
+  getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
+  getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
+    where
+      goEdge :: Edge -> Maybe Node
+      goEdge (Edge _ ns) = ns ^? ix p
+
+  modifyAtPath f EmptyPath       n         = f n
+  modifyAtPath _ _               EmptyNode = EmptyNode
+  modifyAtPath f p               (Mu n)    = modifyAtPath f p (unfoldRec n)
+  modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
+    where
+      goEdge :: Edge -> Edge
+      goEdge e = setChildren e (edgeChildren e & ix p %~ modifyAtPath f ps)
+
+instance Pathable [Node] Node where
+  type Emptyable Node = Node
+
+  getPath EmptyPath       ns = union ns
+  getPath (ConsPath p ps) ns = case ns ^? ix p of
+                                 Nothing -> EmptyNode
+                                 Just n  -> getPath ps n
+
+  getAllAtPath EmptyPath       ns = []
+  getAllAtPath (ConsPath p ps) ns = case ns ^? ix p of
+                                      Nothing -> []
+                                      Just n  -> getAllAtPath ps n
+
+  modifyAtPath f EmptyPath       ns = ns
+  modifyAtPath f (ConsPath p ps) ns = ns & ix p %~ modifyAtPath f ps
 
 -----------------------------------------------------------------
 ------------------------- Interning Nodes -----------------------
@@ -154,6 +249,10 @@ instance Interned Node where
   cache = nodeCache
 
 instance Hashable (Description Node)
+instance ToJSON Node
+instance FromJSON Node
+instance ToJSON UninternedNode
+instance FromJSON UninternedNode
 
 nodeCache :: Cache Node
 nodeCache = mkCache
@@ -183,6 +282,10 @@ instance Interned Edge where
   cache = edgeCache
 
 instance Hashable (Description Edge)
+instance ToJSON Edge
+instance FromJSON Edge
+instance ToJSON UninternedEdge
+instance FromJSON UninternedEdge
 
 edgeCache :: Cache Edge
 edgeCache = mkCache
@@ -210,33 +313,9 @@ removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
-mkEdge s ns ecs = 
-
-mkEdge' :: Symbol -> [Node] -> EqConstraints -> Edge
-mkEdge' s ns ecs
+mkEdge s ns ecs
    | constraintsAreContradictory ecs = emptyEdge
    | otherwise                       = intern $ UninternedEdge s ns ecs
-
-occursCheck :: Symbol -> [Node] -> EqConstraints -> Edge
-occursCheck s ns ecs = mkEdge s ns (mkEqConstraints $ unionsPaths paths)
-  where
-    paths = ecsGetPaths ecs
-    
-    getPrefixPaths :: [[Path]] -> [Path]
-    getPrefixPaths = nubOrd . concatMap . concatMap pathNoEmptyInits
-
-    getPrefixNodes :: [Path] -> [Node]
-    getPrefixNodes ps = filter (/= EmptyNode) (map (\p -> (p, getPath p ns) (getPrefixPaths ps)))
-    
-    nodeGroups :: [Node] -> [[Node]]
-    nodeGroups ns = clusterByHash (\(p, n) -> hash n) ns
-    
-    -- union paths that represent the same node
-    unionPaths :: [[Path]] -> [[Path]]
-    unionPaths ps = foldl overlapConstraint ps (nodeGroups (getPrefixNodes ps))
-
-    overlapConstraint :: [Node] -> [[Path]] -> [[Path]]
-    overlapConstraint ng accEcs = map (\ecs -> if any (\(p, _) -> p `elem` ecs) ng then ecs ++ map fst ng else ecs) accEcs
 
 -------------------
 ------ Node constructors

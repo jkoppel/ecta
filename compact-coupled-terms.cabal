@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ae3821b6eebe2084c6beeeefb904ea55e7d24a34e769399ddfcabb6fa12fe3d6
+-- hash: 842da61dd97eb36d39d638aff53ae21305f6b93f8b4b1c2f5daf372a6fe46fb0
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
       Data.Memoization.Metrics
       Data.Persistent.UnionFind
       Data.Text.Extended.Pretty
+      Minimization
       SAT
       TermSearch
       Utility.Fixpoint
@@ -85,8 +86,10 @@ library
       TypeOperators
       ViewPatterns
   build-depends:
-      array
+      aeson
+    , array
     , base
+    , bytestring
     , containers
     , equivalence
     , extra
@@ -99,6 +102,7 @@ library
     , lens
     , mtl
     , pretty-simple
+    , random
     , raw-strings-qq
     , text
     , time
@@ -145,13 +149,16 @@ executable compact-coupled-terms-exe
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base
+      aeson
+    , base
+    , bytestring
     , compact-coupled-terms
     , containers
     , hashable
     , language-dot
     , mtl
     , pretty-simple
+    , random
     , text
     , time
     , unordered-containers
@@ -205,7 +212,9 @@ test-suite unit-tests
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , aeson
     , base
+    , bytestring
     , compact-coupled-terms
     , containers
     , equivalence
@@ -214,6 +223,7 @@ test-suite unit-tests
     , language-dot
     , mtl
     , pretty-simple
+    , random
     , text
     , time
     , unordered-containers
@@ -259,7 +269,9 @@ benchmark mainbench
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
-      base
+      aeson
+    , base
+    , bytestring
     , compact-coupled-terms
     , containers
     , criterion
@@ -267,6 +279,7 @@ benchmark mainbench
     , language-dot
     , mtl
     , pretty-simple
+    , random
     , text
     , time
     , unordered-containers
