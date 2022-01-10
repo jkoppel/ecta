@@ -17,6 +17,8 @@ import Data.Memoization as Memoization
 import Data.Persistent.UnionFind
 import TermSearch
 
+import Language.Dot.Pretty
+
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()
@@ -47,19 +49,9 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 main :: IO ()
 main = do
-    -- start <- getCurrentTime
-    -- let !filterNode = filterType (relevantTermsUptoK 6) baseType
-    -- middle1 <- getCurrentTime
-    -- print $ "Filter type time: " ++ show (diffUTCTime middle1 start)
-    -- -- let !node = filterArgs filterNode 
-    -- let !node = filterNode
-    -- middle <- getCurrentTime
-    -- print $ "Construction time: " ++ show (diffUTCTime middle start)
-    -- prettyPrintAllTerms $ refold $ reduceFully node
-    -- end <- getCurrentTime
-    -- print $ "Reduction time: " ++ show (diffUTCTime end middle)
-    -- putStrLn $ renderDot . toDot $ node
-    -- mapM_ runBenchmark benchmarks
-    benchStr <- getArgs
-    let bench = read (head benchStr) :: Benchmark
-    runBenchmark bench
+    -- benchStr <- getArgs
+    -- let bench = read (head benchStr) :: Benchmark
+    -- runBenchmark bench
+
+    -- test replicator issue
+    putStrLn $ renderDot . toDot $ reduceFully replicator 

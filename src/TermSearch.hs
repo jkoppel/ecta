@@ -38,6 +38,14 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var
     usedConstructors = allConstructors
     -- usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
 
+replicatorTau :: Node
+replicatorTau = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constructorToEdge n) usedConstructors))
+  where
+    constructorToEdge :: Node -> (Text, Int) -> Edge
+    constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
+
+    usedConstructors = [("Pair", 2)]
+
 --tau :: Node
 --tau = Node [Edge "tau" []]
 
@@ -374,7 +382,7 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         nodeCons <- getCurrentTime
         print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
         
-        timeout (120 * 10^6) $ do
+        timeout (200 * 10^6) $ do
             let reducedNode = if name `elem` hardBenchmarks 
                               then (withoutRedundantEdges . reducePartially) filterNode
                               else reduceFully filterNode
@@ -386,3 +394,18 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         end <- getCurrentTime
         print $ "Time: " ++ show (diffUTCTime end start)
         hFlush stdout)
+
+replicator :: Node
+replicator = Node [
+    mkEdge "Pair" [
+      Node [
+        mkEdge "Pair" [replicatorTau, replicatorTau] (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+      ],
+      Node [
+        -- mkEdge "Pair" [tau, tau]
+        -- (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+        Edge "Pair" [replicatorTau, replicatorTau]
+      ]
+    ]
+    (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+  ]
