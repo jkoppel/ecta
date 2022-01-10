@@ -476,8 +476,8 @@ reduceEqConstraints = go
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
         reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
-                                                                                         in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
-                                                                                        --  in intersected) p ns')
+                                                                                        --  in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
+                                                                                         in intersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
