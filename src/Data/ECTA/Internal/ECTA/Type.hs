@@ -28,8 +28,8 @@ import Data.List.Extra ( nubSort )
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
 import Data.Interned.Extended.HashTableBased
---import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
---import Data.Interned.Extended.SingleThreaded ( intern )
+-- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term

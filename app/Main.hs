@@ -49,9 +49,9 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 main :: IO ()
 main = do
-    -- benchStr <- getArgs
-    -- let bench = read (head benchStr) :: Benchmark
-    -- runBenchmark bench
+    benchStr <- getArgs
+    let bench = read (head benchStr) :: Benchmark
+    runBenchmark bench
 
     -- test replicator issue
-    putStrLn $ renderDot . toDot $ reduceFully replicator 
+    -- putStrLn $ renderDot . toDot $ reduceFully replicator 

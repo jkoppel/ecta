@@ -65,6 +65,8 @@ import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
 import Data.Interned.Extended.HashTableBased ( Id, intern )
+-- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin
@@ -425,8 +427,8 @@ reduceEqConstraints = go
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
         reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
-                                                                                         in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
-                                                                                        --  in intersected) p ns')
+                                                                                        --  in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
+                                                                                         in intersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
