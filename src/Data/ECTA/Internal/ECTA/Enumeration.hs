@@ -314,7 +314,7 @@ data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
 firstExpandableUVar = do
     values <- use uvarValues
-    traceShow values $ return ()
+    -- traceShow values $ return ()
     -- check representative uvars because only representatives are updated
     candidateMaps <- mapM (\i -> do v <- getUVarValue (intToUVar i)
                                     case v of
