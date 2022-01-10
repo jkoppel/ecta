@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a2db07ef1956f7721c20b0a3cf1c4955c77d989d2bc6320487b2975b3af183e7
+-- hash: ae3821b6eebe2084c6beeeefb904ea55e7d24a34e769399ddfcabb6fa12fe3d6
 
 name:           compact-coupled-terms
 version:        0.1.0.0
