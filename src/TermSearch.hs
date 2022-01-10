@@ -374,7 +374,7 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         nodeCons <- getCurrentTime
         print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
         
-        timeout (200 * 10^6) $ do
+        timeout (120 * 10^6) $ do
             let reducedNode = if name `elem` hardBenchmarks 
                               then (withoutRedundantEdges . reducePartially) filterNode
                               else reduceFully filterNode
