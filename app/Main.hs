@@ -16,6 +16,8 @@ import Data.Persistent.UnionFind
 
 import Application.TermSearch.Evaluation
 
+import Language.Dot.Pretty
+
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()

@@ -54,6 +54,7 @@ import Data.Hashable ( hash )
 import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
+import Data.List.Extra ( nubOrd )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
@@ -386,6 +387,28 @@ withoutRedundantEdges n = mapNodes dropReds n
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
 
+-- | check whether the intersection result equals to any ancestors
+occursCheck :: [Node] -> Node -> [Path] -> Bool
+occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps))
+  where
+    -- | inits excluding empty and itself
+    pathStrictInits :: Path -> [Path]
+    pathStrictInits (Path ps) = map Path (init (tail (inits ps)))
+
+    getPrefixPaths :: [Path] -> [Path]
+    getPrefixPaths = nubOrd . concatMap pathStrictInits
+
+    getPrefixNodes :: [Path] -> [(Path, Node)]
+    getPrefixNodes ps = map (\p -> (p, getPath p oldNodes)) (getPrefixPaths ps)
+
+    -- only do this for nodes that is not a Mu
+    nodeGroups :: [(Path, Node)] -> [[(Path, Node)]]
+    nodeGroups ns = let res = clusterByHash (hash . snd) ns
+                     in res
+
+    hasOverlap :: [(Path, Node)] -> Bool
+    hasOverlap ng = newNode `elem` (map snd ng)
+
 ---------------
 --- Reducing Equality Constraints
 ---------------
@@ -452,7 +475,9 @@ reduceEqConstraints = go
         _atPaths ns ps = map (\p -> getPath p ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
+                                                                                         in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
+                                                                                        --  in intersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
