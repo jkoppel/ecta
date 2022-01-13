@@ -23,7 +23,7 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
-
+import Data.Aeson ( ToJSON, FromJSON )
 import GHC.Generics ( Generic )
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -63,6 +63,7 @@ instance Hashable RecNodeId
 data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
+                         deriving (Generic)
 
 instance Show Edge where
   show e | edgeEcs e == EmptyConstraints = "(Edge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ ")"
@@ -89,6 +90,8 @@ instance Ord Edge where
 instance Hashable Edge where
   hashWithSalt s e = s `hashWithSalt` (edgeId e)
 
+instance ToJSON Edge
+instance FromJSON Edge
 
 -----------------------------------------------------------------
 ------------------------------ Nodes ----------------------------
@@ -150,6 +153,8 @@ instance Hashable Node where
   hashWithSalt s (Rec i)            = s `hashWithSalt` (-3 :: Int) `hashWithSalt` i
   hashWithSalt s (InternedNode i _) = s `hashWithSalt` i
 
+instance ToJSON Node
+instance FromJSON Node
 
 ----------------------
 ------ Getters and setters
@@ -197,6 +202,9 @@ instance Hashable UninternedNode where
       go (UninternedNode es)  = hashWithSalt salt (1 :: Int, es)
       go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (-1))
 
+instance ToJSON UninternedNode
+instance FromJSON UninternedNode
+
 instance Interned Node where
   type Uninterned  Node = UninternedNode
   data Description Node = DNode !UninternedNode
@@ -239,6 +247,8 @@ data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
   deriving ( Eq, Show, Generic )
 
 instance Hashable UninternedEdge
+instance ToJSON UninternedEdge
+instance FromJSON UninternedEdge
 
 instance Interned Edge where
   type Uninterned  Edge = UninternedEdge
@@ -281,10 +291,9 @@ removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
-mkEdge _ _  ecs
-   | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-   | otherwise                       = intern $ UninternedEdge s ns ecs
+  | constraintsAreContradictory ecs = emptyEdge
+  | otherwise                       = intern $ UninternedEdge s ns ecs
 
 
 -------------------

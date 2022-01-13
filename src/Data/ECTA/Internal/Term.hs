@@ -13,7 +13,8 @@ import Data.Maybe ( maybeToList )
 import Data.String (IsString(..) )
 import Data.Text ( Text )
 import qualified Data.Text as Text
-
+import Data.Aeson ( ToJSON(..), FromJSON(..) )
+import qualified Data.Aeson as Aeson
 import GHC.Generics ( Generic )
 
 import Data.Interned.Text ( InternedText, internedTextId )
@@ -49,6 +50,11 @@ instance Hashable Symbol where
 instance IsString Symbol where
   fromString = Symbol . fromString
 
+instance ToJSON Symbol where
+  toJSON (Symbol t) = Aeson.String (Text.pack $ show t)
+
+instance FromJSON Symbol where
+  parseJSON = Aeson.withText "Symbol" (\s -> return $ Symbol (fromString (tail $ init $ Text.unpack s)))
 
 ---------------------------------------------------------------
 ---------------------------- Terms ----------------------------

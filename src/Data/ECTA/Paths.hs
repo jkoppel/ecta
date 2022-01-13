@@ -15,6 +15,7 @@ module Data.ECTA.Paths (
   , toPathTrie
   , fromPathTrie
   , pathTrieDescend
+  , pathTrieAscend
 
   , PathEClass(getPathTrie)
   , unPathEClass
