@@ -65,8 +65,11 @@ import qualified Data.IntMap as IntMap
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
-
+import Language.Dot.Pretty
 import Debug.Trace
+import Data.Aeson (encode)
+import System.IO.Unsafe (unsafePerformIO)
+import qualified Data.ByteString.Lazy as BS
 
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
@@ -333,8 +336,8 @@ instance Pathable Node Node where
   type Emptyable Node = Node
 
   getPath _                EmptyNode = EmptyNode
-  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath EmptyPath        n         = n
+  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -342,8 +345,8 @@ instance Pathable Node Node where
   getPath p                n         = error $ "getPath: unexpected path " <> show p <> " for node " <> show n
 
   getAllAtPath _               EmptyNode = []
-  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath EmptyPath       n         = [n]
+  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -476,7 +479,7 @@ reduceEqConstraints = go
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
         reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
-                                                                                        --  in if occursCheck ns' intersected ps then EmptyNode else intersected) p ns')
+                                                                                        --  in if occursCheck ns' intersected ps then trace ("occurs check found a cycle at " ++ show p) EmptyNode else trace ("reduction gets " ++ show intersected ++ " at " ++ show p)intersected) p ns')
                                                                                          in intersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))

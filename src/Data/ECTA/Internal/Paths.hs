@@ -25,6 +25,7 @@ module Data.ECTA.Internal.Paths (
   , toPathTrie
   , fromPathTrie
   , pathTrieDescend
+  , pathTrieAscend
 
   , PathEClass(PathEClass, ..)
   , unPathEClass
@@ -271,6 +272,12 @@ pathTrieDescend (PathTrie v)                i = if Vector.length v > i then
 pathTrieDescend (PathTrieSingleChild j pt') i
                 | i == j                      = pt'
                 | otherwise                   = EmptyPathTrie
+
+pathTrieAscend :: PathTrie -> Int -> PathTrie
+pathTrieAscend EmptyPathTrie i = PathTrieSingleChild i TerminalPathTrie
+pathTrieAscend TerminalPathTrie i = PathTrieSingleChild i TerminalPathTrie
+pathTrieAscend pt@(PathTrieSingleChild _ _) i = PathTrieSingleChild i pt
+pathTrieAscend pt@(PathTrie v) i = error "pathTrieAscend: not implemented for PathTrie"
 
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
