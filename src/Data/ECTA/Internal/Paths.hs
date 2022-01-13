@@ -13,6 +13,7 @@ module Data.ECTA.Internal.Paths (
   , isSubpath
   , isStrictSubpath
   , substSubpath
+  , ecsGetPaths
 
   , smallestNonempty
   , largestNonempty
@@ -24,6 +25,7 @@ module Data.ECTA.Internal.Paths (
   , toPathTrie
   , fromPathTrie
   , pathTrieDescend
+  , pathTrieAscend
 
   , PathEClass(PathEClass, ..)
   , unPathEClass
@@ -55,9 +57,9 @@ import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import qualified Data.Vector.Mutable as Vector ( unsafeWrite )
 import Data.Vector.Instances ()
-
+import Data.Aeson ( ToJSON, FromJSON )
 import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
-
+import Debug.Trace
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
 
@@ -89,6 +91,8 @@ unPath :: Path -> [Int]
 unPath (Path p) = p
 
 instance Hashable Path
+instance ToJSON Path
+instance FromJSON Path
 
 {-
 instance Show Path where
@@ -199,6 +203,8 @@ data PathTrie = EmptyPathTrie
   deriving ( Eq, Show, Generic )
 
 instance Hashable PathTrie
+instance ToJSON PathTrie
+instance FromJSON PathTrie
 
 isEmptyPathTrie :: PathTrie -> Bool
 isEmptyPathTrie EmptyPathTrie = True
@@ -283,6 +289,12 @@ pathTrieDescend pt@(PathTrieSingleChild j pt') i
                 | i == j                         = pt'
                 | otherwise                      = EmptyPathTrie
 
+pathTrieAscend :: PathTrie -> Int -> PathTrie
+pathTrieAscend EmptyPathTrie i = PathTrieSingleChild i TerminalPathTrie
+pathTrieAscend TerminalPathTrie i = PathTrieSingleChild i TerminalPathTrie
+pathTrieAscend pt@(PathTrieSingleChild _ _) i = PathTrieSingleChild i pt
+pathTrieAscend pt@(PathTrie v) i = error "pathTrieAscend: not implemented for PathTrie"
+
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
 --------------------------------------------------------------------------
@@ -315,6 +327,8 @@ instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
 
 instance Hashable PathEClass
+instance ToJSON PathEClass
+instance FromJSON PathEClass
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
 hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
@@ -363,6 +377,8 @@ data EqConstraints = EqConstraints { getEclasses :: [PathEClass] -- | Must be so
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable EqConstraints
+instance ToJSON EqConstraints
+instance FromJSON EqConstraints
 
 instance Pretty EqConstraints where
   pretty ecs = "{" <> (Text.intercalate "," $ map pretty (getEclasses ecs)) <> "}"

@@ -253,7 +253,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded reducePartially $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded (reducePartially EmptyConstraints) $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula

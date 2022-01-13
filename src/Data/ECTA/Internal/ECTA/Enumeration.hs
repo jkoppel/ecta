@@ -81,6 +81,10 @@ termFragToTruncatedTerm :: TermFragment -> Term
 termFragToTruncatedTerm (TermFragmentNode s ts) = Term s (map termFragToTruncatedTerm ts)
 termFragToTruncatedTerm (TermFragmentUVar uv)   = Term (Symbol $ "v" <> pretty (uvarToInt uv)) []
 
+termFragToSuspendedConstraint :: TermFragment -> Seq SuspendedConstraint
+termFragToSuspendedConstraint (TermFragmentUVar uv) = Sequence.singleton (SuspendedConstraint TerminalPathTrie uv)
+termFragToSuspendedConstraint (TermFragmentNode _ frags) = Sequence.foldMapWithIndex ascendScs (Sequence.fromList $ map termFragToSuspendedConstraint frags)
+
 ---------------------------------------------------------------------------
 ------------------------------ Enumeration state --------------------------
 ---------------------------------------------------------------------------
@@ -103,6 +107,8 @@ descendScs i scs = Sequence.filter (not . isEmptyPathTrie . scGetPathTrie)
                    $ fmap (\(SuspendedConstraint pt uv) -> SuspendedConstraint (pathTrieDescend pt i) uv)
                           scs
 
+ascendScs :: Int -> Seq SuspendedConstraint -> Seq SuspendedConstraint
+ascendScs i = fmap (\(SuspendedConstraint pt uv) -> SuspendedConstraint (pathTrieAscend pt i) uv)
 
 -----------------------
 ------- UVarValue
@@ -132,12 +138,12 @@ intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarEnumerated n2 t) =
   let newContents = Just $ case mn1 of
                       Nothing -> n2
                       Just n1 -> intersect n1 n2
-      newConstraints = scs1
+      newConstraints = termFragToSuspendedConstraint t <> scs1
   in UVarUnenumerated newContents newConstraints
 intersectUVarValue v1@(UVarEnumerated _ _) v2@(UVarUnenumerated _ _) = intersectUVarValue v2 v1
 intersectUVarValue (UVarEnumerated n1 t1) (UVarEnumerated n2 t2) = 
     let newContents = Just (intersect n1 n2)
-        newConstraints = Sequence.empty
+        newConstraints = termFragToSuspendedConstraint t1 <> termFragToSuspendedConstraint t2
     in UVarUnenumerated newContents newConstraints
 -- intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
 
@@ -233,6 +239,7 @@ assimilateUvarVal uvTarg uvSrc
     UVarEliminated -> return () -- Happens from duplicate constraints
     _              -> do
       let v = intersectUVarValue srcVal targVal
+      -- traceShow ("assimilateUvarVal: " ++ show v) $ return ()
       guard (contents v /= Just EmptyNode)
       uvarValues.(ix $ uvarToInt uvTarg) .= v
       uvarValues.(ix $ uvarToInt uvSrc)  .= UVarEliminated

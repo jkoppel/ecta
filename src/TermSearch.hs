@@ -4,7 +4,7 @@
 
 module TermSearch where
 
-import Data.List ((\\), permutations, isInfixOf)
+import Data.List ((\\), permutations, isInfixOf, isPrefixOf)
 import Data.List.Extra (nubOrd)
 import           Data.Map ( Map )
 import qualified Data.Map as Map
@@ -25,6 +25,7 @@ import System.IO (hFlush, stdout)
 import Data.ECTA
 import Data.ECTA.Paths
 import Data.ECTA.Term
+import Minimization
 import Utility.Fixpoint
 
 ------------------------------------------------------------------------------
@@ -36,10 +37,10 @@ tau = createGloballyUniqueMu (\n -> union ([arrowType n n, var1, var2, var3, var
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
     usedConstructors = allConstructors
-    -- usedConstructors = [("Maybe", 1), ("List", 1), ("Int", 0)]
+    -- usedConstructors = [("Pair", 2), ("List", 1), ("Int", 0), ("ByteString", 0), ("Word8", 0), ("Maybe", 1)]
 
 replicatorTau :: Node
-replicatorTau = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constructorToEdge n) usedConstructors))
+replicatorTau = createGloballyUniqueMu (\n -> union ([var1, var2] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
@@ -113,79 +114,38 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
     pathsForVar v = pathsMatching (==v) n
 
 -- f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
--- f1 = constFunc "Nothing" (maybeType tau)
--- f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
--- f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
--- f4 = constFunc "listToMaybe" (generalize $ arrowType (listType var1) (maybeType var1))
--- f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType var1))
--- f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
--- f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
--- f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
--- f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
--- f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
--- f11 = constFunc "iterate" (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1)))
--- f12 = constFunc "(!!)" (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
-
+f1 = constFunc "Nothing" (maybeType tau)
+f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
+f3 = constFunc "fromMaybe" (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
+f4 = constFunc "listToMaybe" (generalize $ arrowType (listType var1) (maybeType var1))
+f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType var1))
+f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
+f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
+f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
+f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+f11 = constFunc "iterate" (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1)))
+f12 = constFunc "(!!)" (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
 f13 = constFunc "either" (generalize $ arrowType (arrowType var1 var3) (arrowType (arrowType var2 var3) (arrowType (constrType2 "Either" var1 var2) var3)))
 f14 = constFunc "Left" (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
 f15 = constFunc "id" (generalize $ arrowType var1 var1)
+f16 = constFunc "(,)" (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
+f17 = constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
+f18 = constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
+f19 = constFunc "foldl" (generalize $ arrowType (arrowType var2 (arrowType var1 var2)) (arrowType var2 (arrowType (listType var1) var2)))
+f20 = constFunc "swap" (generalize $ arrowType (constrType2 "Pair" var1 var2) (constrType2 "Pair" var2 var1))
+f21 = constFunc "curry" (generalize $ arrowType (arrowType (constrType2 "Pair" var1 var2) var3) (arrowType var1 (arrowType var2 var3)))
+f22 = constFunc "uncurry" (generalize $ arrowType (arrowType var1 (arrowType var2 var3)) (arrowType (constrType2 "Pair" var1 var2) var3))
+f23 = constFunc "head" (generalize $ arrowType (listType var1) var1)
+f24 = constFunc "last" (generalize $ arrowType (listType var1) var1) 
+f25 = constFunc "Data.ByteString.foldr" (generalize $ arrowType (arrowType (constrType0 "Word8") (arrowType var2 var2)) (arrowType var2 (arrowType (constrType0 "ByteString") var2)))
+f26 = constFunc "unfoldr" (generalize $ arrowType (arrowType var1 (maybeType (constrType2 "Pair" (constrType0 "Word8") var1))) (arrowType var1 (constrType0 "ByteString")))
+f27 = constFunc "Data.ByteString.foldrChunks" (generalize $ arrowType (arrowType (constrType0 "ByteString") (arrowType var2 var2)) (arrowType var2 (arrowType (constrType0 "ByteString") var2)))
 
 applyOperator :: Node
 applyOperator = Node [ constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
                      , constFunc "Data.Function.id" (generalize $ arrowType var1 var1)
                      ]
-
--- args :: [(Symbol, Node)]
--- args = [
---     -- type query 1 @ g: (a -> a) -> x: a -> n: Int -> a
---     ("g", arrowType baseType baseType), 
---     ("x", baseType), 
---     ("n", constrType0 "Int")
---     -- type query 2 @ def: a -> mbs: [Maybe a] -> a
---   --   ("def", baseType)
---   -- , ("mbs", listType (maybeType baseType))
---   ]
-
--- arg1, arg2 :: Edge
--- arg1 = constArg "def" baseType
--- arg2 = constArg "mbs" (listType (maybeType baseType))
--- arg3 = constArg "g" (arrowType baseType baseType)
--- arg4 = constArg "x" baseType
--- arg5 = constArg "n" (constrType0 "Int")
-
--- anyArg :: Node
--- -- anyArg = Node [arg1, arg2]
--- anyArg = Node [arg3, arg4, arg5]
-
--- -- | Note: Component #178 is Either.either. Somehow, including this one causes a huge blowup
--- --   in the ECTA.
--- anyFunc = Node [f1, f2, f3, f4, f5, f6, f7, f9, f10, f11, f12]
--- -- anyFunc = Node [f9, f10]
-
--- size1WithoutApplyOperator, size1, size2, size3, size4, size5, size6 :: Node
--- size1WithoutApplyOperator anyArg = union [anyArg, anyFunc]
--- size1 anyArg = union [anyArg, anyFunc, applyOperator]
--- size2 anyArg = app (size1WithoutApplyOperator anyArg) (size1 anyArg)
--- size3 anyArg = union [app (size2 anyArg) (size1 anyArg), app (size1WithoutApplyOperator anyArg) (size2 anyArg)]
--- size4 anyArg = union [app (size3 anyArg) (size1 anyArg), app (size2 anyArg) (size2 anyArg), app (size1WithoutApplyOperator anyArg) (size3 anyArg)]
--- size5 = union [app size4 size1, app size3 size2, app size2 size3, app size1WithoutApplyOperator size4]
--- size6 = union [app size5 size1, app size4 size2, app size3 size3, app size2 size4, app size1WithoutApplyOperator size5]
-
--- uptoSize2, uptoSize3, uptoSize4, uptoSize5, uptoSize6 :: Node
--- uptoSize2 = union [size1, size2]
--- uptoSize3 = union [size1, size2, size3]
--- uptoSize4 anyArg = union (map ($ anyArg) [size1, size2, size3, size4])
--- uptoSize5 = union [size1, size2, size3, size4, size5]
--- uptoSize6 = union [size1, size2, size3, size4, size5, size6]
-
--- uptoDepth2 :: Node
--- uptoDepth2 = union [size1, app size1 size1]
-
--- uptoDepth3 :: Node
--- uptoDepth3 = union [uptoDepth2, app uptoDepth2 uptoDepth2]
-
--- uptoDepth4 :: Node
--- uptoDepth4 = union [uptoDepth3, app uptoDepth3 uptoDepth3]
 
 filterType :: Node -> Node -> Node
 filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
@@ -267,17 +227,24 @@ speciallyTreatedFunctions = [-- `($)` is hardcoded to only be in argument positi
                             -- Data.Maybe
                             -- , "Data.Maybe.maybe" -- b -> (a -> b) -> Maybe a -> b
                             -- , "Data.Maybe.Nothing"
+                            -- Data.ByteString
+                            -- , "Data.ByteString.Lazy.foldr"
+                            -- , "Data.ByteString.Lazy.foldrChunks"
+                            -- , "Data.ByteString.Lazy.unfoldr"
+                            -- , "Text.Show.showListWith"
                             ]
 
+getText :: Symbol -> Text
+getText (Symbol s) = s
+
 hoogleComps :: [Edge]
-hoogleComps = filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
+hoogleComps = filter (\e -> (edgeSymbol e `notElem` speciallyTreatedFunctions))
             $ map (uncurry parseHoogleComponent)
             $ Map.toList hoogleComponents
 
--- anyFunc :: Node
+anyFunc :: Node
 anyFunc = Node hoogleComps
-
--- anyFunc = Node [f13, f14, f15]
+-- anyFunc = Node [f16, f23, f24, f10, f19, f17, f18, f20, f25, f26, f1, f2, f3, f4, f5, f6, f7, f8, f9, f11, f12, f13, f14, f15, f21, f22]
 
 fromJustFunc :: Node
 fromJustFunc = Node [ constFunc "Data.Maybe.fromJust" (generalize $ arrowType (maybeType var1) var1)
@@ -344,7 +311,7 @@ rawBenchmarks :: String
 rawBenchmarks = [r|[Benchmark "appBoth" 5 "app(app(Pair, app(f, x)), app(g, x))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("g",ExportFun (ExportVar "a") (ExportVar "c")),("x",ExportVar "a")],ExportCons "Pair" [ExportVar "b",ExportVar "c"]),Benchmark "test" 5 "app(app(app(Data.Bool.bool, Data.Maybe.Nothing), app(Data.Maybe.Just, x)), b)" ([("b",ExportCons "Bool" []),("x",ExportVar "a")],ExportCons "Maybe" [ExportVar "a"]),Benchmark "both" 7 "app(Pair, app(f, app(Data.Tuple.fst, p)), app(f, app(Data.Tuple.snd, p)))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("p",ExportCons "Pair" [ExportVar "a",ExportVar "a"])],ExportCons "Pair" [ExportVar "b",ExportVar "b"]),Benchmark "mapEither" 4 "app(Data.Either.partitionEithers, app(app(GHC.List.map, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportCons "Either" [ExportVar "b",ExportVar "c"])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportCons "List" [ExportVar "b"],ExportCons "List" [ExportVar "c"]]),Benchmark "mapMaybes" 4 "app(Data.Maybe.listToMaybe, app(app(Data.Maybe.mapMaybe, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "b"])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Maybe" [ExportVar "b"]),Benchmark "mergeEither" 4 "app(app(app(Data.Either.either, Data.Either.Left), Data.Function.id), e)" ([("e",ExportCons "Either" [ExportVar "a",ExportCons "Either" [ExportVar "a",ExportVar "b"]])],ExportCons "Either" [ExportVar "a",ExportVar "b"]),Benchmark "mbToEither" 5 "app(app(app(Data.Maybe.maybe, app(Data.Either.Left, x)), Data.Either.Right), mb)" ([("x",ExportVar "a"),("mb",ExportCons "Maybe" [ExportVar "b"])],ExportCons "Either" [ExportVar "a",ExportVar "b"]),Benchmark "cartProduct" 6 "app(app(GHC.List.map, app(GHC.List.zip, xs)), app(app(GHC.List.map, GHC.List.repeat), ys))" ([("xs",ExportCons "List" [ExportVar "a"]),("ys",ExportCons "List" [ExportVar "b"])],ExportCons "List" [ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]]]),Benchmark "multiAppPair" 7 "app(app(Pair, app(app(Data.Tuple.fst, tp), x)), app(app(Data.Tuple.snd, tp), x))" ([("tp",ExportCons "Pair" [ExportFun (ExportVar "a") (ExportVar "b"),ExportFun (ExportVar "a") (ExportVar "c")]),("x",ExportVar "a")],ExportCons "Pair" [ExportVar "b",ExportVar "c"]),Benchmark "map" 3 "app(app(GHC.List.map, f), xs)" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "b"]),Benchmark "replFuncs" 3 "app(app(GHC.List.replicate, n), f)" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("n",ExportCons "Int" [])],ExportCons "List" [ExportFun (ExportVar "a") (ExportVar "b")]),Benchmark "mbAppFirst" 5 "app(app(app(Data.Maybe.maybe, x), f), app(Data.Maybe.listToMaybe, xs))" ([("x",ExportVar "b"),("f",ExportFun (ExportVar "a") (ExportVar "b")),("xs",ExportCons "List" [ExportVar "a"])],ExportVar "b"),Benchmark "mapTwice" 5 "app(app(GHC.List.map, g), app(app(GHC.List.map, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("g",ExportFun (ExportVar "b") (ExportVar "c")),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "c"]),Benchmark "resolveEither" 4 "app(app(app(Data.Either.either, f), Data.Function.id), e)" ([("e",ExportCons "Either" [ExportVar "a",ExportVar "b"]),("f",ExportFun (ExportVar "a") (ExportVar "b"))],ExportVar "b"),Benchmark "firstJust" 5 "app(app(Data.Maybe.fromMaybe, x), app(Data.Maybe.listToMaybe, app(Data.Maybe.catMaybes, xs)))" ([("x",ExportVar "a"),("xs",ExportCons "List" [ExportCons "Maybe" [ExportVar "a"]])],ExportVar "a"),Benchmark "appendN" 4 "app(GHC.List.concat, app(app(GHC.List.replicate, n), xs))" ([("n",ExportCons "Int" []),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"]),Benchmark "applyNtimes" 6 "app(app(app(GHC.List.foldr, $), x), app(app(GHC.List.replicate, n), f))" ([("f",ExportFun (ExportVar "a") (ExportVar "a")),("x",ExportVar "a"),("n",ExportCons "Int" [])],ExportVar "a"),Benchmark "dedupe" 5 "app(app(GHC.List.map, GHC.List.head), app(app(Data.List.group, tcarg0), xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"]),Benchmark "inverseMap" 5 "app(app(app(GHC.List.zipWith, $), fs), app(GHC.List.repeat, x))" ([("fs",ExportCons "List" [ExportFun (ExportVar "a") (ExportVar "b")]),("x",ExportVar "a")],ExportCons "List" [ExportVar "b"]),Benchmark "app2" 4 "app(app(f, x), app(g, x))" ([("f",ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "c"))),("g",ExportFun (ExportVar "a") (ExportVar "b")),("x",ExportVar "a")],ExportVar "c"),Benchmark "singletonList" 3 "app(app(Cons, x), Nil)" ([("x",ExportVar "a")],ExportCons "List" [ExportVar "a"]),Benchmark "headLast" 5 "app(app(Pair, app(GHC.List.head, xs)), app(GHC.List.last, xs))" ([("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportVar "a",ExportVar "a"]),Benchmark "headRest" 3 "app(Data.Maybe.fromJust, app(GHC.List.uncons, xs))" ([("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportVar "a",ExportCons "List" [ExportVar "a"]]),Benchmark "coundPredMatch" 4 "app(GHC.List.length, app(app(GHC.List.filter, p), xs))" ([("xs",ExportCons "List" [ExportVar "a"]),("p",ExportFun (ExportVar "a") (ExportCons "Bool" []))],ExportCons "Int" []),Benchmark "splitStr" 7 "impossible" ([("str",ExportCons "List" [ExportCons "Char" []]),("c",ExportCons "Char" [])],ExportCons "List" [ExportCons "List" [ExportCons "Char" []]]),Benchmark "splitAtFirst" 5 "app(app(GHC.List.break, app(app((Data.Eq.==), tcarg0), x)), xs)" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("x",ExportVar "a"),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportCons "List" [ExportVar "a"],ExportCons "List" [ExportVar "a"]]),Benchmark "hoogle01" 3 "app(f, app(GHC.List.head, xs))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("xs",ExportCons "List" [ExportVar "a"])],ExportVar "b"),Benchmark "firstMatch" 4 "app(GHC.List.head, app(app(GHC.List.filter, p), xs))" ([("xs",ExportCons "List" [ExportVar "a"]),("p",ExportFun (ExportVar "a") (ExportCons "Bool" []))],ExportVar "a"),Benchmark "firstMaybe" 3 "app(GHC.List.head, app(Data.Maybe.catMaybes, mbs))" ([("mbs",ExportCons "List" [ExportCons "Maybe" [ExportVar "a"]])],ExportVar "a"),Benchmark "rights" 3 "app(Data.Either.Right, app(Data.Either.rights, es))" ([("es",ExportCons "List" [ExportCons "Either" [ExportVar "a",ExportVar "b"]])],ExportCons "Either" [ExportVar "a",ExportCons "List" [ExportVar "b"]]),Benchmark "firstKey" 3 "app(Data.Tuple.fst, app(GHC.List.head, xs))" ([("xs",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])],ExportVar "a"),Benchmark "firstRight" 4 "app(Data.Either.Right, app(GHC.List.head, app(Data.Either.rights, es)))" ([("es",ExportCons "List" [ExportCons "Either" [ExportVar "a",ExportVar "b"]])],ExportCons "Either" [ExportVar "a",ExportVar "b"]),Benchmark "maybe" 4 "app(Data.Maybe.Just, app(app(Data.Maybe.fromMaybe, x), mb))" ([("mb",ExportCons "Maybe" [ExportVar "a"]),("x",ExportVar "a")],ExportCons "Maybe" [ExportVar "a"]),Benchmark "app3" 4 "app(app(app(f, x), z), y)" ([("f",ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportFun (ExportVar "c") (ExportVar "d")))),("x",ExportVar "a"),("y",ExportVar "c"),("z",ExportVar "b")],ExportVar "d"),Benchmark "zipWithResult" 5 "app(app(GHC.List.zip, xs), app(app(GHC.List.map, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]]),Benchmark "eitherTriple" 5 "app(app(app(Data.Bool.bool, e2), e1), app(Data.Either.isLeft, e1))" ([("e1",ExportCons "Either" [ExportVar "a",ExportVar "b"]),("e2",ExportCons "Either" [ExportVar "a",ExportVar "b"])],ExportCons "Either" [ExportVar "a",ExportVar "b"]),Benchmark "pipe" 4 "app(app(app(GHC.List.foldr, $), x), fs)" ([("fs",ExportCons "List" [ExportFun (ExportVar "a") (ExportVar "a")]),("x",ExportVar "a")],ExportVar "a"),Benchmark "lookup" 5 "app(Data.Maybe.fromJust, app(app(app(GHC.List.lookup, tcarg0), k), xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]]),("k",ExportVar "a")],ExportVar "b"),Benchmark "mbElem" 6 "app(Data.Maybe.listToMaybe, app(app(GHC.List.filter, app(app((Data.Eq.==), tcarg0), x)), xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("x",ExportVar "a"),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Maybe" [ExportVar "a"]),Benchmark "areEq" 7 "app(Data.Maybe.listToMaybe, app(app(GHC.List.filter, app(app((Data.Eq.==), tcarg0), x)), app(GHC.List.repeat, y)))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("x",ExportVar "a"),("y",ExportVar "a")],ExportCons "Maybe" [ExportVar "a"]),Benchmark "applyPair" 4 "app(app(Data.Tuple.fst, p), app(Data.Tuple.snd, p))" ([("p",ExportCons "Pair" [ExportFun (ExportVar "a") (ExportVar "b"),ExportVar "a"])],ExportVar "b"),Benchmark "flatten" 3 "app(GHC.List.concat, app(GHC.List.concat, xss))" ([("xss",ExportCons "List" [ExportCons "List" [ExportCons "List" [ExportVar "a"]]])],ExportCons "List" [ExportVar "a"]),Benchmark "takeNdropM" 7 "app(app(Pair, app(app(GHC.List.take, n), xs)), app(app(GHC.List.drop, m), xs))" ([("n",ExportCons "Int" []),("m",ExportCons "Int" []),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportCons "List" [ExportVar "a"],ExportCons "List" [ExportVar "a"]]),Benchmark "indexesOf" 6 "app(app(GHC.List.map, Data.Tuple.snd), app(f, app(app(GHC.List.zip, xs), ys)))" ([("f",ExportFun (ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportCons "Int" []]]) (ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportCons "Int" []]])),("xs",ExportCons "List" [ExportVar "a"]),("ys",ExportCons "List" [ExportCons "Int" []])],ExportCons "List" [ExportCons "Int" []]),Benchmark "containsEdge" 9 "app(app((Data.Bool.&&), app(app(GHC.List.elem, app(Data.Tuple.fst, edge)), vs)), app(app(GHC.List.elem, app(Data.Tuple.snd, edge)), vs))" ([("vs",ExportCons "List" [ExportCons "Int" []]),("edge",ExportCons "Pair" [ExportCons "Int" [],ExportCons "Int" []])],ExportCons "Bool" [])]|]
 
 reduceFully :: Node -> Node
-reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
+reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially EmptyConstraints)
 -- reduceFully = fix 1 (withoutRedundantEdges . reducePartially)
 
 checkSolution :: String -> [Term] -> IO ()
@@ -365,6 +332,29 @@ prettyPrintAllTerms solStr n = do let ts = getAllTerms n
                               Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
                               Text.putStrLn ""
 #endif
+reduceFullyAndLog :: Node -> IO Node
+reduceFullyAndLog = go 0
+  where
+    go i n = do putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
+                hFlush stdout
+                -- if i == 0 then putStrLn (renderDot $ toDot n) else return ()
+                -- let Node es = n
+                -- let nn = (edgeChildren (es !! 0)) !! 1
+                -- let Node es = nn
+                -- mapM_ (\(e, j) -> withFile (show i ++ "." ++ show j) WriteMode (\hdl -> hPutStr hdl (renderDot $ toDot $ Node [e]))) (zip es [0..])
+                -- let d = constraintAdjustedDepth n
+                -- putStrLn $ "Depth: " ++ show d
+                let n' = reducePartially EmptyConstraints n
+                -- putStrLn $ renderDot $ toDot n'
+                -- n' <- minReductionFail n
+                -- let Node es = n'
+                -- let nn = (edgeChildren (es !! 0)) !! 1
+                -- let Node es = nn
+                -- mapM_ (\(e, j) -> withFile (show i ++ "." ++ show j ++ ".after") WriteMode (\hdl -> hPutStr hdl (renderDot $ toDot $ Node [e]))) (zip es [0..])
+                if n == n' then
+                  return n
+                else
+                  go (i + 1) n'
 
 runBenchmark :: Benchmark -> IO ()
 runBenchmark (Benchmark name depth solStr (args, res)) = do
@@ -380,15 +370,17 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         let anyArg = Node (map (uncurry constArg) argNodes)
         let !filterNode = filterType (relevantTermsUptoK anyArg argNodes depth) resNode
         nodeCons <- getCurrentTime
-        print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
+        -- print $ "Construction time: " ++ show (diffUTCTime nodeCons start)
         
-        timeout (200 * 10^6) $ do
-            let reducedNode = if name `elem` hardBenchmarks 
-                              then (withoutRedundantEdges . reducePartially) filterNode
-                              else reduceFully filterNode
+        do
+        -- timeout (200 * 10^6) $ do
+            -- let reducedNode = if name `elem` hardBenchmarks 
+            --                   then (withoutRedundantEdges . reducePartially) filterNode
+            --                   else reduceFully filterNode
+            reducedNode <- reduceFullyAndLog filterNode
             -- putStrLn $ renderDot . toDot $ reducedNode
             let foldedNode = refold reducedNode
-            -- putStrLn $ renderDot . toDot $ reducedNode
+            -- putStrLn $ renderDot . toDot $ foldedNode
             prettyPrintAllTerms solStr foldedNode
         
         end <- getCurrentTime
@@ -408,4 +400,42 @@ replicator = Node [
       ]
     ]
     (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
+  ]
+
+counterExample :: Node
+counterExample = Node [
+    mkEdge "f" [
+      Node [
+        mkEdge "g" [
+          Node [Edge "h" [
+            Node [
+              Edge "Pair" [replicatorTau, replicatorTau],
+              Edge "var2" []
+            ],
+            Node [Edge "Pair" [
+              replicatorTau,
+              -- Node [Edge "Pair" [
+              --   Node [
+              --     Edge "Pair" [replicatorTau, replicatorTau]
+              --   ], 
+              --   var2]
+              -- ]
+              replicatorTau
+            ]]
+          ]]
+        ]
+        (mkEqConstraints [[path [0,0], path [0,1,0]]]),
+        Edge "gg" [
+          Node [Edge "Pair" [var2, var2]]
+        ]
+      ]
+      -- Node [Edge "e" [
+      --   replicatorTau,
+      --   Node [
+      --     Edge "Pair" [replicatorTau, replicatorTau],
+      --     Edge "var2" []
+      --   ]
+      -- ]]
+    ]
+    (mkEqConstraints [[path [0,0,0], path [0,0,1]]])
   ]

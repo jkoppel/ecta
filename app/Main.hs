@@ -6,12 +6,16 @@ module Main where
 import Data.List ( nub )
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
-import System.IO ( hFlush, stdout )
+import System.IO ( hFlush, stdout, withFile, IOMode(..) )
 import System.Environment (getArgs)
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString.Lazy as BS
+import System.Timeout (timeout)
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
 import Data.ECTA.Term
+import Data.ECTA.Paths
 import Data.Interned.Extended.HashTableBased as Interned
 import Data.Memoization as Memoization
 import Data.Persistent.UnionFind
@@ -26,7 +30,7 @@ printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map e
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
-    let n' = reducePartially n
+    let n' = reducePartially EmptyConstraints n
     Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
     Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
     Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
@@ -54,4 +58,15 @@ main = do
     runBenchmark bench
 
     -- test replicator issue
-    -- putStrLn $ renderDot . toDot $ reduceFully replicator 
+    -- putStrLn $ renderDot . toDot $ counterExample
+    -- putStrLn $ renderDot . toDot $ reduceFully counterExample
+
+    -- test reduction
+    -- withFile "reduceError.pkl" ReadMode $ \hdl -> do
+    --     contents <- BS.hGetContents hdl
+    --     let mbNode = Aeson.decode contents :: Maybe Node
+    --     case mbNode of
+    --         Nothing -> error "cannot decode node"
+    --         Just n -> putStrLn (renderDot $ toDot n) >> print (nodeCount n) >> (reduceFullyAndLog n) -- checkReductionTime n >>= print
+    
+    return ()

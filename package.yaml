@@ -30,6 +30,8 @@ dependencies:
 - vector
 - pretty-simple
 - time
+- bytestring
+- aeson
 default-extensions:
   - BangPatterns
   - ConstraintKinds
