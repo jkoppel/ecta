@@ -3,7 +3,8 @@
 
 module Data.ECTA.Internal.ECTA.Operations (
   -- * Traversal
-    pathsMatching
+    nodeMapChildren
+  , pathsMatching
   , mapNodes
   , crush
   , onNormalNodes
@@ -78,6 +79,11 @@ import Utility.HashJoin
 -----------------------
 ------ Traversal
 -----------------------
+
+nodeMapChildren :: (Edge -> Edge) -> Node -> Node
+nodeMapChildren f EmptyNode = EmptyNode
+nodeMapChildren f n@(Mu _)  = nodeMapChildren f (unfoldRec n)
+nodeMapChildren f (Node es) = Node (map f es)
 
 -- | Warning: Linear in number of paths, exponential in size of graph.
 --   Only use for very small graphs.
@@ -278,7 +284,7 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
     go e1                 e2                 =
         mkEdge (edgeSymbol e1)
                (zipWith intersect (edgeChildren e1) (edgeChildren e2))
-               (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
+               (edgeEcs e1 <> edgeEcs e2)
 {-# NOINLINE intersectEdgeSameSymbol #-}
 
 ------------
