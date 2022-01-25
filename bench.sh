@@ -1,7 +1,7 @@
 declare -a benches=(
     'Benchmark "appBoth" 5 "app(app(Pair, app(f, x)), app(g, x))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("g",ExportFun (ExportVar "a") (ExportVar "c")),("x",ExportVar "a")],ExportCons "Pair" [ExportVar "b",ExportVar "c"])'
     'Benchmark "test" 5 "app(app(app(Data.Bool.bool, Data.Maybe.Nothing), app(Data.Maybe.Just, x)), b)" ([("b",ExportCons "Bool" []),("x",ExportVar "a")],ExportCons "Maybe" [ExportVar "a"])'
-    'Benchmark "both" 7 "app(Pair, app(f, app(Data.Tuple.fst, p)), app(f, app(Data.Tuple.snd, p)))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("p",ExportCons "Pair" [ExportVar "a",ExportVar "a"])],ExportCons "Pair" [ExportVar "b",ExportVar "b"])'
+    'Benchmark "both" 7 "app(app(Pair, app(f, app(Data.Tuple.fst, p))), app(f, app(Data.Tuple.snd, p)))" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("p",ExportCons "Pair" [ExportVar "a",ExportVar "a"])],ExportCons "Pair" [ExportVar "b",ExportVar "b"])'
     'Benchmark "mapEither" 4 "app(Data.Either.partitionEithers, app(app(GHC.List.map, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportCons "Either" [ExportVar "b",ExportVar "c"])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportCons "List" [ExportVar "b"],ExportCons "List" [ExportVar "c"]])'
     'Benchmark "mapMaybes" 4 "app(Data.Maybe.listToMaybe, app(app(Data.Maybe.mapMaybe, f), xs))" ([("f",ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "b"])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Maybe" [ExportVar "b"])'
     'Benchmark "mergeEither" 4 "app(app(app(Data.Either.either, Data.Either.Left), Data.Function.id), e)" ([("e",ExportCons "Either" [ExportVar "a",ExportCons "Either" [ExportVar "a",ExportVar "b"]])],ExportCons "Either" [ExportVar "a",ExportVar "b"])'

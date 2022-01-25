@@ -38,6 +38,7 @@ module Data.ECTA.Internal.ECTA.Operations (
   -- * Reduction
   , withoutRedundantEdges
   , reducePartially
+  , reducePartially''
   , reduceEdgeIntersection
   , reduceEqConstraints
 
@@ -55,6 +56,8 @@ import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
@@ -67,9 +70,9 @@ import qualified Data.ByteString.Lazy as BS
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
-import Data.Interned.Extended.HashTableBased ( Id, intern )
--- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
--- import Data.Interned.Extended.SingleThreaded ( intern )
+-- import Data.Interned.Extended.HashTableBased ( Id, intern )
+import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin
@@ -391,70 +394,63 @@ occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps)
 --- Reducing Equality Constraints
 ---------------
 
-reducePartially :: EqConstraints -> Node -> Node
-reducePartially ecs = memo (NameTag "reducePartially") $ \n -> nodeDropRedundantEdges (go n)
-                                                                --  in if flag && nodeCount n' > nodeCount n then unsafePerformIO (BS.writeFile "reduceError2.pkl" (encode n) >> error "stop")  -- trace (show (nodeCount n' - nodeCount n) ++ "\n" ++ show (edgeCount n' - edgeCount n) ++ "\n" ++ show n ++ "\n\n\n" ++ show n') (error "stop")
-                                                                --                        else n'
+reducePartially :: Node -> Node
+reducePartially = reducePartially'' (-1)
+
+reducePartially'' :: Int -> Node -> Node
+reducePartially'' flag = reducePartially' flag [] 
+
+reducePartially' :: Int -> [[Path]] -> Node -> Node
+reducePartially' flag ecs n = let n' = go n
+                               in n'
+                              -- in if flag >= 0 && flag <= 7 && nodeCount n' < nodeCount n then unsafePerformIO (BS.writeFile ("smaller-round" ++ show flag ++ "-" ++ show (nodeIdentity n) ++ ".pkl") (encode (n, n')) >> return n') else n' -- trace ("reducePartially " ++ show nn ++ " gets " ++ show n') n'
   where
     go :: Node -> Node
     go EmptyNode  = EmptyNode
     go (Mu n)     = Mu n
-    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = reduceChildren (createConstraints e) (edgeChildren e)})
-                                          $ map (reduceEdgeIntersection ecs) es
+    go n@(Node edges) = modifyNode n $ \es -> map (\e -> setChildren e (reduceChildren (createConstraints e) (edgeChildren e)))
+                                          $ map (reduceEdgeIntersection flag ecs) es
 
-    createConstraints :: Edge -> EqConstraints
-    createConstraints e = ecs `combineEqConstraints` edgeEcs e
+    createConstraints :: Edge -> [[Path]]
+    createConstraints e = ecsGetPaths (edgeEcs e) ++ ecs
 
-    ithPath :: [[[Path]]] -> Int -> [[Path]]
-    ithPath pss i
-      | length pss <= i = []
-      | otherwise       = pss !! i
+    reduceChildrenAt :: IntMap [[Path]] -> Int -> Node -> Node
+    reduceChildrenAt pMap i n = reducePartially' flag (IntMap.findWithDefault [] i pMap) n
 
-    reduceChildrenAt :: [PathTrie] -> Int -> Node -> Node
-    reduceChildrenAt ptrees i n = reducePartially (mkEqConstraints $ map (\t -> fromPathTrie $ pathTrieDescend t i) ptrees) n
+    reduceChildren :: [[Path]] -> [Node] -> [Node]
+    reduceChildren ecs children = zipWith (reduceChildrenAt (propagateConstraint ecs)) [0..] children
 
-    reduceChildren :: EqConstraints -> [Node] -> [Node]
-    -- reduceChildren _ children = map (reducePartially EmptyConstraints) children
-    reduceChildren EqContradiction ns = map (const EmptyNode) ns
-    reduceChildren ecs children = 
-      zipWith (reduceChildrenAt (propagateConstraint (ecsGetPaths ecs))) 
-              [0..length children]
-              children
+    addPathToIntMap :: Path -> IntMap [Path] -> IntMap [Path]
+    addPathToIntMap EmptyPath m = m
+    addPathToIntMap (ConsPath p EmptyPath) m = m
+    addPathToIntMap (ConsPath p ps) m = IntMap.insertWith (++) p [ps] m
 
-    -- addPathAt :: [Path] -> [[Path]] -> [[Path]]
-    -- addPathAt [] pss = pss
-    -- addPathAt (EmptyPath:ps) pss = addPathAt ps pss
-    -- addPathAt ((ConsPath ph pt):ps) pss
-    --   | length pss <= ph = addPathAt ((ConsPath ph pt):ps) (pss ++ [[]])
-    --   | otherwise       = let pss' = pss & ix ph %~ (\x -> if pt == EmptyPath then x else pt:x)
-    --                       in addPathAt ps pss'
-  
-    -- propagateConstraint :: [[Path]] -> [[[Path]]]
-    -- propagateConstraint = \pss ->  transpose (map (`addPathAt` []) pss)
+    toIntMap :: [Path] -> IntMap [Path]
+    toIntMap = foldr addPathToIntMap IntMap.empty
 
-    propagateConstraint :: [[Path]] -> [PathTrie]
-    propagateConstraint pss = map toPathTrie pss
+    propagateConstraint :: [[Path]] -> IntMap [[Path]]
+    propagateConstraint pss = foldr (IntMap.mergeWithKey (\_ a b -> Just (a:b)) (IntMap.map (:[])) id . toIntMap) IntMap.empty pss
 
-{-# NOINLINE reducePartially #-}
-
-reduceEdgeIntersection :: EqConstraints -> Edge -> Edge
-reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
+reduceEdgeIntersection :: Int -> [[Path]] -> Edge -> Edge
+reduceEdgeIntersection flag = memo2 (NameTag "reduceEdgeIntersection") go
   where
-   go :: EqConstraints -> Edge -> Edge
-   go ecs e = mkEdge (edgeSymbol e)
-                     (reduceEqConstraints (edgeEcs e) ecs (edgeChildren e))
-                     (edgeEcs e)
+   go :: [[Path]] -> Edge -> Edge
+   go ecs e = let e' = mkEdge (edgeSymbol e)
+                              (reduceEqConstraints (edgeEcs e) ecs (edgeChildren e))
+                              (edgeEcs e)
+               in e'
+               -- in if flag == 0 && nodeCount (Node [e']) > nodeCount (Node [e]) then unsafePerformIO (BS.writeFile "reduceLoop18.pkl" (encode (Node [e], Node [e'])) >> error "stop") else e'
 {-# NOINLINE reduceEdgeIntersection #-}
 
-reduceEqConstraints :: EqConstraints -> EqConstraints -> [Node] -> [Node]
+reduceEqConstraints :: EqConstraints -> [[Path]] -> [Node] -> [Node]
 reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
-    go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
+    go :: EqConstraints -> [[Path]] -> [Node] -> [Node]
     go ecs extraEcs origNs 
-      | constraintsAreContradictory (combineEqConstraints ecs extraEcs) = map (const EmptyNode) origNs
+      | constraintsAreContradictory (mkEqConstraints (ecsGetPaths ecs ++ extraEcs)) = trace ("detected contradictory constraints at " ++ show ecs ++ " and " ++ show extraEcs) $ map (const EmptyNode) origNs
       | otherwise = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs

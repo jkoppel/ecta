@@ -19,17 +19,17 @@ module Data.ECTA.Internal.ECTA.Type (
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
-import Data.List ( sort )
+import Data.List ( sort, transpose )
 import Data.Aeson ( ToJSON, FromJSON )
 import GHC.Generics ( Generic )
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Extra ( nubSort )
-
+import Data.Maybe (mapMaybe, listToMaybe)
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased
--- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
--- import Data.Interned.Extended.SingleThreaded ( intern )
+-- import Data.Interned.Extended.HashTableBased
+import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
@@ -125,6 +125,9 @@ instance FromJSON Node
 
 nodeIdentity :: Node -> Id
 nodeIdentity (InternedNode n _) = n
+nodeIdentity EmptyNode          = 0
+nodeIdentity (Mu n)             = -1
+nodeIdentity Rec                = -2
 
 setChildren :: Edge -> [Node] -> Edge
 setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
@@ -222,7 +225,7 @@ removeEmptyEdges = filter (not . isEmptyEdge)
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
 mkEdge s ns ecs
   | constraintsAreContradictory ecs = emptyEdge
-  | otherwise                       = intern $ UninternedEdge s ns ecs
+  | otherwise = intern $ UninternedEdge s ns ecs
 
 
 -------------------

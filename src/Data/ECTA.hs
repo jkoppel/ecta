@@ -28,6 +28,7 @@ module Data.ECTA (
   , intersect
   , withoutRedundantEdges
   , reducePartially
+  , reducePartially''
 
   -- * Enumeration
   , EnumerateM
