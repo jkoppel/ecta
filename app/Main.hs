@@ -66,7 +66,11 @@ main = do
     -- test replicator issue
     -- putStrLn $ renderDot . toDot $ counterExample
     -- putStrLn $ renderDot . toDot $ reduceFully counterExample
+
+    -- test reduction
     -- reduceFullyAndLog loop2
+
+    -- test enumeration
     prettyPrintAllTerms "" loop2
     
     -- test reduction
