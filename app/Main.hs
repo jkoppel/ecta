@@ -25,7 +25,7 @@ import Data.Text.Extended.Pretty
 import TermSearch
 
 import Language.Dot.Pretty
-import TermSearch (testBenchmark1)
+import TermSearch (loop2)
 
 ----------------------------------------------------------
 
@@ -61,12 +61,14 @@ main = do
     -- let bench = read (head benchStr) :: Benchmark
     -- runBenchmark bench
 
-    runBenchmark testBenchmark1
+    -- runBenchmark testBenchmark8
 
     -- test replicator issue
     -- putStrLn $ renderDot . toDot $ counterExample
     -- putStrLn $ renderDot . toDot $ reduceFully counterExample
-
+    -- reduceFullyAndLog loop2
+    prettyPrintAllTerms "" loop2
+    
     -- test reduction
     -- mapM_ (\f ->
     --     withFile f ReadMode $ \hdl -> do
