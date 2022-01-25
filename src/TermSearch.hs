@@ -58,12 +58,12 @@ tau = createGloballyUniqueMu (\n -> union ([appType n n, arrowType n n, var1, va
                        ]
 
 replicatorTau :: Node
-replicatorTau = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constructorToEdge n) usedConstructors))
+replicatorTau = createGloballyUniqueMu (\n -> union ([var1] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
-    usedConstructors = [("List", 1)]
+    usedConstructors = [("List", 1), ("Pair", 2)]
 
 --tau :: Node
 --tau = Node [Edge "tau" []]

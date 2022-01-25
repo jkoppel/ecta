@@ -68,10 +68,10 @@ main = do
     -- putStrLn $ renderDot . toDot $ reduceFully counterExample
 
     -- test reduction
-    -- reduceFullyAndLog loop2
+    reduceFullyAndLog loop2
 
     -- test enumeration
-    prettyPrintAllTerms "" loop2
+    -- prettyPrintAllTerms "" loop2
     
     -- test reduction
     -- mapM_ (\f ->
