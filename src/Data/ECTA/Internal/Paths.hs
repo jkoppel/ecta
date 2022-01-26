@@ -94,6 +94,12 @@ instance Hashable Path
 instance ToJSON Path
 instance FromJSON Path
 
+instance Semigroup Path where
+  p1 <> p2 = Path (unPath p1 <> unPath p2)
+
+instance Monoid Path where
+  mempty = EmptyPath
+
 {-
 instance Show Path where
   showsPrec d (Path ps) =   showString "Path ["
@@ -382,6 +388,12 @@ instance FromJSON EqConstraints
 
 instance Pretty EqConstraints where
   pretty ecs = "{" <> (Text.intercalate "," $ map pretty (getEclasses ecs)) <> "}"
+
+instance Semigroup EqConstraints where
+  (<>) = combineEqConstraints
+
+instance Monoid EqConstraints where
+  mempty = EmptyConstraints
 
 --------- Destructors and patterns
 

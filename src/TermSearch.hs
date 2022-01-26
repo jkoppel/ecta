@@ -30,7 +30,7 @@ import Data.ECTA
 import Data.ECTA.Paths
 import Data.ECTA.Term
 import Data.ECTA.Internal.ECTA.Enumeration
-import Minimization
+import EqualitySaturation
 import Utility.Fixpoint
 
 ------------------------------------------------------------------------------
@@ -65,8 +65,22 @@ replicatorTau = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constru
 
     usedConstructors = [("List", 1)]
 
---tau :: Node
---tau = Node [Edge "tau" []]
+envSize :: Int
+envSize = 3
+
+anyNode :: Node
+anyNode = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constructorToEdge n) constructors))
+  where
+    mkAnyEnvNode :: Node -> Node
+    mkAnyEnvNode n = Node [Edge "env" $ replicate envSize n]
+
+    constructorToEdge :: Node -> (Text, Int) -> Edge
+    constructorToEdge n (nm, arity) = Edge (Symbol nm) ([mkAnyEnvNode n] <> replicate arity n)
+
+    constructors = []
+
+anyEnv :: Node
+anyEnv = Node [Edge "env" $ replicate envSize anyNode]
 
 baseType :: Node
 baseType = Node [Edge "baseType" []]
@@ -104,11 +118,17 @@ constFunc s t = Edge s [t]
 constArg :: Symbol -> Node -> Edge
 constArg = constFunc
 
+envPath :: Path
+envPath = path [2]
+
 -- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
 -- Sometimes this can be desirable, but for enumeration,
 app :: Node -> Node -> Node
-app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1 -} tau
-                               , theArrowNode, n1, n2
+app n1 n2 = Node [mkEdge "app" [ tau
+                               , theArrowNode
+                               , anyEnv
+                               , n1
+                               , n2
                                ]
                                (mkEqConstraints [ [path [1],      path [2, 0, 0]]
                                                 , [path [3, 0],   path [2, 0, 1]]
@@ -116,16 +136,16 @@ app n1 n2 = Node [mkEdge "app" [{- getPath (path [0, 2]) n1 -} tau
                                                 ])
                  ]
 
--- app :: Bool -> Node -> Node -> Node
--- app appliedMatch n1 n2 = Node [mkEdge "app" [ tau
---                                             , tau
---                                             , theArrowNode, n1, n2
---                                             ]
---                                             (mkEqConstraints [ [path [1],      path [2, 0, 0]]
---                                                              , [path [3, 0],   path [2, 0, 1]]
---                                                              , [path [0],      path [2, 0, 2]]
---                                                              ])
---                  ]
+
+
+-- | lambda expression with deBruijn constraints and typing constraints
+lambda :: Node -> Node
+lambda n = Node [mkEdge "lambda" [tau, theArrowNode, anyEnv, n] 
+                        (copyLiftedEnvToChild envPath 2 <> mkEqConstraints [
+                          [path [1],       path [0, 0]]
+                        , [path [2, 0, 0], path [0, 1]]
+                        , [path [3, 0],    path [0, 2]]
+                        ])]
 
 var1, var2, var3, var4, varAcc :: Node
 var1   = Node [Edge "var1" []]
@@ -433,25 +453,11 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
         
         do
         -- timeout (200 * 10^6) $ do
-            -- let reducedNode = if name `elem` hardBenchmarks 
-            --                   then (withoutRedundantEdges . reducePartially) filterNode
-            --                   else reduceFully filterNode
-            -- let reducedNode = reduceFully filterNode
             reducedNode <- reduceFullyAndLog filterNode
             -- putStrLn $ renderDot . toDot $ reducedNode
             let foldedNode = refold reducedNode
             -- putStrLn $ renderDot . toDot $ foldedNode
             prettyPrintAllTerms solStr foldedNode
-            -- let n' = reducePartially EmptyConstraints filterNode
---             Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
---             Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
---             Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
--- #ifdef PROFILE_CACHES
---             Memoization.printAllCacheMetrics
---             Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
---             Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
---             Text.putStrLn ""
--- #endif
 
         end <- getCurrentTime
         print $ "Time: " ++ show (diffUTCTime end start)
@@ -464,8 +470,6 @@ replicator = Node [
         mkEdge "Pair" [replicatorTau, replicatorTau] (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
       ],
       Node [
-        -- mkEdge "Pair" [tau, tau]
-        -- (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
         Edge "Pair" [replicatorTau, replicatorTau]
       ]
     ]
@@ -484,12 +488,6 @@ counterExample = Node [
             ],
             Node [Edge "Pair" [
               replicatorTau,
-              -- Node [Edge "Pair" [
-              --   Node [
-              --     Edge "Pair" [replicatorTau, replicatorTau]
-              --   ], 
-              --   var2]
-              -- ]
               replicatorTau
             ]]
           ]]
@@ -499,13 +497,6 @@ counterExample = Node [
           Node [Edge "Pair" [var2, var2]]
         ]
       ]
-      -- Node [Edge "e" [
-      --   replicatorTau,
-      --   Node [
-      --     Edge "Pair" [replicatorTau, replicatorTau],
-      --     Edge "var2" []
-      --   ]
-      -- ]]
     ]
     (mkEqConstraints [[path [0,0,0], path [0,0,1]]])
   ]
@@ -517,12 +508,10 @@ loop2 = Node [
                         mkEdge "Pair" [
                             Node [
                                 Edge "List" [
-                                    -- Node [Edge "List" [replicatorTau]]
                                     replicatorTau
                                     ]
                                 ],
                               replicatorTau
-                            -- Node [Edge "List" [replicatorTau]]
                             ]
                             (mkEqConstraints [[path [0,0], path [1]]])
                         ],
@@ -530,7 +519,6 @@ loop2 = Node [
                         mkEdge "Pair" [
                             Node [
                                 Edge "List" [
-                                    -- Node [Edge "List" [replicatorTau]]
                                     replicatorTau
                                     ]
                                 ],

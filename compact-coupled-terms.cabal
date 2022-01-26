@@ -3,8 +3,6 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 53ffed90b9fe1ccfc1496e781cdff211070f8751f651304091806eab229a2533
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -48,6 +46,7 @@ library
       Data.Memoization.Metrics
       Data.Persistent.UnionFind
       Data.Text.Extended.Pretty
+      EqualitySaturation
       Minimization
       SAT
       TermSearch
@@ -233,6 +232,7 @@ benchmark mainbench
   type: exitcode-stdio-1.0
   main-is: Benchmarks.hs
   other-modules:
+      TestData
       Paths_compact_coupled_terms
   hs-source-dirs:
       benchmarks

@@ -15,6 +15,7 @@ module Data.ECTA (
   , createGloballyUniqueMu
 
   -- * Operations
+  , nodeMapChildren
   , pathsMatching
   , mapNodes
   , refold

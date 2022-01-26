@@ -2,15 +2,17 @@ module Main where
 
 import Criterion.Main
 
-import ECTA
-import TermSearch
+import Data.ECTA
+import Data.ECTA.Paths
+
+import TestData
 
 -----------------------------------------------------------------------
 
--- | This exists, but doesn't give useful numbers because everything is cached
+
 main = do
   defaultMain [
-                bgroup "termsearch" [
-                  bench "reduceTermSearchUpto6" $ whnf nodeCount $ reducePartially $ filterType uptoSize6UniqueRep tau
+                bgroup "pathable" [
+                  bench "getPath" $ whnf nodeCount $ getPath (path [2,0,2]) aBigNode
                 ]
               ]
