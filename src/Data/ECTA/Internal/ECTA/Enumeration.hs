@@ -323,14 +323,16 @@ firstExpandableUVar = do
     values <- use uvarValues
     -- traceShow values $ return ()
     -- check representative uvars because only representatives are updated
-    candidateMaps <- mapM (\i -> do v <- getUVarValue (intToUVar i)
+    candidateMaps <- mapM (\i -> do rep <- getUVarRepresentative (intToUVar i)
+                                    v <- getUVarValue rep
                                     case v of
                                         (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> return IntMap.empty
-                                        (UVarUnenumerated (Just (Mu _)) _             ) -> return $ IntMap.singleton i (Any False)
-                                        (UVarUnenumerated (Just _)      _)              -> return $ IntMap.singleton i (Any False)
+                                        (UVarUnenumerated (Just (Mu _)) _             ) -> return $ IntMap.singleton (uvarToInt rep) (Any False)
+                                        (UVarUnenumerated (Just _)      _)              -> return $ IntMap.singleton (uvarToInt rep) (Any False)
                                         _                                               -> return IntMap.empty)
                               [0..(Sequence.length values - 1)]
     let candidates = IntMap.unions candidateMaps
+    -- trace ("candidates:" ++ show candidates) $ return ()
 
     if IntMap.null candidates then
       return ExpansionDone
@@ -344,6 +346,7 @@ firstExpandableUVar = do
                       values
 
       let unconstrainedCandidateMap = IntMap.filter (not . getAny) (ruledOut <> candidates)
+      -- trace ("unconstrainedCandidateMap:" ++ show unconstrainedCandidateMap) $ return ()
       case IntMap.lookupMin unconstrainedCandidateMap of
         Nothing     -> return ExpansionStuck
         Just (i, _) -> return $ ExpansionNext $ intToUVar i

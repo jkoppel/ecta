@@ -43,22 +43,22 @@ tau = createGloballyUniqueMu (\n -> union ([appType n n, arrowType n n, var1, va
 
     constructors = map (typeConst . fst) usedConstructors
 
-    -- usedConstructors = allConstructors
-    usedConstructors = [ ("Pair", 2)
-                       , ("List", 1)
-                       , ("Monad", 1)
-                       , ("StateT", 3)
-                       , ("Foldable", 1)
-                       , ("Traversable", 1)
-                       , ("Either", 2)
-                       , ("String", 0)
-                       , ("Maybe", 1)
-                       , ("MaybeT", 2)
-                       , ("MonadPlus", 1)
-                       ]
+    usedConstructors = allConstructors
+    -- usedConstructors = [ ("Pair", 2)
+    --                    , ("List", 1)
+    --                    , ("Monad", 1)
+    --                    , ("StateT", 3)
+    --                    , ("Foldable", 1)
+    --                    , ("Traversable", 1)
+    --                    , ("Either", 2)
+    --                    , ("String", 0)
+    --                    , ("Maybe", 1)
+    --                    , ("MaybeT", 2)
+    --                    , ("MonadPlus", 1)
+    --                    ]
 
 replicatorTau :: Node
-replicatorTau = createGloballyUniqueMu (\n -> union (map (Node . (:[]) . constructorToEdge n) usedConstructors))
+replicatorTau = createGloballyUniqueMu (\n -> union ([var1] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
@@ -126,7 +126,6 @@ envPath = path [2]
 app :: Node -> Node -> Node
 app n1 n2 = Node [mkEdge "app" [ tau
                                , theArrowNode
-                               , anyEnv
                                , n1
                                , n2
                                ]
@@ -319,9 +318,9 @@ hoogleComps = filter (\e -> (edgeSymbol e `notElem` speciallyTreatedFunctions))
 
 anyFunc :: Node
 -- anyFunc = Node [f34, f36]
-anyFunc = Node [f3, f41, f42, f43, f48, f49]
+-- anyFunc = Node [f3, f41, f42, f43, f48, f49]
 -- anyFunc = Node [f1, f32, f10, f12, f16, f17, f18, f19, f21, f22, f23, f24, f28, f29, f30, f31]
--- anyFunc = Node hoogleComps
+anyFunc = Node hoogleComps
 -- anyFunc = Node [f16, f23, f24, f10, f19, f17, f18, f20, f25, f26, f1, f2, f3, f4, f5, f6, f7, f8, f9, f11, f12, f13, f14, f15, f21, f22]
 
 fromJustFunc :: Node
@@ -360,7 +359,7 @@ exportTypeToFta (ExportFun t1 t2) = arrowType (exportTypeToFta t1) (exportTypeTo
 exportTypeToFta (ExportCons "Fun" [t1, t2])  = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
 -- exportTypeToFta (ExportCons s [t]) = constrType1 s (exportTypeToFta t)
 -- exportTypeToFta (ExportCons s [t1, t2]) = constrType2 s (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons d ts) = if isUpper (Text.head d) then foldl appType (typeConst d) (map exportTypeToFta ts)
+exportTypeToFta (ExportCons d ts) = if isUpper (Text.head d) || Text.head d == '@' then foldl appType (typeConst d) (map exportTypeToFta ts)
                                                         else foldl appType (exportTypeToFta (ExportVar d)) (map exportTypeToFta ts)
 exportTypeToFta (ExportForall _ t) = exportTypeToFta t
 
@@ -411,8 +410,8 @@ reduceFullyAndLog = go 0
   where
     go i n = do putStrLn $ "Round " ++ show i ++ ": " ++ show (nodeCount n) ++ " nodes, " ++ show (edgeCount n) ++ " edges"
                 hFlush stdout
-                putStrLn (renderDot $ toDot n)
-                if i == 5 then error "stop" else return ()
+                -- putStrLn (renderDot $ toDot n)
+                -- if i == 5 then error "stop" else return ()
                 -- when (i == 21) $ do
                 --   let Node es = n
                 --   let nn = (edgeChildren (es !! 0)) !! 1
@@ -514,6 +513,10 @@ loop2 = Node [
                               replicatorTau
                             ]
                             (mkEqConstraints [[path [0,0], path [1]]])
+                        , Edge "f" [
+                              var1,
+                              Node [Edge "List" [var1]]
+                            ]
                         ],
                     Node [
                         mkEdge "Pair" [
@@ -525,6 +528,10 @@ loop2 = Node [
                             replicatorTau
                             ]
                             (mkEqConstraints [[path [0], path [1]]])
+                        , Edge "f" [
+                              var1,
+                              var1
+                            ]
                         ]
                     ]
                     (mkEqConstraints [[path [0,1,0], path [1,1]], [path [0,0], path [1,0]]])

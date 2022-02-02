@@ -57,9 +57,9 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 main :: IO ()
 main = do
-    -- benchStr <- getArgs
-    -- let bench = read (head benchStr) :: Benchmark
-    -- runBenchmark bench
+    benchStr <- getArgs
+    let bench = read (head benchStr) :: Benchmark
+    runBenchmark bench
 
     -- runBenchmark testBenchmark8
 
@@ -71,7 +71,7 @@ main = do
     -- reduceFullyAndLog loop2
 
     -- test enumeration
-    prettyPrintAllTerms "" loop2
+    -- prettyPrintAllTerms "" loop2
     
     -- test reduction
     -- mapM_ (\f ->

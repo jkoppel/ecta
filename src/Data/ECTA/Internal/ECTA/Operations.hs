@@ -456,7 +456,7 @@ reduceEqConstraints = go
 
     go :: EqConstraints -> [[Path]] -> [Node] -> [Node]
     go ecs extraEcs origNs 
-      | constraintsAreContradictory (mkEqConstraints (ecsGetPaths ecs ++ extraEcs)) = trace ("detected contradictory constraints at " ++ show ecs ++ " and " ++ show extraEcs) $ map (const EmptyNode) origNs
+      | constraintsAreContradictory (mkEqConstraints (ecsGetPaths ecs ++ extraEcs)) = {- trace ("detected contradictory constraints at " ++ show ecs ++ " and " ++ show extraEcs) $ -} map (const EmptyNode) origNs
       | otherwise = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
