@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Data.ECTA.Internal.ECTA.Type (
-    Edge(.., Edge)
+    RecNodeId(..)
+
+  , Edge(.., Edge)
   , UninternedEdge(..)
   , mkEdge
   , emptyEdge
@@ -10,11 +12,12 @@ module Data.ECTA.Internal.ECTA.Type (
   , edgeSymbol
   , setChildren
 
-  , Node(.., Node)
+  , Node(.., Node, Mu)
   , UninternedNode(..)
+  , fillInTmpRecNodes
   , nodeIdentity
   , modifyNode
-  , createGloballyUniqueMu
+  , createMu
   ) where
 
 import Data.Function ( on )
@@ -28,15 +31,29 @@ import Data.List.Extra ( nubSort )
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
 import Data.Interned.Extended.HashTableBased
+
+-- NOTE 2/7/2022: This version is likely to break because there are nested calls to intern
+--                for Mu nodes. See related comment in HashTableBased.hs
 --import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Term
 
+
+import Data.Memoization
+
 ---------------------------------------------------------------------------------------------
 
+-----------------------------------------------------------------
+-------------------------- Mu node table ------------------------
+-----------------------------------------------------------------
 
+data RecNodeId = RecNodeId { unRecNodeId :: {-# UNPACK #-} !Id }
+               | TmpRecNodeId
+  deriving ( Eq, Ord, Show, Generic )
+
+instance Hashable RecNodeId
 
 -----------------------------------------------------------------
 ----------------------------- Edges -----------------------------
@@ -76,41 +93,38 @@ instance Hashable Edge where
 ------------------------------ Nodes ----------------------------
 -----------------------------------------------------------------
 
--- | Seemingly-hacky yet theoretically-sound restricted implementation of cyclic terms:
--- Assumes a single globally unique recursive node
 data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
           | EmptyNode
-          | Mu !Node
-          | Rec
+          | InternedMu {-# UNPACK #-} !Id !Node
+          | Rec {-# UNPACK #-} !RecNodeId
 
 instance Eq Node where
-  (InternedNode n1 _) == (InternedNode n2 _) = n1 == n2
+  (InternedNode i1 _) == (InternedNode i2 _) = i1 == i2
   EmptyNode           == EmptyNode           = True
-  Mu n1               == Mu n2               = True -- | And here I use the crazy globally unique Mu assumption
-  Rec                 == Rec                 = True
+  (InternedMu i1 _)   == (InternedMu i2 _)   = i1 == i2
+  Rec i1              == Rec i2              = i1 == i2
   _                   == _                   = False
 
 instance Show Node where
-  show (InternedNode _ es) = "(Node " ++ show es ++ ")"
+  show (InternedNode _ es) = "(Node " <> show es <> ")"
   show EmptyNode           = "EmptyNode"
-  show (Mu n)              = "(Mu " ++ show n ++ ")"
-  show Rec                 = "Rec"
+  show (InternedMu _ n)    = "(Mu " <> show n <> ")"
+  show (Rec n)             = "(Rec " <> show n <> ")"
 
 instance Ord Node where
-  compare n1 n2 = compare (dropEdges n1) (dropEdges n2)
+  compare n1 n2 = compare (nodeDescriptorInt n1) (nodeDescriptorInt n2)
     where
-      dropEdges :: Node -> Either Id Int
-      dropEdges (InternedNode n _) = Right n
-      dropEdges EmptyNode          = Left 0
-      dropEdges (Mu n)             = Left 1
-      dropEdges Rec                = Left 2
-
+      nodeDescriptorInt :: Node -> Int
+      nodeDescriptorInt EmptyNode           = -1
+      nodeDescriptorInt (InternedNode i _)  = 3*i
+      nodeDescriptorInt (InternedMu i _)    = 3*i + 1
+      nodeDescriptorInt (Rec (RecNodeId i)) = 3*i + 2
 
 instance Hashable Node where
   hashWithSalt s EmptyNode          = s `hashWithSalt` (-1 :: Int)
-  hashWithSalt s (Mu _)             = s `hashWithSalt` (-2 :: Int)
-  hashWithSalt s Rec                = s `hashWithSalt` (-3 :: Int)
-  hashWithSalt s (InternedNode n _) = s `hashWithSalt` n
+  hashWithSalt s (InternedMu i _)   = s `hashWithSalt` (-2 :: Int) `hashWithSalt` i
+  hashWithSalt s (Rec i)            = s `hashWithSalt` (-3 :: Int) `hashWithSalt` i
+  hashWithSalt s (InternedNode i _) = s `hashWithSalt` i
 
 
 ----------------------
@@ -118,7 +132,8 @@ instance Hashable Node where
 ----------------------
 
 nodeIdentity :: Node -> Id
-nodeIdentity (InternedNode n _) = n
+nodeIdentity (InternedMu   i _) = i
+nodeIdentity (InternedNode i _) = i
 
 setChildren :: Edge -> [Node] -> Edge
 setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
@@ -130,6 +145,21 @@ dropEcs e = Edge (edgeSymbol e) (edgeChildren e)
 -----------------------------------------------------------------
 ------------------------- Interning Nodes -----------------------
 -----------------------------------------------------------------
+
+fillInTmpRecNodes :: Id -> Node -> Node
+fillInTmpRecNodes i n = go n
+  where
+    -- | Memoized separately for each invocation
+    go :: Node -> Node
+    go = memo (NameTag "fillInTmpRecNodes") (go' i)
+    {-# NOINLINE go #-}
+
+    go' :: Id -> Node -> Node
+    go' _ EmptyNode          = EmptyNode
+    go' _ (Node es)          = Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es
+    go' _ n@(Mu _)           = n
+    go' i (Rec TmpRecNodeId) = Rec $ RecNodeId i
+    go' _ n@(Rec _)          = n
 
 data UninternedNode = UninternedNode ![Edge]
                     | UninternedEmptyNode
@@ -148,8 +178,11 @@ instance Interned Node where
 
   identify i (UninternedNode es) = InternedNode i es
   identify _ UninternedEmptyNode = EmptyNode
-  identify _ (UninternedMu n)    = Mu n
-  identify _ UninternedRec       = Rec
+  -- TODO (2/7/2022):
+  --  WARNING: This next case contains a recursive call to intern. We do not currently have a stable guarantee
+  --           that interned ID's won't be reused.
+  identify i (UninternedMu n)    = InternedMu i $ fillInTmpRecNodes i n
+  identify _ UninternedRec       = Rec TmpRecNodeId
 
   cache = nodeCache
 
@@ -228,6 +261,12 @@ pattern Node es <- (InternedNode _ es) where
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
+-- | This pattern intentionally may not be used as a constructor
+--   Rationale: Doing so would tempt programmers to write code of the form (\(Mu x) -> (Mu x))
+--   Such code is buggy, as it modifies the id of the outer Mu without modifying the RecNodeId’s which reference it.
+pattern Mu :: Node -> Node
+pattern Mu n <- (InternedMu _ n)
+
 mkNodeAlreadyNubbed :: [Edge] -> Node
 mkNodeAlreadyNubbed es = case removeEmptyEdges es of
                            []  -> EmptyNode
@@ -242,8 +281,8 @@ modifyNode n@(Node es) f = let es' = f es in
                            else
                              Node es'
 
-createGloballyUniqueMu :: (Node -> Node) -> Node
-createGloballyUniqueMu f = Mu (f Rec)
+createMu :: (Node -> Node) -> Node
+createMu f = intern $ UninternedMu (f (Rec TmpRecNodeId))
 
 collapseEmptyEdge :: Edge -> Maybe Edge
 collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Just e

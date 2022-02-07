@@ -18,7 +18,7 @@ import Data.ECTA.Term
 ------------------------------------------------------------------------------
 
 tau :: Node
-tau = createGloballyUniqueMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
+tau = createMu (\n -> union ([arrowType n n, baseType] ++ map (Node . (:[]) . constructorToEdge n) usedConstructors))
   where
     constructorToEdge :: Node -> (Text, Int) -> Edge
     constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)

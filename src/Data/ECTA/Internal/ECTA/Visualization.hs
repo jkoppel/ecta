@@ -34,7 +34,9 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
     maxNodeIndegree = maxIndegree root
 
     fglNodeId :: Node -> Fgl.Node
-    fglNodeId n = nodeIdentity n * (maxNodeIndegree + 1)
+    fglNodeId (Rec (RecNodeId i)) = i              * (maxNodeIndegree + 1)
+    fglNodeId (Mu n)              = nodeIdentity n * (maxNodeIndegree + 1)
+    fglNodeId n                   = nodeIdentity n * (maxNodeIndegree + 1)
 
     fglTransitionId :: Node -> Int -> Fgl.Node
     fglTransitionId n i = nodeIdentity n * (maxNodeIndegree + 1) + (i + 1)
@@ -69,9 +71,7 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
                                   root
       where
         edgeTo :: Node -> Int -> Node -> Fgl.LEdge ()
-        edgeTo n i n'@(Node _) = (fglTransitionId n i, fglNodeId n', ())
-        edgeTo n i n'@(Mu _)   = (fglTransitionId n i, fromJust muNodeLabel, ())
-        edgeTo n i    Rec      = (fglTransitionId n i, fromJust muNodeLabel, ())
+        edgeTo n i n' = (fglTransitionId n i, fglNodeId n', ())
 
 
 fglToDot :: Fgl.Gr FglNodeLabel () -> Dot.Graph

@@ -9,7 +9,7 @@ module Data.ECTA.Internal.ECTA.Operations (
   , onNormalNodes
 
   -- * Unfolding
-  , unfoldRec
+  , unfoldOuterRec
   , refold
   , nodeEdges
   , unfoldBounded
@@ -48,6 +48,8 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
+import           Data.HashMap.Strict ( HashMap )
+import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
@@ -90,7 +92,9 @@ pathsMatching f n@(Node es) = (concat $ map pathsMatchingEdge es)
     pathsMatchingEdge :: Edge -> [Path]
     pathsMatchingEdge (Edge _ ns) = concat $ imap (\i x -> map (ConsPath i) $ pathsMatching f x) ns
 
-mapNodes ::(Node -> Node) -> Node -> Node
+-- | Precondition: For all i, f (Rec i) is either a Rec node meant to represent
+--                 the enclosing Mu, or contains no Rec node not beneath another Mu.
+mapNodes :: (Node -> Node) -> Node -> Node
 mapNodes f n = go n
   where
     -- | Memoized separately for each mapNodes invocation
@@ -101,8 +105,11 @@ mapNodes f n = go n
     go' :: (Node -> Node) -> Node -> Node
     go' f EmptyNode = EmptyNode
     go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
-    go' f (Mu n)    = f $ (Mu $ go n)
-    go' f Rec       = f Rec
+    go' f (Mu n)    = f $ (createMu $ const (go n))
+    go' f (Rec i)   = case f (Rec i) of
+                        Rec _ -> Rec TmpRecNodeId
+                        x     -> x
+
 
 -- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
 -- combinators in the KURE and compstrat libraries.
@@ -112,9 +119,9 @@ crush :: forall m. (Monoid m) => (Node -> m) -> Node -> m
 crush f n = evalState (go n) Set.empty
   where
     go :: (Monoid m) => Node -> State (Set Id) m
-    go EmptyNode = return mempty
-    go Rec       = return mempty
-    go (Mu n)    = mappend (f (Mu n)) <$> go n
+    go EmptyNode   = return mempty
+    go (Rec _)     = return mempty
+    go n@(Mu x)    = mappend (f n) <$> go x
     go n@(Node es) = do
       seen <- get
       let nId = nodeIdentity n
@@ -132,31 +139,48 @@ onNormalNodes _ _          = mempty
 ------ Folding
 -----------------------
 
-unfoldRec :: Node -> Node
-unfoldRec = memo (NameTag "unfoldRec") go
+unfoldOuterRec :: Node -> Node
+unfoldOuterRec = memo (NameTag "unfoldOuterRec") go
   where
-    go n = mapNodes (\x -> if x == Rec then Mu n else x) n
+    go :: Node -> Node
+    go n@(Mu x) = mapNodes (unrollRec (nodeIdentity n) n) x
+    go _        = error "unfoldOuterRec: Must be called on a Mu node"
+
+    unrollRec :: Id -> Node -> Node -> Node
+    unrollRec muNodeId muNode n@(Mu _)            = n
+    unrollRec muNodeId muNode (Rec (RecNodeId i))
+      | i == muNodeId                             = muNode
+    unrollRec muNodeId muNode n@(Rec _)             = error $ "unfoldOuterRec: Unexpected Rec node " <> show n
+                                                              <> " while unrolling " <> show muNode
+    unrollRec _        _      x                   = x
 
 
 nodeEdges :: Node -> [Edge]
 nodeEdges (Node es) = es
-nodeEdges (Mu n)    = nodeEdges (unfoldRec n)
+nodeEdges n@(Mu _)  = nodeEdges (unfoldOuterRec n)
 nodeEdges _         = []
 
 refold :: Node -> Node
-refold n = let muNode = getFirst $ crush (\case Mu x -> First (Just x)
-                                                _    -> First Nothing)
-                                         n
-           in case muNode of
-                Nothing     -> n
-                Just m -> let unfoldedNode = unfoldRec m
-                          in fixUnbounded (mapNodes (\x -> if x == unfoldedNode then Mu m else x)) n
+refold n = if HashMap.null muNodeMap then
+             n
+           else
+             fixUnbounded tryUnfold n
+  where
+    muNodeMap :: HashMap Node Node
+    muNodeMap = crush (\case x@(Mu _) -> HashMap.singleton (unfoldOuterRec x) x
+                             _        -> HashMap.empty)
+                      n
+
+    tryUnfold :: Node -> Node
+    tryUnfold x = case HashMap.lookup x muNodeMap of
+                    Just y  -> y
+                    Nothing -> x
 
 unfoldBounded :: Int -> Node -> Node
 unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
                                   n    -> n)
-unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case Mu n -> unfoldRec n
-                                                        n    -> n)
+unfoldBounded k = unfoldBounded (k-1) . mapNodes (\case n@(Mu _) -> unfoldOuterRec n
+                                                        n        -> n)
 
 
 ------------
@@ -179,7 +203,7 @@ maxIndegree = getMax . crush (onNormalNodes $ \(Node es) -> Max (length es))
 nodeRepresents :: Node -> Term -> Bool
 nodeRepresents EmptyNode _                      = False
 nodeRepresents (Node es) t                      = any (\e -> edgeRepresents e t) es
-nodeRepresents (Mu n)    t                      = nodeRepresents (unfoldRec n) t
+nodeRepresents n@(Mu _)  t                      = nodeRepresents (unfoldOuterRec n) t
 nodeRepresents _         _                      = False
 
 edgeRepresents :: Edge -> Term -> Bool
@@ -215,9 +239,9 @@ intersect = memo2 (NameTag "intersect") doIntersect
 doIntersect :: Node -> Node -> Node
 doIntersect EmptyNode _         = EmptyNode
 doIntersect _         EmptyNode = EmptyNode
-doIntersect (Mu n)    (Mu _)    = Mu n -- | And here I use the crazy "globally unique mu" assumption
-doIntersect (Mu n1)   n2        = doIntersect (unfoldRec n1) n2
-doIntersect n1        (Mu n2)   = doIntersect n1             (unfoldRec n2)
+doIntersect n@(Mu _)  (Mu _)    = n -- | TODO: Update for multiple Mu's
+doIntersect n1@(Mu _) n2        = doIntersect (unfoldOuterRec n1) n2
+doIntersect n1        n2@(Mu _) = doIntersect n1                  (unfoldOuterRec n2)
 doIntersect n1@(Node es1) n2@(Node es2)
   | n1 == n2                            = n1
   | n2 <  n1                            = intersect n2 n1
@@ -297,7 +321,7 @@ union ns = case filter (/= EmptyNode) ns of
 requirePath :: Path -> Node -> Node
 requirePath EmptyPath       n         = n
 requirePath _               EmptyNode = EmptyNode
-requirePath p               (Mu n)    = requirePath p (unfoldRec n)
+requirePath p               n@(Mu _)  = requirePath p (unfoldOuterRec n)
 requirePath (ConsPath p ps) (Node es) = Node $ map (\e -> setChildren e (requirePathList (ConsPath p ps) (edgeChildren e)))
                                              $ filter (\e -> length (edgeChildren e) > p)
                                                       es
@@ -310,7 +334,7 @@ instance Pathable Node Node where
   type Emptyable Node = Node
 
   getPath _                EmptyNode = EmptyNode
-  getPath p                (Mu n)    = getPath p (unfoldRec n)
+  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath EmptyPath        n         = n
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
@@ -318,7 +342,7 @@ instance Pathable Node Node where
       goEdge (Edge _ ns) = ns ^? ix p
 
   getAllAtPath _               EmptyNode = []
-  getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
+  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath EmptyPath       n         = [n]
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
@@ -327,7 +351,7 @@ instance Pathable Node Node where
 
   modifyAtPath f EmptyPath       n         = f n
   modifyAtPath _ _               EmptyNode = EmptyNode
-  modifyAtPath f p               (Mu n)    = modifyAtPath f p (unfoldRec n)
+  modifyAtPath f p               n@(Mu _)  = modifyAtPath f p (unfoldOuterRec n)
   modifyAtPath f (ConsPath p ps) (Node es) = Node (map goEdge es)
     where
       goEdge :: Edge -> Edge
@@ -371,7 +395,7 @@ reducePartially = memo (NameTag "reducePartially") go
   where
     go :: Node -> Node
     go EmptyNode  = EmptyNode
-    go (Mu n)     = Mu n
+    go n@(Mu _)   = n
     go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
                                           $ map reduceEdgeIntersection es
 {-# NOINLINE reducePartially #-}
