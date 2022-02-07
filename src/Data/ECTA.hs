@@ -12,7 +12,7 @@ module Data.ECTA (
 
   , Node(Node, EmptyNode)
   , nodeEdges
-  , createGloballyUniqueMu
+  , createMu
 
   -- * Operations
   , pathsMatching

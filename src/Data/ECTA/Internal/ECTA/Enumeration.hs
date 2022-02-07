@@ -329,8 +329,8 @@ enumerateOutUVar uv = do UVarUnenumerated (Just n) scs <- getUVarValue uv
                          uv' <- getUVarRepresentative uv
 
                          t <- case n of
-                                Mu x -> enumerateNode scs (unfoldRec x)
-                                _    -> enumerateNode scs n
+                                n@(Mu _) -> enumerateNode scs (unfoldOuterRec n)
+                                _        -> enumerateNode scs n
 
 
                          uvarValues.(ix $ uvarToInt uv') .= UVarEnumerated t
