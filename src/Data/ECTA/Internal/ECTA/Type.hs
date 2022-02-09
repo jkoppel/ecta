@@ -180,9 +180,6 @@ instance Interned Node where
 
   identify i (UninternedNode es) = InternedNode i es
   identify _ UninternedEmptyNode = EmptyNode
-  -- TODO (2/7/2022):
-  --  WARNING: This next case contains a recursive call to intern. We do not currently have a stable guarantee
-  --           that interned ID's won't be reused.
   identify i (UninternedMu n)    = InternedMu i $ fillInTmpRecNodes i n
   identify _ UninternedRec       = Rec TmpRecNodeId
 
