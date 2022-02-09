@@ -60,6 +60,8 @@ import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
@@ -416,70 +418,55 @@ occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps)
 --- Reducing Equality Constraints
 ---------------
 
-reducePartially :: EqConstraints -> Node -> Node
-reducePartially ecs = memo (NameTag "reducePartially") $ \n -> nodeDropRedundantEdges (go n)
-                                                                --  in if flag && nodeCount n' > nodeCount n then unsafePerformIO (BS.writeFile "reduceError2.pkl" (encode n) >> error "stop")  -- trace (show (nodeCount n' - nodeCount n) ++ "\n" ++ show (edgeCount n' - edgeCount n) ++ "\n" ++ show n ++ "\n\n\n" ++ show n') (error "stop")
-                                                                --                        else n'
+reducePartially :: [[Path]] -> Node -> Node
+reducePartially ecs = go -- memo (NameTag "reducePartially") go
   where
     go :: Node -> Node
     go EmptyNode  = EmptyNode
     go (Mu n)     = Mu n
-    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = reduceChildren (createConstraints e) (edgeChildren e)})
+    go n@(Node _) = modifyNode n $ \es -> map (\e -> setChildren e (reduceChildren (createConstraints e) (edgeChildren e)))
                                           $ map (reduceEdgeIntersection ecs) es
+    -- go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createConstraints e) (edgeChildren e)})
+    --                                       $ map (reduceEdgeIntersection ecs) es
 
-    createConstraints :: Edge -> EqConstraints
-    createConstraints e = ecs `combineEqConstraints` edgeEcs e
+    createConstraints :: Edge -> [[Path]]
+    createConstraints e = ecsGetPaths (edgeEcs e) ++ ecs
 
-    ithPath :: [[[Path]]] -> Int -> [[Path]]
-    ithPath pss i
-      | length pss <= i = []
-      | otherwise       = pss !! i
+    reduceChildrenAt :: IntMap [[Path]] -> Int -> Node -> Node
+    reduceChildrenAt pMap i n = reducePartially (IntMap.findWithDefault [] i pMap) n
 
-    reduceChildrenAt :: [PathTrie] -> Int -> Node -> Node
-    reduceChildrenAt ptrees i n = reducePartially (mkEqConstraints $ map (\t -> fromPathTrie $ pathTrieDescend t i) ptrees) n
+    reduceChildren :: [[Path]] -> [Node] -> [Node]
+    reduceChildren ecs children = zipWith (reduceChildrenAt (propagateConstraint ecs)) [0..] children
 
-    reduceChildren :: EqConstraints -> [Node] -> [Node]
-    -- reduceChildren _ children = map (reducePartially EmptyConstraints) children
-    reduceChildren EqContradiction ns = map (const EmptyNode) ns
-    reduceChildren ecs children = 
-      zipWith (reduceChildrenAt (propagateConstraint (ecsGetPaths ecs))) 
-              [0..length children]
-              children
+    addPathToIntMap :: Path -> IntMap [Path] -> IntMap [Path]
+    addPathToIntMap EmptyPath m = m
+    addPathToIntMap (ConsPath p EmptyPath) m = m
+    addPathToIntMap (ConsPath p ps) m = IntMap.insertWith (++) p [ps] m
 
-    -- addPathAt :: [Path] -> [[Path]] -> [[Path]]
-    -- addPathAt [] pss = pss
-    -- addPathAt (EmptyPath:ps) pss = addPathAt ps pss
-    -- addPathAt ((ConsPath ph pt):ps) pss
-    --   | length pss <= ph = addPathAt ((ConsPath ph pt):ps) (pss ++ [[]])
-    --   | otherwise       = let pss' = pss & ix ph %~ (\x -> if pt == EmptyPath then x else pt:x)
-    --                       in addPathAt ps pss'
-  
-    -- propagateConstraint :: [[Path]] -> [[[Path]]]
-    -- propagateConstraint = \pss ->  transpose (map (`addPathAt` []) pss)
+    toIntMap :: [Path] -> IntMap [Path]
+    toIntMap = foldr addPathToIntMap IntMap.empty
 
-    propagateConstraint :: [[Path]] -> [PathTrie]
-    propagateConstraint pss = map toPathTrie pss
+    propagateConstraint :: [[Path]] -> IntMap [[Path]]
+    propagateConstraint pss = foldr (IntMap.mergeWithKey (\_ a b -> Just (a:b)) (IntMap.map (:[])) id . toIntMap) IntMap.empty pss
 
-{-# NOINLINE reducePartially #-}
-
-reduceEdgeIntersection :: EqConstraints -> Edge -> Edge
+reduceEdgeIntersection :: [[Path]] -> Edge -> Edge
 reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
   where
-   go :: EqConstraints -> Edge -> Edge
+   go :: [[Path]] -> Edge -> Edge
    go ecs e = mkEdge (edgeSymbol e)
                      (reduceEqConstraints (edgeEcs e) ecs (edgeChildren e))
                      (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
-reduceEqConstraints :: EqConstraints -> EqConstraints -> [Node] -> [Node]
+reduceEqConstraints :: EqConstraints -> [[Path]] -> [Node] -> [Node]
 reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
-    go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
+    go :: EqConstraints -> [[Path]] -> [Node] -> [Node]
     go ecs extraEcs origNs 
-      | constraintsAreContradictory (combineEqConstraints ecs extraEcs) = map (const EmptyNode) origNs
+      | constraintsAreContradictory (mkEqConstraints (ecsGetPaths ecs ++ extraEcs)) = map (const EmptyNode) origNs
       | otherwise = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
@@ -494,9 +481,7 @@ reduceEqConstraints = go
         _atPaths ns ps = map (\p -> getPath p ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
-                                                                                        --  in if occursCheck ns' intersected ps then trace ("occurs check found a cycle at " ++ show p) EmptyNode else trace ("reduction gets " ++ show intersected ++ " at " ++ show p)intersected) p ns')
-                                                                                         in intersected) p ns')
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where

@@ -5,7 +5,7 @@
 --  Also a constructive proof of the NP-hardness of finding
 --  a term represented by an ECTA
 
-module SAT (
+module Application.SAT (
   -- * Data types
     Var
   , mkVar
@@ -255,7 +255,7 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
-allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded (reducePartially EmptyConstraints) $ toEcta formula
+allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTerms $ fixUnbounded (reducePartially []) $ toEcta formula
   where
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula

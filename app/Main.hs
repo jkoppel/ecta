@@ -16,7 +16,7 @@ import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
 import Data.ECTA.Term
 import Data.Persistent.UnionFind
-import TermSearch
+import Application.TermSearch.Evaluation
 
 import Language.Dot.Pretty
 
@@ -27,7 +27,7 @@ printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map e
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
-    let n' = reducePartially EmptyConstraints n
+    let n' = reducePartially [] n
     Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
     Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
     Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
@@ -50,9 +50,10 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 main :: IO ()
 main = do
-    benchStr <- getArgs
-    let bench = read (head benchStr) :: Benchmark
-    runBenchmark bench
+    args <- getArgs
+    runBenchmark (read $ head args)
+
+    -- runEval
 
     -- test replicator issue
     -- putStrLn $ renderDot . toDot $ counterExample
