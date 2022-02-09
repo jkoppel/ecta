@@ -105,12 +105,7 @@ intern !bt = unsafeDupablePerformIO $ do
     v <- HT.lookup ht dt
     case v of
       Nothing -> do bumpMissCount c
-                    i <- readIORef refI
-                    writeIORef refI (i+1)
-                    -- TODO: (2/7/2022)
-                    --       WARNING: We are kind of at the mercy of the compiler/laziness
-                    --                to enforce that the preceding write is seen by any recursive calls
-                    --                to intern within identify (as needed for Mu nodes)
+                    i <- atomicModifyIORef' refI (\i -> (i + 1, i))
                     let t = identify i bt
                     HT.insert ht dt t
                     return t
