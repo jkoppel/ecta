@@ -3,7 +3,7 @@
 module Data.Interned.Extended.HashTableBased
   ( Id
   , Cache(..)
-  , mkCache
+  , freshCache
   , cacheSize
   , resetCache
 
@@ -18,7 +18,7 @@ module Data.Interned.Extended.HashTableBased
 import Data.Hashable
 import qualified Data.HashTable.IO as HT
 import Data.IORef
-import GHC.IO (unsafeDupablePerformIO, unsafePerformIO)
+import GHC.IO ( unsafeDupablePerformIO )
 
 import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
@@ -48,9 +48,6 @@ freshCache = Cache <$> newIORef 0
                    <*> newIORef 0
                    <*> newIORef 0
 #endif
-
-mkCache :: Interned t => Cache t
-mkCache = unsafePerformIO freshCache
 
 cacheSize :: Cache t -> IO Int
 cacheSize Cache {fresh = refI} = readIORef refI
