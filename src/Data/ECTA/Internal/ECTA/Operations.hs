@@ -99,17 +99,14 @@ mapNodes f n = go n
   where
     -- | Memoized separately for each mapNodes invocation
     go :: Node -> Node
-    go = memo (NameTag "mapNodes") (go' f)
+    go = memo (NameTag "mapNodes") go'
     {-# NOINLINE go #-}
 
-    go' :: (Node -> Node) -> Node -> Node
-    go' f EmptyNode = EmptyNode
-    go' f (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
-    go' f (Mu n)    = f $ (createMu $ const (go n))
-    go' f (Rec i)   = case f (Rec i) of
-                        Rec _ -> Rec TmpRecNodeId
-                        x     -> x
-
+    go' :: Node -> Node
+    go' EmptyNode = EmptyNode
+    go' (Node es) = f $ (Node $ map (\e -> setChildren e $ (map go (edgeChildren e))) es)
+    go' (Mu n)    = f $ Mu (go . n)
+    go' (Rec i)   = f $ Rec i
 
 -- This name originates from the "crush" operator in the Stratego language. C.f.: the "crushtdT"
 -- combinators in the KURE and compstrat libraries.
@@ -119,10 +116,10 @@ crush :: forall m. (Monoid m) => (Node -> m) -> Node -> m
 crush f n = evalState (go n) Set.empty
   where
     go :: (Monoid m) => Node -> State (Set Id) m
-    go EmptyNode   = return mempty
-    go (Rec _)     = return mempty
-    go n@(Mu x)    = mappend (f n) <$> go x
-    go n@(Node es) = do
+    go EmptyNode             = return mempty
+    go (Rec _)               = return mempty
+    go n@(InternedMu mu)     = mappend (f n) <$> go (internedMuBody mu)
+    go n@(InternedNode _ es) = do
       seen <- get
       let nId = nodeIdentity n
       if Set.member nId seen then
@@ -140,20 +137,8 @@ onNormalNodes _ _          = mempty
 -----------------------
 
 unfoldOuterRec :: Node -> Node
-unfoldOuterRec = memo (NameTag "unfoldOuterRec") go
-  where
-    go :: Node -> Node
-    go n@(Mu x) = mapNodes (unrollRec (nodeIdentity n) n) x
-    go _        = error "unfoldOuterRec: Must be called on a Mu node"
-
-    unrollRec :: Id -> Node -> Node -> Node
-    unrollRec muNodeId muNode n@(Mu _)            = n
-    unrollRec muNodeId muNode (Rec (RecNodeId i))
-      | i == muNodeId                             = muNode
-    unrollRec muNodeId muNode n@(Rec _)             = error $ "unfoldOuterRec: Unexpected Rec node " <> show n
-                                                              <> " while unrolling " <> show muNode
-    unrollRec _        _      x                   = x
-
+unfoldOuterRec n@(Mu x) = x n
+unfoldOuterRec _        = error "unfoldOuterRec: Must be called on a Mu node"
 
 nodeEdges :: Node -> [Edge]
 nodeEdges (Node es) = es
