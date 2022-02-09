@@ -133,18 +133,18 @@ intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarUnenumerated mn2 scs2) =
 
 intersectUVarValue UVarEliminated            _                         = error "intersectUVarValue: Unexpected UVarEliminated"
 intersectUVarValue _                         UVarEliminated            = error "intersectUVarValue: Unexpected UVarEliminated"
-intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarEnumerated n2 t) =
-  let newContents = Just $ case mn1 of
-                      Nothing -> n2
-                      Just n1 -> intersect n1 n2
-      newConstraints = termFragToSuspendedConstraint t <> scs1
-  in UVarUnenumerated newContents newConstraints
-intersectUVarValue v1@(UVarEnumerated _ _) v2@(UVarUnenumerated _ _) = intersectUVarValue v2 v1
-intersectUVarValue (UVarEnumerated n1 t1) (UVarEnumerated n2 t2) = 
-    let newContents = Just (intersect n1 n2)
-        newConstraints = termFragToSuspendedConstraint t1 <> termFragToSuspendedConstraint t2
-    in UVarUnenumerated newContents newConstraints
--- intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
+-- intersectUVarValue (UVarUnenumerated mn1 scs1) (UVarEnumerated n2 t) =
+--   let newContents = Just $ case mn1 of
+--                       Nothing -> n2
+--                       Just n1 -> intersect n1 n2
+--       newConstraints = termFragToSuspendedConstraint t <> scs1
+--   in UVarUnenumerated newContents newConstraints
+-- intersectUVarValue v1@(UVarEnumerated _ _) v2@(UVarUnenumerated _ _) = intersectUVarValue v2 v1
+-- intersectUVarValue (UVarEnumerated n1 t1) (UVarEnumerated n2 t2) = 
+--     let newContents = Just (intersect n1 n2)
+--         newConstraints = termFragToSuspendedConstraint t1 <> termFragToSuspendedConstraint t2
+--     in UVarUnenumerated newContents newConstraints
+intersectUVarValue _                         _                         = error "intersectUVarValue: Intersecting with enumerated value not implemented"
 
 
 -----------------------

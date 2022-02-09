@@ -13,7 +13,6 @@ import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
 import Data.ECTA.Term
 import Data.Persistent.UnionFind
-
 import Application.TermSearch.Evaluation
 
 import Language.Dot.Pretty

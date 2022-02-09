@@ -478,9 +478,7 @@ reduceEqConstraints = go
         _atPaths ns ps = map (\p -> getPath p ns) ps
 
         reduceEClass :: PathEClass -> [Node] -> [Node]
-        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (\n -> let intersected = intersect nsRestIntersected n
-                                                                                        --  in if occursCheck ns' intersected ps then trace ("occurs check found a cycle at " ++ show p) EmptyNode else trace ("reduction gets " ++ show intersected ++ " at " ++ show p)intersected) p ns')
-                                                                                         in intersected) p ns')
+        reduceEClass pec ns = foldr (\(p, nsRestIntersected) ns' -> modifyAtPath (intersect nsRestIntersected) p ns')
                                     ns
                                     (zip ps (toIntersect ns ps))
           where
