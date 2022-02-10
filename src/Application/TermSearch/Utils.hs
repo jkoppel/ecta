@@ -36,6 +36,12 @@ theArrowNode = Node [Edge "(->)" []]
 arrowType :: Node -> Node -> Node
 arrowType n1 n2 = Node [Edge "->" [theArrowNode, n1, n2]]
 
+appType :: Node -> Node -> Node
+appType n1 n2 = Node [Edge "TyApp" [n1, n2]]
+
+mkDatatype :: Text -> [Node] -> Node
+mkDatatype s ns = Node [Edge (Symbol s) ns]
+
 constFunc :: Symbol -> Node -> Edge
 constFunc s t = Edge s [t]
 
