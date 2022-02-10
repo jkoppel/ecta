@@ -2,7 +2,8 @@
 
 module Application.TermSearch.Benchmark where
 
-import           Application.TermSearch.Type
+import Application.TermSearch.Type
+    ( Benchmark(..), ExportType(ExportVar, ExportFun, ExportCons) )
 import           Data.Text                      ( Text )
 
 hoogleplusBenchmarks :: [Benchmark]
@@ -28,8 +29,8 @@ hoogleplusBenchmarks =
     "both"
     7
     "app(app(Pair, app(f, app(Data.Tuple.fst, p))), app(f, app(Data.Tuple.snd, p)))"
-    ( [ ("p", ExportCons "Pair" [ExportVar "a", ExportVar "a"])
-      , ("f", ExportFun (ExportVar "a") (ExportVar "b"))
+    ( [ ("f", ExportFun (ExportVar "a") (ExportVar "b"))
+      , ("p", ExportCons "Pair" [ExportVar "a", ExportVar "a"])
       ]
     , ExportCons "Pair" [ExportVar "b", ExportVar "b"]
     )
