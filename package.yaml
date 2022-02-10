@@ -32,6 +32,7 @@ dependencies:
 - time
 - bytestring
 - aeson
+- cmdargs
 default-extensions:
   - BangPatterns
   - ConstraintKinds

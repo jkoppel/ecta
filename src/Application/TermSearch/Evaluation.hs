@@ -24,16 +24,16 @@ import           Application.TermSearch.TermSearch
 import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
-runBenchmark :: Benchmark -> IO ()
-runBenchmark (Benchmark name depth solStr (args, res)) = do
+runBenchmark :: Mode -> Benchmark -> IO ()
+runBenchmark mode (Benchmark name depth solStr (args, res)) = do
     start <- getCurrentTime
     putStrLn $ "Running benchmark " ++ Text.unpack name
-    let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
-    let resNode  = exportTypeToFta res
+    let argNodes = map (Bi.bimap Symbol (exportTypeToFta mode)) args
+    let resNode  = exportTypeToFta mode res
     let anyArg   = Node (map (uncurry constArg) argNodes)
     let
         !filterNode = filterType
-            (relevantTermsUptoK anyArg argNodes depth)
+            (relevantTermsUptoK mode anyArg argNodes depth)
             resNode
     nodeCons <- getCurrentTime
 
@@ -49,4 +49,4 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
     hFlush stdout
 
 runEval :: IO ()
-runEval = mapM_ runBenchmark hoogleplusBenchmarks
+runEval = mapM_ (runBenchmark Normal) hoogleplusBenchmarks

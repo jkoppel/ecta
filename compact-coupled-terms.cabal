@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8f8e1a7d767c67f615b09cd2e333bfa60caae1ed430fd54378c78fbe4c215087
+-- hash: b49d747de7572d3dab093c5a4a926b488fa763d631ac8c24e7d512b7d0baae9d
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -95,6 +95,7 @@ library
     , array
     , base
     , bytestring
+    , cmdargs
     , containers
     , equivalence
     , extra
@@ -156,6 +157,7 @@ executable compact-coupled-terms-exe
       aeson
     , base
     , bytestring
+    , cmdargs
     , compact-coupled-terms
     , containers
     , hashable
@@ -218,6 +220,7 @@ test-suite unit-tests
     , aeson
     , base
     , bytestring
+    , cmdargs
     , compact-coupled-terms
     , containers
     , equivalence
@@ -277,6 +280,7 @@ benchmark mainbench
       aeson
     , base
     , bytestring
+    , cmdargs
     , compact-coupled-terms
     , containers
     , criterion

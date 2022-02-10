@@ -68,7 +68,7 @@ hktv_benchmarks = {
 }
 
 container_benchmarks = {
-    
+
 }
 
 class BenchmarkResult:
@@ -89,8 +89,8 @@ def to_time(str):
 
 def run_benchmark(name, bench):
     p = Popen(RUN_CMD + [bench], stdin=PIPE, stdout=PIPE)
-    output, _ = p.communicate()
-    
+    output, err = p.communicate()
+
     # parse outputs
     output_lines = output.decode('utf-8').strip('\n ').split('\n')
     if len(output_lines) > 2:
@@ -106,7 +106,7 @@ def run_benchmark(name, bench):
 
 def build_argparser():
     argparser = argparse.ArgumentParser(description='Run benchmarks')
-    argparser.add_argument('--suites', choice=['hplus', 'hktv', 'containers', 'all'], default='all', help='which suites to run')
+    argparser.add_argument('--suites', choices=['hplus', 'hktv', 'containers', 'all'], default='all', help='which suites to run')
     return argparser
 
 if __name__ == "__main__":
