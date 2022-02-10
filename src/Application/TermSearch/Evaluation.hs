@@ -49,4 +49,4 @@ runBenchmark (Benchmark name depth solStr (args, res)) = do
     hFlush stdout
 
 runEval :: IO ()
-runEval = runBenchmark (hoogleplusBenchmarks !! 2) -- mapM_ runBenchmark hoogleplusBenchmarks
+runEval = mapM_ runBenchmark hoogleplusBenchmarks

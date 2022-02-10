@@ -52,19 +52,3 @@ main :: IO ()
 main = do
     args <- getArgs
     runBenchmark (read $ head args)
-
-    -- runEval
-
-    -- test replicator issue
-    -- putStrLn $ renderDot . toDot $ counterExample
-    -- putStrLn $ renderDot . toDot $ reduceFully counterExample
-
-    -- test reduction
-    -- withFile "reduceError.pkl" ReadMode $ \hdl -> do
-    --     contents <- BS.hGetContents hdl
-    --     let mbNode = Aeson.decode contents :: Maybe Node
-    --     case mbNode of
-    --         Nothing -> error "cannot decode node"
-    --         Just n -> putStrLn (renderDot $ toDot n) >> print (nodeCount n) >> (reduceFullyAndLog n) -- checkReductionTime n >>= print
-    
-    return ()
