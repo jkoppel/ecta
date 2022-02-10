@@ -2,5 +2,5 @@
 .stack-work/
 *~
 
-.pkl
-.csv
+*.pkl
+*.csv
