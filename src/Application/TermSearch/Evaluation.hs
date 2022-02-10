@@ -23,16 +23,16 @@ import           Application.TermSearch.TermSearch
 import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
-runBenchmark :: Benchmark -> IO ()
-runBenchmark (Benchmark name depth sol (args, res)) = do
+runBenchmark :: Mode -> Benchmark -> IO ()
+runBenchmark mode (Benchmark name depth sol (args, res)) = do
     start <- getCurrentTime
     putStrLn $ "Running benchmark " ++ Text.unpack name
-    let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
-    let resNode  = exportTypeToFta res
+    let argNodes = map (Bi.bimap Symbol (exportTypeToFta mode)) args
+    let resNode  = exportTypeToFta mode res
     let anyArg   = Node (map (uncurry constArg) argNodes)
     let
         !filterNode = filterType
-            (union $ concatMap (relevantTermK anyArg True depth) (permutations argNodes))
+            (relevantTermsUptoK mode anyArg argNodes depth)
             resNode
 
     _ <- timeout (300 * 10 ^ (6 :: Int)) $ do
