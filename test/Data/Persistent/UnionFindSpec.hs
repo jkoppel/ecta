@@ -5,7 +5,6 @@ import Control.Monad.Writer ( WriterT(..), MonadWriter(..) )
 import Data.Equivalence.Monad ( EquivM, runEquivM, equate, equivalent )
 
 import Test.Hspec
-import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
 import Data.Persistent.UnionFind
@@ -24,7 +23,7 @@ type EquivTestM s = WriterT [Bool] (EquivM s [UVar] UVar)
 newtype ForAllEquivM c v a = ForAllEquivM { unForAllEquivM :: forall s. EquivM s c v a }
 
 runEquivTestM :: (forall s. EquivTestM s a) -> (a, [Bool])
-runEquivTestM m = runEquivM (:[]) (++) (unForAllEquivM $ runWriterT' m)
+runEquivTestM = \m -> runEquivM (:[]) (++) (unForAllEquivM $ runWriterT' m)
   where
     runWriterT' :: (forall s. EquivTestM s a) -> ForAllEquivM [UVar] UVar (a, [Bool])
     runWriterT' m = ForAllEquivM $ runWriterT m

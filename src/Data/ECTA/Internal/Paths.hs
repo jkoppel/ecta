@@ -43,17 +43,16 @@ module Data.ECTA.Internal.Paths (
   , unsafeSubsumptionOrderedEclasses
   ) where
 
-import Control.Monad ( (=<<) )
-import qualified Data.Array as Array
+import Prelude hiding ( round )
+
 import Data.Function ( on )
-import Data.List ( intersperse, isSubsequenceOf, nub, sort, sortBy )
-import Data.Monoid ( Any(..), Endo(..) )
+import Data.List ( isSubsequenceOf, nub, sort, sortBy )
+import Data.Monoid ( Any(..) )
 import Data.Hashable ( Hashable )
 import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
-import qualified Data.Vector.Mutable as Vector ( unsafeWrite )
 import Data.Vector.Instances ()
 
 import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
@@ -64,7 +63,6 @@ import GHC.Generics ( Generic )
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Text.Extended.Pretty
 import Utility.Fixpoint
-import Utility.HashJoin
 
 -------------------------------------------------------
 
@@ -242,7 +240,7 @@ instance Ord PathTrie where
                                                                                 LT -> LT
                                                                                 GT -> GT
                                                                                 EQ -> LT -- v2 must have a second nonempty
-  compare a@(PathTrie _)               b@(PathTrieSingleChild _ _)  = flipOrdering $ inline compare b a -- | TODO: Check whether this inlining is effective
+  compare a@(PathTrie _)               b@(PathTrieSingleChild _ _)  = flipOrdering $ inline compare b a -- TODO: Check whether this inlining is effective
   compare (PathTrie v1)                (PathTrie v2)                = comparePathTrieVectors v1 v2
 
 
@@ -260,9 +258,8 @@ toPathTrie ps          = if all (\p -> pathHeadUnsafe p == pathHeadUnsafe (head 
     -- TODO: Inefficient to use this; many passes. over the list.
     -- This may not be used in a place where perf matters, though
     pathsStartingWith :: Int -> [Path] -> [Path]
-    pathsStartingWith i ps = concatMap (\case EmptyPath    -> []
-                                              ConsPath j p -> if i == j then [p] else [])
-                                    ps
+    pathsStartingWith i = concatMap (\case EmptyPath    -> []
+                                           ConsPath j p -> if i == j then [p] else [])
 
     vec = Vector.generate (maxIndex + 1) (\i -> toPathTrie $ pathsStartingWith i ps)
 
@@ -273,15 +270,15 @@ fromPathTrie (PathTrieSingleChild i pt) = map (ConsPath i) $ fromPathTrie pt
 fromPathTrie (PathTrie v)               = Vector.ifoldr (\i pt acc -> map (ConsPath i) (fromPathTrie pt) ++ acc) [] v
 
 pathTrieDescend :: PathTrie -> Int -> PathTrie
-pathTrieDescend EmptyPathTrie                  i = EmptyPathTrie
-pathTrieDescend TerminalPathTrie               i = EmptyPathTrie
-pathTrieDescend pt@(PathTrie v)                i = if Vector.length v > i then
-                                                     v `Vector.unsafeIndex` i
-                                                   else
-                                                     EmptyPathTrie
-pathTrieDescend pt@(PathTrieSingleChild j pt') i
-                | i == j                         = pt'
-                | otherwise                      = EmptyPathTrie
+pathTrieDescend EmptyPathTrie               _ = EmptyPathTrie
+pathTrieDescend TerminalPathTrie            _ = EmptyPathTrie
+pathTrieDescend (PathTrie v)                i = if Vector.length v > i then
+                                                  v `Vector.unsafeIndex` i
+                                                else
+                                                  EmptyPathTrie
+pathTrieDescend (PathTrieSingleChild j pt') i
+                | i == j                      = pt'
+                | otherwise                   = EmptyPathTrie
 
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------
@@ -346,7 +343,7 @@ completedSubsumptionOrdering :: PathEClass -> PathEClass -> Ordering
 completedSubsumptionOrdering pec1 pec2
                        | hasSubsumingMember pec1 pec2 = LT
                        | hasSubsumingMember pec2 pec1 = GT
-                       -- | This next line is some hacky magic. Basically, it means that for the
+                       --   This next line is some hacky magic. Basically, it means that for the
                        --   Hoogle+/TermSearch workload, where there is no subsumption,
                        --   constraints will be evaluated in left-to-right order (instead of the default
                        --   right-to-left), which for that particular workload produces better
@@ -357,7 +354,7 @@ completedSubsumptionOrdering pec1 pec2
 ---------- Equality constraints
 --------------------------------
 
-data EqConstraints = EqConstraints { getEclasses :: [PathEClass] -- | Must be sorted
+data EqConstraints = EqConstraints { getEclasses :: [PathEClass] -- ^ Must be sorted
                                    }
                    | EqContradiction
   deriving ( Eq, Ord, Show, Generic )
@@ -461,3 +458,4 @@ subsumptionOrderedEclasses ecs = case ecs of
 
 unsafeSubsumptionOrderedEclasses :: EqConstraints -> [PathEClass]
 unsafeSubsumptionOrderedEclasses (EqConstraints pecs) = sortBy completedSubsumptionOrdering pecs
+unsafeSubsumptionOrderedEclasses  EqContradiction     = error $ "unsafeSubsumptionOrderedEclasses: unexpected EqContradiction"

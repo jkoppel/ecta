@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: adf18992e63d0e3261c59349b7e1c80c1fb883dbddce96451e5b9795fa83c1bd
+-- hash: 224cd222d4acb608129f70c898cc7fecf57c91323e87fb28ae60ccc03eaf1173
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -200,7 +200,7 @@ test-suite unit-tests
       TypeFamilies
       TypeOperators
       ViewPatterns
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-orphans
   build-depends:
       QuickCheck
     , base

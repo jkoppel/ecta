@@ -8,7 +8,6 @@ import           Data.Map ( Map )
 import qualified Data.Map as Map
 
 import Data.Text ( Text )
-import qualified Data.Text as Text
 import Text.RawString.QQ
 
 import Data.ECTA
@@ -86,6 +85,7 @@ generalize n@(Node [_]) = Node [mkEdge s ns' (mkEqConstraints $ map pathsForVar 
 
     pathsForVar :: Node -> [Path]
     pathsForVar v = pathsMatching (==v) n
+generalize _ = error "generalize: expected Node"
 
 f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
 f1 = constFunc "Nothing" (maybeType tau)
@@ -95,7 +95,7 @@ f4 = constFunc "listToMaybe" (generalize $ arrowType (listType var1) (maybeType 
 f5 = constFunc "maybeToList" (generalize $ arrowType (maybeType var1) (listType var1))
 f6 = constFunc "catMaybes" (generalize $ arrowType (listType (maybeType var1)) (listType var1))
 f7 = constFunc "mapMaybe" (generalize $ arrowType (arrowType var1 (maybeType var2)) (arrowType (listType var1) (listType var2)))
-f8 = constFunc "id" (generalize $ arrowType var1 var1) -- | TODO: Getting an exceeded maxIters when add this; must investigate
+f8 = constFunc "id" (generalize $ arrowType var1 var1) -- TODO: Getting an exceeded maxIters when add this; must investigate
 f9 = constFunc "replicate" (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
 f10 = constFunc "foldr" (generalize $ arrowType (arrowType var1 (arrowType var2 var2)) (arrowType var2 (arrowType (listType var1) var2)))
 
@@ -103,7 +103,7 @@ applyOperator :: Node
 applyOperator = Node [constFunc "$" (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))]
 
 
-arg1, arg2 :: Edge
+arg1, arg2, arg3, arg4, arg5 :: Edge
 arg1 = constFunc "def" baseType
 arg2 = constFunc "mbs" (listType (maybeType baseType))
 arg3 = constFunc "g" (arrowType baseType baseType)
@@ -165,7 +165,8 @@ filterType n t = Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" [_, _, a, b]) = Term "app" [prettyTerm a, prettyTerm b]
 prettyTerm (Term "filter" [_, a])    = prettyTerm a
-prettyTerm (Term s [_]) = Term s []
+prettyTerm (Term s [_])              = Term s []
+prettyTerm term                      = error $ "prettyTerm: unexpected term " <> show term
 
 dropTypes :: Node -> Node
 dropTypes (Node es) = Node (map dropEdgeTypes es)
@@ -173,7 +174,8 @@ dropTypes (Node es) = Node (map dropEdgeTypes es)
     dropEdgeTypes (Edge "app"    [_, _, a, b]) = Edge "app" [dropTypes a, dropTypes b]
     dropEdgeTypes (Edge "filter" [_, a]      ) = Edge "filter" [dropTypes a]
     dropEdgeTypes (Edge s        [_]         ) = Edge s []
-
+    dropEdgeTypes edge                         = error $ "dropTypes.dropEdgeTypes: unexpected edge " <> show edge
+dropTypes _ = error "dropTypes: expected Node"
 
 ---------------------------------------------------------------------------------------
 -------------------------- Importing components from Hoogle+ --------------------------
@@ -187,18 +189,19 @@ data ExportType = ExportVar Text
   deriving ( Eq, Ord, Show, Read )
 
 exportTypeToFta :: ExportType -> Node
-exportTypeToFta (ExportVar "a")   = var1
-exportTypeToFta (ExportVar "b")   = var2
-exportTypeToFta (ExportVar "c")   = var3
-exportTypeToFta (ExportVar "d")   = var4
-exportTypeToFta (ExportVar "acc") = varAcc
-exportTypeToFta (ExportVar v)     = error $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got " ++ show v
-exportTypeToFta (ExportFun t1 t2) = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons s [])  = typeConst s
-exportTypeToFta (ExportCons "Fun" [t1, t2])  = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons s [t]) = constrType1 s (exportTypeToFta t)
-exportTypeToFta (ExportCons s [t1, t2]) = constrType2 s (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportForall _ t) = exportTypeToFta t
+exportTypeToFta (ExportVar "a")             = var1
+exportTypeToFta (ExportVar "b")             = var2
+exportTypeToFta (ExportVar "c")             = var3
+exportTypeToFta (ExportVar "d")             = var4
+exportTypeToFta (ExportVar "acc")           = varAcc
+exportTypeToFta (ExportVar v)               = error $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got " <> show v
+exportTypeToFta (ExportFun t1 t2)           = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
+exportTypeToFta (ExportCons s [])           = typeConst s
+exportTypeToFta (ExportCons "Fun" [t1, t2]) = arrowType (exportTypeToFta t1) (exportTypeToFta t2)
+exportTypeToFta (ExportCons s [t])          = constrType1 s (exportTypeToFta t)
+exportTypeToFta (ExportCons s [t1, t2])     = constrType2 s (exportTypeToFta t1) (exportTypeToFta t2)
+exportTypeToFta (ExportForall _ t)          = exportTypeToFta t
+exportTypeToFta typ                         = error $ "exportTypeToFta: unexpected type " <> show typ
 
 allConstructors :: [(Text, Int)]
 allConstructors = (nub $ concat $ map getConstructors (Map.elems hoogleComponents)) \\ [("Fun", 2)]

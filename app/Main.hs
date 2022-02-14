@@ -13,8 +13,6 @@ import Text.Pretty.Simple
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
 import Data.ECTA.Term
-import Data.Interned.Extended.HashTableBased as Interned
-import Data.Memoization as Memoization
 import Data.Persistent.UnionFind
 import Data.Text.Extended.Pretty
 import TermSearch
@@ -46,8 +44,8 @@ printCacheStatsForReduction n = do
 getTermsNoOccursCheck :: Node -> [Term]
 getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
                           flip runEnumerateM (initEnumerationState n) $ do
-                            enumerateOutUVar   (intToUVar 0)
-                            getTermFragForUVar (intToUVar 0)
+                            _ <- enumerateOutUVar (intToUVar 0)
+                            getTermFragForUVar    (intToUVar 0)
 
 prettyPrintAllTerms :: Node -> IO ()
 prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
