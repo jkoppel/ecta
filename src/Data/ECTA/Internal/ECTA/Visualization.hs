@@ -34,9 +34,12 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
     maxNodeIndegree = maxIndegree root
 
     fglNodeId :: Node -> Fgl.Node
-    fglNodeId (Rec (RecNodeId i)) = i              * (maxNodeIndegree + 1)
-    fglNodeId (Mu n)              = nodeIdentity n * (maxNodeIndegree + 1)
-    fglNodeId n                   = nodeIdentity n * (maxNodeIndegree + 1)
+    fglNodeId (InternedNode i _)  = i * (maxNodeIndegree + 1)
+    fglNodeId (InternedMu mu)     = i * (maxNodeIndegree + 1)
+      where
+        i = internedMuId mu
+    fglNodeId (Rec (RecNodeId i)) = i * (maxNodeIndegree + 1)
+    fglNodeId EmptyNode           = error "fglNodeId: unexpected input"
 
     fglTransitionId :: Node -> Int -> Fgl.Node
     fglTransitionId n i = nodeIdentity n * (maxNodeIndegree + 1) + (i + 1)
@@ -58,8 +61,8 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
     muNodeLabel :: Maybe Fgl.Node
     muNodeLabel = getFirst $ crush (onNormalNodes $ \(Node es) -> foldMap (\(Edge _ ns) -> foldMap muNodeToLabel ns) es) root
       where
-        muNodeToLabel (Mu n) = First $ Just $ fglNodeId n
-        muNodeToLabel _      = First Nothing
+        muNodeToLabel n@(Mu _) = First $ Just $ fglNodeId n
+        muNodeToLabel _        = First Nothing
 
     nodeToTransitionEdges, transitionToNodeEdges :: [Fgl.LEdge ()]
     nodeToTransitionEdges = crush (onNormalNodes $ \n@(Node es) -> imap (\i _ -> (fglNodeId n, fglTransitionId n i, ())) es) root
@@ -72,7 +75,6 @@ toFgl root = Fgl.mkGraph (nodeNodes ++ transitionNodes) (nodeToTransitionEdges +
       where
         edgeTo :: Node -> Int -> Node -> Fgl.LEdge ()
         edgeTo n i n' = (fglTransitionId n i, fglNodeId n', ())
-
 
 fglToDot :: Fgl.Gr FglNodeLabel () -> Dot.Graph
 fglToDot g = Dot.Graph Dot.StrictGraph Dot.DirectedGraph Nothing (nodeStmts ++ edgeStmts)
