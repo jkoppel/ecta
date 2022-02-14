@@ -45,7 +45,6 @@ import Control.Monad ( mzero, forM_, guard, void )
 import Control.Monad.State.Strict ( StateT(..) )
 import Control.Monad.Trans ( lift )
 import qualified Data.IntMap as IntMap
-import Data.Hashable ( hash )
 import Data.Maybe ( fromMaybe, isJust )
 import Data.Monoid ( Any(..) )
 import Data.Semigroup ( Max(..) )
@@ -209,7 +208,7 @@ pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
 ---------------------
 
 assimilateUvarVal :: UVar -> SuspendedConstraint -> EnumerateM ()
-assimilateUvarVal uvTarg (SuspendedConstraint pt uvSrc)
+assimilateUvarVal uvTarg (SuspendedConstraint _pt uvSrc)
                                 | uvTarg == uvSrc      = return ()
                                 | otherwise            = do
   values <- use uvarValues
@@ -271,6 +270,7 @@ enumerateNode scs n         =
                            Mu _    -> TermFragmentUVar <$> addUVarValue (Just n)
 
                            Node es -> enumerateEdge scs =<< lift es
+                           _       -> error $ "enumerateNode: unexpected node " <> show n
 
        (x :<| xs)     -> do forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
                             uv <- getUVarRepresentative (scGetUVar x)
@@ -329,8 +329,8 @@ enumerateOutUVar uv = do UVarUnenumerated (Just n) scs <- getUVarValue uv
                          uv' <- getUVarRepresentative uv
 
                          t <- case n of
-                                n@(Mu _) -> enumerateNode scs (unfoldOuterRec n)
-                                _        -> enumerateNode scs n
+                                Mu _ -> enumerateNode scs (unfoldOuterRec n)
+                                _    -> enumerateNode scs n
 
 
                          uvarValues.(ix $ uvarToInt uv') .= UVarEnumerated t
@@ -426,7 +426,7 @@ getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
 --
 -- where it always unfolds the /second/ argument to @h@, never the first.
 naiveDenotation :: Node -> [Term]
-naiveDenotation n = go n
+naiveDenotation = go
   where
     -- | Note that this code uses the decision that f(a,a) does not satisfy the constraint 0.0=1.0 because those paths are empty.
     --   It would be equally valid to say that it does.

@@ -2,7 +2,6 @@
 
 module SATSpec ( spec ) where
 
-import Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as HashSet
 import Test.Hspec

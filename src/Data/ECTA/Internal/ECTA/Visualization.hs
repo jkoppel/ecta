@@ -7,11 +7,11 @@ module Data.ECTA.Internal.ECTA.Visualization (
 import qualified Data.Text as Text
 
 import qualified Data.Graph.Inductive as Fgl
-import Data.List.Index ( imap, imapM )
+import Data.List.Index ( imap )
 import qualified Language.Dot.Syntax as Dot
 
 
-import Data.ECTA.Internal.ECTA.Operations
+import Data.ECTA.Internal.ECTA.Operations ( maxIndegree, crush )
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths ( EqConstraints )
 import Data.ECTA.Internal.Term

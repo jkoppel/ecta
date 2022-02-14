@@ -102,6 +102,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     - -Wall
+    - -Wno-orphans
     dependencies:
       - compact-coupled-terms
       - equivalence

@@ -19,6 +19,8 @@ module SAT (
 
   -- * Examples
   , ex1
+  , ex2
+  , ex3
   ) where
 
 import Data.Hashable ( Hashable )
@@ -59,11 +61,11 @@ instance IsString Var where
 mkVar :: Text -> Var
 mkVar = Var
 
-varToSymbol :: Var -> Symbol
-varToSymbol = Symbol . unVar
+_varToSymbol :: Var -> Symbol
+_varToSymbol = Symbol . unVar
 
-varToNegSymbol :: Var -> Symbol
-varToNegSymbol v = Symbol ("~" <> unVar v)
+_varToNegSymbol :: Var -> Symbol
+_varToNegSymbol v = Symbol ("~" <> unVar v)
 
 
 -------------------------------------------------------------------
@@ -108,8 +110,8 @@ data CNFAlg a  = CNFAlg { runCNF    :: CNF    -> [a] -> a
                         , runLit    :: Lit           -> a
                         }
 
-emptyAlg :: (Monoid m) => CNFAlg m
-emptyAlg = CNFAlg (const mempty) (const mempty) (const mempty)
+_emptyAlg :: (Monoid m) => CNFAlg m
+_emptyAlg = CNFAlg (const mempty) (const mempty) (const mempty)
 
 
 class FoldAlg a where
@@ -148,8 +150,8 @@ getLitPathsAlg = CNFAlg { runCNF    = \_ lps -> mconcat $ imap (\i lp -> LitPath
                         , runLit    = \lit -> LitPaths $ HashMap.singleton lit [EmptyPath]
                          }
 
-getLitPaths :: CNF -> LitPaths
-getLitPaths = foldAlg getLitPathsAlg
+_getLitPaths :: CNF -> LitPaths
+_getLitPaths = foldAlg getLitPathsAlg
 
 -------------------------------------------------------------------
 ------------------------- ECTA conversion -------------------------
@@ -173,8 +175,8 @@ falseTerm = head $ naiveDenotation falseNode
 trueTerm :: Term
 trueTerm = head $ naiveDenotation trueNode
 
-trueOrFalseNode :: Node
-trueOrFalseNode = Node [Edge "0" [], Edge "1" []]
+_trueOrFalseNode :: Node
+_trueOrFalseNode = Node [Edge "0" [], Edge "1" []]
 
 posVarNode :: Node
 posVarNode = Node [Edge "" [falseNode, aNode], Edge "" [trueNode, bNode]]
@@ -261,7 +263,7 @@ allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTe
     evens :: [a] -> [a]
     evens []       = []
     evens [x]      = [x]
-    evens (x:y:l) = x : evens l
+    evens (x:_:l) = x : evens l
 
     termToAssignment :: Term -> HashMap Var Bool
     termToAssignment (Term _ [Term _ litVals, _]) = foldMap (\(var, Term "" [val, _]) -> HashMap.singleton var (termToBool val))
