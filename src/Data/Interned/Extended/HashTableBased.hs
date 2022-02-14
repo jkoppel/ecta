@@ -3,7 +3,7 @@
 module Data.Interned.Extended.HashTableBased
   ( Id
   , Cache(..)
-  , mkCache
+  , freshCache
   , cacheSize
   , resetCache
 
@@ -18,7 +18,7 @@ module Data.Interned.Extended.HashTableBased
 import Data.Hashable
 import qualified Data.HashTable.IO as HT
 import Data.IORef
-import GHC.IO (unsafeDupablePerformIO, unsafePerformIO)
+import GHC.IO ( unsafeDupablePerformIO )
 
 import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
@@ -48,9 +48,6 @@ freshCache = Cache <$> newIORef 0
                    <*> newIORef 0
                    <*> newIORef 0
 #endif
-
-mkCache :: Interned t => Cache t
-mkCache = unsafePerformIO freshCache
 
 cacheSize :: Cache t -> IO Int
 cacheSize Cache {fresh = refI} = readIORef refI
@@ -108,12 +105,7 @@ intern !bt = unsafeDupablePerformIO $ do
     v <- HT.lookup ht dt
     case v of
       Nothing -> do bumpMissCount c
-                    i <- readIORef refI
-                    writeIORef refI (i+1)
-                    -- TODO: (2/7/2022)
-                    --       WARNING: We are kind of at the mercy of the compiler/laziness
-                    --                to enforce that the preceding write is seen by any recursive calls
-                    --                to intern within identify (as needed for Mu nodes)
+                    i <- atomicModifyIORef' refI (\i -> (i + 1, i))
                     let t = identify i bt
                     HT.insert ht dt t
                     return t

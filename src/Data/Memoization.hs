@@ -27,7 +27,7 @@ import Data.Text ( Text )
 import qualified Data.Text    as Text
 import qualified Data.Text.IO as Text
 import GHC.Generics ( Generic )
-import System.IO.Unsafe (unsafePerformIO)
+import System.IO.Unsafe ( unsafePerformIO )
 
 import Data.HashTable.Extended
 import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )

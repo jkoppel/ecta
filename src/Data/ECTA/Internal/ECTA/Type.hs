@@ -26,6 +26,8 @@ import Data.List ( sort )
 
 import GHC.Generics ( Generic )
 
+import System.IO.Unsafe ( unsafePerformIO )
+
 import Data.List.Extra ( nubSort )
 
 -- | Switch the comments on these lines to switch to ekmett's original `intern` library
@@ -178,9 +180,6 @@ instance Interned Node where
 
   identify i (UninternedNode es) = InternedNode i es
   identify _ UninternedEmptyNode = EmptyNode
-  -- TODO (2/7/2022):
-  --  WARNING: This next case contains a recursive call to intern. We do not currently have a stable guarantee
-  --           that interned ID's won't be reused.
   identify i (UninternedMu n)    = InternedMu i $ fillInTmpRecNodes i n
   identify _ UninternedRec       = Rec TmpRecNodeId
 
@@ -189,7 +188,7 @@ instance Interned Node where
 instance Hashable (Description Node)
 
 nodeCache :: Cache Node
-nodeCache = mkCache
+nodeCache = unsafePerformIO freshCache
 {-# NOINLINE nodeCache #-}
 
 -----------------------------------------------------------------
@@ -218,7 +217,7 @@ instance Interned Edge where
 instance Hashable (Description Edge)
 
 edgeCache :: Cache Edge
-edgeCache = mkCache
+edgeCache = unsafePerformIO freshCache
 {-# NOINLINE edgeCache #-}
 
 -----------------------------------------------------------------
