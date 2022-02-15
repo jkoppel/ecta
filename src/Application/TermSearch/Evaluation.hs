@@ -14,6 +14,7 @@ import           System.Timeout
 
 import qualified Data.Bifunctor                as Bi
 import qualified Data.Text                     as Text
+import Data.List (permutations)
 
 import           Data.ECTA
 import           Data.ECTA.Term
@@ -33,13 +34,13 @@ runBenchmark mode (Benchmark name depth solStr (args, res)) = do
     let anyArg   = Node (map (uncurry constArg) argNodes)
     let
         !filterNode = filterType
-            (relevantTermsUptoK mode anyArg argNodes depth)
+            (union $ concatMap (relevantTermK mode anyArg True depth) (permutations argNodes))
             resNode
     nodeCons <- getCurrentTime
 
-    timeout (300 * 10 ^ 6) $ do
-        -- reducedNode <- reduceFullyAndLog filterNode
-        let reducedNode = reduceFully filterNode
+    timeout (600 * 10 ^ 6) $ do
+        reducedNode <- reduceFullyAndLog filterNode
+        -- let reducedNode = reduceFully filterNode
         let foldedNode = refold reducedNode
         -- let foldedNode = reducedNode
         prettyPrintAllTerms solStr foldedNode
