@@ -41,7 +41,7 @@ tau Normal = createMu
 
 tau HKTV = createMu
   (\n -> union
-    (  [arrowType n n, var1, var2, var3, var4]
+    (  [appType n n, arrowType n n, var1, var2, var3, var4]
     ++ constructors
     ++ map (constructorToEdge n) usedConstructors
     )
@@ -75,7 +75,7 @@ generalize m n@(Node [_]) = Node
   vars                = [var1, var2, var3, var4, varAcc]
   nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then tau m else x) n
   (Node [Edge s ns']) = nWithVarsRemoved
-
+  
   pathsForVar :: Node -> [Path]
   pathsForVar v = pathsMatching (== v) n
 generalize _ n = error $ "cannot generalize: " ++ show n

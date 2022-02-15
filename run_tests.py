@@ -140,7 +140,7 @@ if __name__ == "__main__":
             syn_results = []
         
         generated = [x.name for x in syn_results]
-        for name, bench in hoogleplus_benchmarks.items():
+        for name, bench in stackoverflow_benchmarks.items():
             print("Running benchmark: " + name)
             if name in generated:
                 print("Skip")

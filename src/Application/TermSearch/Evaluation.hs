@@ -32,10 +32,10 @@ runBenchmark mode (Benchmark name depth sol (args, res)) = do
     let anyArg   = Node (map (uncurry constArg) argNodes)
     let
         !filterNode = filterType
-            (relevantTermsUptoK mode anyArg argNodes depth)
+            (union $ concatMap (relevantTermK mode anyArg True depth) (permutations argNodes))
             resNode
 
-    _ <- timeout (300 * 10 ^ (6 :: Int)) $ do
+    timeout (600 * 10 ^ 6) $ do
         reducedNode <- reduceFullyAndLog filterNode
         -- let reducedNode = reduceFully filterNode
         let foldedNode = refold reducedNode
