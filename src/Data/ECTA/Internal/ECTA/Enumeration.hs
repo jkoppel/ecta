@@ -392,7 +392,39 @@ getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
                   expandUVar (intToUVar 0)
 
 
--- | This works, albeit very inefficiently, for ECTAs without a Mu node
+-- | Inefficient enumeration
+--
+-- For ECTAs with 'Mu' nodes may produce an infinite list or may loop indefinitely, depending on the ECTAs. For example, for
+--
+-- > createMu $ \r -> Node [Edge "f" [r], Edge "a" []]
+--
+-- it will produce
+--
+-- > [ Term "a" []
+-- > , Term "f" [Term "a" []]
+-- > , Term "f" [Term "f" [Term "a" []]]
+-- > , ...
+-- > ]
+--
+-- This happens to work currently because non-recursive edges are interned before recursive edges.
+--
+-- TODO: It would be much nicer if this did fair enumeration. It would avoid the beforementioned dependency on interning
+-- order, and it would give better enumeration for examples such as
+--
+-- > Node [Edge "h" [
+-- >     createMu $ \r -> Node [Edge "f" [r], Edge "a" []]
+-- >   , createMu $ \r -> Node [Edge "g" [r], Edge "b" []]
+-- >   ]]
+--
+-- This will currently produce
+--
+-- > [ Term "h" [Term "a" [], Term "b" []]
+-- > , Term "h" [Term "a" [], Term "g" [Term "b" []]]
+-- > , Term "h" [Term "a" [], Term "g" [Term "g" [Term "b" []]]]
+-- > , ..
+-- > ]
+--
+-- where it always unfolds the /second/ argument to @h@, never the first.
 naiveDenotation :: Node -> [Term]
 naiveDenotation n = go n
   where
@@ -405,8 +437,9 @@ naiveDenotation n = go n
     go :: Node -> [Term]
     go n = case n of
              EmptyNode -> []
-             Mu _ -> [Term "Mu" []] -- | Does not really work
-             Node es -> do
+             Mu  _     -> go (unfoldOuterRec n)
+             Rec _     -> error "naiveDenotation: unexpected Rec"
+             Node es   -> do
                e <- es
 
                children <- sequence $ map go (edgeChildren e)
