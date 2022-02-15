@@ -67,8 +67,26 @@ hktv_benchmarks = {
     "monadicUpdate": 'Benchmark "monadicUpdate" 9 "" ( [ ("tcarg0", ExportCons "Monad" [ExportVar "c"])   , ("e" , ExportCons "c" [ExportVar "a"])   , ("upd"   , ExportFun (ExportVar "a") (ExportCons "c" [ExportVar "b"]))   , ("mb"    , ExportCons "Maybe" [ExportVar "a"])   ] , ExportCons "c" [ExportCons "Maybe" [ExportVar "b"]] )'
 }
 
-container_benchmarks = {
-
+stackoverflow_benchmarks = {
+    "extractEitherValues": 'Benchmark "extractEitherValues" 5 "app(app(GHC.List.map, app(app(Data.Either.either, Data.Function.id), Data.Function.id)), es)" ([("es",ExportCons "List" [ExportCons "Either" [ExportVar "b",ExportVar "b"]])],ExportCons "List" [ExportVar "b"])',
+    "filterMultiple": 'Benchmark "filterMultiple" 5 "app(app(GHC.List.filter, app(app(Data.Function.flip, GHC.List.elem), xs)), ys)" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"]),("ys",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"])',
+    "flipFilter": 'Benchmark "flipFilter" 5 "app(app(GHC.List.filter, app(app((Data.Function..), Data.Bool.not), p)), xs)" ([("p",ExportFun (ExportVar "a") (ExportCons "Bool" [])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"])',
+    "nextIsGreater": 'Benchmark "nextIsGreater" 8 "app(app(GHC.List.all, app((Data.Ord.<), tcarg0)), app(app(GHC.List.zip, app(GHC.List.init, xs)), app(GHC.List.tail, xs)))" ([("tcarg0",ExportCons "@@hplusTC@@Ord" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Bool" [])',
+    "multipleNth": 'Benchmark "multipleNth" 4 "app(app(GHC.List.map, app((GHC.List.!!), xs)), indices)" ([("xs",ExportCons "List" [ExportVar "a"]),("indices",ExportCons "List" [ExportCons "Int" []])],ExportCons "List" [ExportVar "a"])',
+    "elemFreq": 'Benchmark "elemFreq" 6 "app(zipWith, app(app(GHC.List.map, GHC.List.length), app(app(Data.List.group, tcarg0), app(Data.List.sort, xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportCons "Int" []])',
+    "doubleMap": 'Benchmark "doubleMap" 4 "app(app(map, app(map, f)), xss)" ([("f",ExportFun (ExportVar "a") (ExportVar "b")),("xss",ExportCons "List" [ExportCons "List" [ExportVar "a"]])],ExportCons "List" [ExportCons "List" [ExportVar "b"]])',
+    "sumTuples": 'Benchmark "sumTuples" 7 "app(app(GHC.List.sum, @@hplusTCInstance@@0NumInt), app(app(GHC.List.map, app(app((Data.Function..), GHC.List.length), Data.Tuple.snd)), ps))" ([("ps",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportCons "List" [ExportVar "b"]]])],ExportCons "Int" [])',
+    "lessThanNTimes": 'Benchmark "lessThanNTimes" 8 "app(GHC.List.null, app(app(GHC.List.drop, n), app(app(GHC.List.filter, app(app((Data.Eq.==), tcarg0), x)), xs)))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("n",ExportCons "Int" []),("x",ExportVar "a"),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Bool" [])',
+    "groupByFirst": 'Benchmark "groupByFirst" 8 "app(app(Data.List.groupBy, app(app(Data.Function.on, app((Data.Eq.==), tcarg0)), Data.Tuple.fst)), app(app(Data.List.sortOn, Data.Tuple.fst), xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])],ExportCons "List" [ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]]])',
+    "mySortBy": 'Benchmark "mySortBy" 5 "app(app(Data.List.sortBy, app(app(Data.Function.on, cmp), Data.Tuple.fst)), xs)" ([("cmp",ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportCons "Ordering" []))),("xs",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])],ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])',
+    "transposeAndCompress": 'Benchmark "transposeAndCompress" 7 "app(GHC.List.concat, app(app(app(GHC.List.foldr, app(GHC.List.zipWith, Cons)), app(GHC.List.repeat, Nil)), xs))" ([("xs",ExportCons "List" [ExportCons "List" [ExportVar "a"]])],ExportCons "List" [ExportVar "a"])',
+    "partition": 'Benchmark "partition" 9 "app(app(Pair, app(app(GHC.List.filter, p), xs)), app(app(GHC.List.filter, app(app((Data.Function..), Data.Bool.not), p)), xs))" ([("p",ExportFun (ExportVar "a") (ExportCons "Bool" [])),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "Pair" [ExportCons "List" [ExportVar "a"],ExportCons "List" [ExportVar "a"]])',
+    "matchedKeys": 'Benchmark "matchedKeys" 7 "app(app(GHC.List.map, Data.Tuple.fst), app(app(GHC.List.filter, app(app((Data.Function..), p), Data.Tuple.snd)), xs))" ([("p",ExportFun (ExportVar "b") (ExportCons "Bool" [])),("xs",ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])],ExportCons "List" [ExportVar "a"])',
+    "filterPairs": 'Benchmark "filterPairs" 8 "app(app(GHC.List.filter, app(Data.Tuple.uncurry, f)), app(app(GHC.List.zip, xs), ys))" ([("f",ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportCons "Bool" []))),("xs",ExportCons "List" [ExportVar "a"]),("ys",ExportCons "List" [ExportVar "b"])],ExportCons "List" [ExportCons "Pair" [ExportVar "a",ExportVar "b"]])',
+    "applyNthNTimes": 'Benchmark "applyNthNTimes" 7 "app(app(app(GHC.List.zipWith, ($)), app(app(GHC.List.iterate, app((Data.Function..), f)), f)), xs)" ([("f",ExportFun (ExportVar "a") (ExportVar "a")),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"])',
+    "removeMax": 'Benchmark "removeMax" 8 "app(app(GHC.List.filter, app(app((Data.Eq./=), tcarg0), app(app(GHC.List.maximum, tcarg0), xs)), xs)" ([("tcarg0",ExportCons "@@hplusTC@@Ord" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"])],ExportCons "List" [ExportVar "a"])',
+    "allSameLength": 'Benchmark "allSameLength" 8 "app(app(GHC.List.all, app(app(app(Data.Function.on, app((Data.Eq.==), @@hplusTCInstance@@0EqInt)), GHC.List.length), xs)), xss)" ([("xs",ExportCons "List" [ExportVar "a"]),("xss",ExportCons "List" [ExportCons "List" [ExportVar "a"]])],ExportCons "Bool" [])',
+    "mostFrequent": 'Benchmark "mostFrequent" 8 "app(app(GHC.List.head, app(Data.List.maximumBy, app(app(Data.Function.on, app(Data.Ord.compare, tcarg0)), GHC.List.length))), app(Data.List.group, xs))" ([("tcarg0",ExportCons "@@hplusTC@@Eq" [ExportVar "a"]),("xs",ExportCons "List" [ExportVar "a"])],ExportVar "a")',
 }
 
 class BenchmarkResult:
@@ -89,17 +107,19 @@ def to_time(str):
 
 def run_benchmark(name, bench):
     p = Popen(RUN_CMD + [bench], stdin=PIPE, stdout=PIPE)
-    output, err = p.communicate()
+    prev_line = None
+    syn_prog = None
+    syn_time = None
+    for line in iter(p.stdout.readline, b''):
+        print(line.decode()[:-1])
+        syn_prog = prev_line
+        if line.decode().startswith("Time:"):
+            syn_time = get_time(line)
+            print("Success", syn_time)
+        else:
+            prev_line = line.decode()
 
-    # parse outputs
-    output_lines = output.decode('utf-8').strip('\n ').split('\n')
-    if len(output_lines) > 2:
-        syn_prog = output_lines[-2]
-        syn_time = get_time(output_lines[-1])
-        print("Success", syn_time)
-    else:
-        syn_prog = None
-        syn_time = None
+    if syn_prog is None:
         print("Fail")
 
     syn_results.append(BenchmarkResult(name, syn_prog, to_time(syn_time)))
@@ -120,7 +140,7 @@ if __name__ == "__main__":
             syn_results = []
         
         generated = [x.name for x in syn_results]
-        for name, bench in hoogleplus_benchmarks.items():
+        for name, bench in stackoverflow_benchmarks.items():
             print("Running benchmark: " + name)
             if name in generated:
                 print("Skip")
