@@ -17,7 +17,6 @@ module Data.ECTA.Internal.Paths.Zipper (
   , unionPathTrieZipper
   ) where
 
-import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import qualified Data.Vector.Mutable as Vector ( unsafeWrite )
 
@@ -61,7 +60,7 @@ unionPathTrie (PathTrieSingleChild i pt)   (PathTrie vec) =
                                                       EmptyPathTrie
 
 
-unionPathTrie pt1@(PathTrie _)             pt2@(PathTrieSingleChild _ _) = inline unionPathTrie pt2 pt1 -- | TODO: Check whether this inlining is effective
+unionPathTrie pt1@(PathTrie _)             pt2@(PathTrieSingleChild _ _) = inline unionPathTrie pt2 pt1 -- TODO: Check whether this inlining is effective
 unionPathTrie (PathTrie vec1)              (PathTrie vec2)               =
   let newLength = max (Vector.length vec1) (Vector.length vec2)
       smallerLength = min (Vector.length vec1) (Vector.length vec2)
@@ -116,4 +115,4 @@ pathTrieZipperDescend (PathTrieZipper pt z) i = PathTrieZipper (pathTrieDescend 
 --   values to extend the path trie upwards.
 pathTrieZipperAscend :: PathTrieZipper -> Int -> PathTrieZipper
 pathTrieZipperAscend (PathTrieZipper pt PathZipperRoot)         i = PathTrieZipper (PathTrieSingleChild i pt) PathZipperRoot
-pathTrieZipperAscend (PathTrieZipper pt (PathTrieAt i pt' ipt)) _ = PathTrieZipper pt'                        ipt
+pathTrieZipperAscend (PathTrieZipper _  (PathTrieAt _ pt' ipt)) _ = PathTrieZipper pt'                        ipt

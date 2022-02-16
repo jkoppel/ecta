@@ -30,7 +30,7 @@ import System.IO.Unsafe ( unsafePerformIO )
 
 import Data.List.Extra ( nubSort )
 
--- | Switch the comments on these lines to switch to ekmett's original `intern` library
+--   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
 import Data.Interned.Extended.HashTableBased
 
@@ -164,8 +164,8 @@ nodeIdentity n                   = error $ "nodeIdentity: unexpected node " <> s
 setChildren :: Edge -> [Node] -> Edge
 setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
 
-dropEcs :: Edge -> Edge
-dropEcs e = Edge (edgeSymbol e) (edgeChildren e)
+_dropEcs :: Edge -> Edge
+_dropEcs e = Edge (edgeSymbol e) (edgeChildren e)
 
 
 -----------------------------------------------------------------
@@ -269,17 +269,19 @@ pattern Edge :: Symbol -> [Node] -> Edge
 pattern Edge s ns <- (InternedEdge _ (UninternedEdge s ns _)) where
   Edge s ns = intern $ UninternedEdge s ns EmptyConstraints
 
+{-# COMPLETE Edge #-}
+
 emptyEdge :: Edge
 emptyEdge = Edge "" [EmptyNode]
 
 isEmptyEdge :: Edge -> Bool
-isEmptyEdge e@(Edge _ ns) = any (== EmptyNode) ns
+isEmptyEdge (Edge _ ns) = any (== EmptyNode) ns
 
 removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
-mkEdge s ns ecs
+mkEdge _ _  ecs
    | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
    | otherwise                       = intern $ UninternedEdge s ns ecs
@@ -297,10 +299,10 @@ pattern Node es <- (InternedNode _ es) where
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
-mkNodeAlreadyNubbed :: [Edge] -> Node
-mkNodeAlreadyNubbed es = case removeEmptyEdges es of
-                           []  -> EmptyNode
-                           es' -> intern $ UninternedNode $ sort es'
+_mkNodeAlreadyNubbed :: [Edge] -> Node
+_mkNodeAlreadyNubbed es = case removeEmptyEdges es of
+                            []  -> EmptyNode
+                            es' -> intern $ UninternedNode $ sort es'
 
 -- | An optimized Node constructor that avoids the interning/preprocessing of the Node constructor
 --   when nothing changes
@@ -310,13 +312,12 @@ modifyNode n@(Node es) f = let es' = f es in
                              n
                            else
                              Node es'
+modifyNode n           _ = error $ "modifyNode: unexpected node " <> show n
 
-collapseEmptyEdge :: Edge -> Maybe Edge
-collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Just e
+_collapseEmptyEdge :: Edge -> Maybe Edge
+_collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Just e
 
--------------------
 ------ Mu
--------------------
 
 -- | Pattern only a Mu constructor
 --

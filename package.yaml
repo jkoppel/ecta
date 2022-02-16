@@ -77,6 +77,8 @@ library:
     - raw-strings-qq
     - text
     - vector-instances
+  ghc-options:
+  - -Wall
 
 executables:
   compact-coupled-terms-exe:
@@ -86,6 +88,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
     dependencies:
     - compact-coupled-terms
     - pretty-simple
@@ -98,11 +101,16 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
+    - -Wno-orphans
     dependencies:
       - compact-coupled-terms
       - equivalence
       - hspec
       - QuickCheck
+    verbatim: |
+      build-tool-depends:
+        hspec-discover:hspec-discover
 
 benchmarks:
   mainbench:

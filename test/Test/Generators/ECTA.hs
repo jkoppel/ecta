@@ -2,8 +2,10 @@
 
 module Test.Generators.ECTA () where
 
+import Prelude hiding ( max )
+
 import Control.Monad ( replicateM )
-import Data.List ( and, subsequences, (\\) )
+import Data.List ( subsequences, (\\) )
 
 import Test.QuickCheck
 
@@ -16,6 +18,7 @@ import Data.ECTA.Term
 
 
 -- Cap size at 3 whenever you will generate all denotations
+_MAX_NODE_DEPTH :: Int
 _MAX_NODE_DEPTH = 5
 
 capSize :: Int -> Gen a -> Gen a
@@ -25,12 +28,12 @@ capSize max g = sized $ \n -> if n > max then
                                 g
 
 instance Arbitrary Node where
-  arbitrary = capSize _MAX_NODE_DEPTH $ sized $ \n -> do
-    k <- chooseInt (1, 3)
+  arbitrary = capSize _MAX_NODE_DEPTH $ sized $ \_n -> do
+    k <- chooseInt (1, 3) -- TODO: Should this depend on n?
     Node <$> replicateM k arbitrary
 
   shrink EmptyNode = []
-  shrink (Node es) = [Node es' | seq <- subsequences es \\ [es], es' <- mapM shrink seq] ++ concatMap (\e -> edgeChildren e) es
+  shrink (Node es) = [Node es' | s <- subsequences es \\ [es], es' <- mapM shrink s] ++ concatMap (\e -> edgeChildren e) es
   shrink (Mu _)    = []
   shrink (Rec _)   = []
 

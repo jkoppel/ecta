@@ -5,7 +5,6 @@ module Data.Interned.Extended.SingleThreaded (
 
 import Data.Array
 import Data.Hashable
-import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import Data.IORef
 import GHC.IO (unsafeDupablePerformIO)

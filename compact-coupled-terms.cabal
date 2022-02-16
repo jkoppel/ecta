@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1563efccb3ce29fa8421f16bead067c2a2e4a6d515c74b83c441a1dc1de22a3d
+-- hash: 224cd222d4acb608129f70c898cc7fecf57c91323e87fb28ae60ccc03eaf1173
 
 name:           compact-coupled-terms
 version:        0.1.0.0
@@ -84,6 +84,7 @@ library
       TypeFamilies
       TypeOperators
       ViewPatterns
+  ghc-options: -Wall
   build-depends:
       array
     , base
@@ -141,7 +142,7 @@ executable compact-coupled-terms-exe
       TypeFamilies
       TypeOperators
       ViewPatterns
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       base
     , compact-coupled-terms
@@ -199,7 +200,7 @@ test-suite unit-tests
       TypeFamilies
       TypeOperators
       ViewPatterns
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-orphans
   build-depends:
       QuickCheck
     , base
@@ -216,6 +217,8 @@ test-suite unit-tests
   if flag(profile-caches)
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
+  build-tool-depends:
+    hspec-discover:hspec-discover
 
 benchmark mainbench
   type: exitcode-stdio-1.0

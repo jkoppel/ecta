@@ -35,6 +35,8 @@ pattern Symbol :: Text -> Symbol
 pattern Symbol t <- Symbol' (OrigInterned.unintern -> t) where
   Symbol t = Symbol' (OrigInterned.intern t)
 
+{-# COMPLETE Symbol #-}
+
 instance Pretty Symbol where
   pretty (Symbol t) = t
 

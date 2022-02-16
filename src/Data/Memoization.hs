@@ -18,21 +18,23 @@ module Data.Memoization (
   , memo2
   ) where
 
-import Control.Monad.ST ( ST )
-import Data.IORef ( IORef, newIORef, readIORef, writeIORef, modifyIORef )
 import Data.Hashable ( Hashable )
 import qualified Data.HashTable.IO as HT
-import Data.List ( sort )
 import Data.Text ( Text )
-import qualified Data.Text    as Text
-import qualified Data.Text.IO as Text
 import GHC.Generics ( Generic )
 import System.IO.Unsafe ( unsafePerformIO )
 
 import Data.HashTable.Extended
-import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
 
 import Data.Text.Extended.Pretty
+
+#ifdef PROFILE_CACHES
+import Data.IORef ( IORef, newIORef, readIORef, writeIORef, modifyIORef )
+import Data.List ( sort )
+import Data.Memoization.Metrics ( CacheMetrics(CacheMetrics) )
+
+import qualified Data.Text.IO as Text
+#endif
 
 -----------------------------------------------------------------
 
@@ -62,8 +64,6 @@ resetCache c = do
   mapM_ resetHashTable (contents c)
 #else
 type MemoCache = ()
-resetCache :: MemoCache -> IO ()
-resetCache _ = return ()
 #endif
 
 bumpQueryCount :: MemoCache -> IO ()
@@ -100,9 +100,11 @@ instance Pretty MemoCacheTag where
 ---- Global metrics store
 --------------
 
+#ifdef PROFILE_CACHES
 memoCaches :: HT.BasicHashTable MemoCacheTag MemoCache
 memoCaches = unsafePerformIO $ HT.new
 {-# NOINLINE memoCaches #-}
+#endif
 
 initMetrics :: MemoCacheTag -> AnyHashTable -> IO MemoCache
 #ifdef PROFILE_CACHES

@@ -4,13 +4,10 @@ import Data.List ( (\\), nub, sort, subsequences )
 import qualified Data.Vector as Vector
 
 import Test.Hspec
-import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Internal.Paths.Zipper
-
-import Debug.Trace
 
 -----------------------------------------------------------------
 
@@ -162,7 +159,7 @@ spec = do
                                                                   ])
         `shouldBe` True
 
-  -- | TODO: (6/23/21) QuickCheck generates very large lists, much larger than currently seen in actual inputs.
+  -- TODO: (6/23/21) QuickCheck generates very large lists, much larger than currently seen in actual inputs.
   -- mkEqConstraints contains a very inefficient addCongruences implementation. Therefore, these run too slowly.
   {-
   describe "constraintsImply" $ do

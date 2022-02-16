@@ -3,7 +3,6 @@ module Utility.HashJoinSpec ( spec) where
 import Data.List ( nub, sort )
 
 import Test.Hspec
-import Test.Hspec.QuickCheck
 import Test.QuickCheck
 
 import Utility.HashJoin
