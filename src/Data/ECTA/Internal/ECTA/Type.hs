@@ -156,8 +156,10 @@ instance Hashable Node where
 ----------------------
 
 nodeIdentity :: Node -> Id
-nodeIdentity (InternedMu   mu)  = internedMuId mu
-nodeIdentity (InternedNode i _) = i
+nodeIdentity (InternedMu   mu)   = internedMuId mu
+nodeIdentity (InternedNode i _)  = i
+nodeIdentity (Rec (RecNodeId i)) = i
+nodeIdentity n                   = error $ "nodeIdentity: unexpected node " <> show n
 
 setChildren :: Edge -> [Node] -> Edge
 setChildren e ns = mkEdge (edgeSymbol e) ns (edgeEcs e)
