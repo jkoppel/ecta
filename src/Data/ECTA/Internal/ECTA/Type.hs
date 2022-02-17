@@ -13,6 +13,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , setChildren
 
   , Node(.., Node, Mu)
+  , InternedNode(..)
   , InternedMu(..)
   , UninternedNode(..)
   , nodeIdentity
@@ -113,20 +114,28 @@ data InternedMu = MkInternedMu {
     , internedMuNoId :: !Node
     }
 
-data Node = InternedNode {-# UNPACK #-} !Id ![Edge]
+data InternedNode = MkInternedNode {
+      -- | The 'Id' of the node itself
+      internedNodeId :: {-# UNPACK #-} !Id
+
+      -- | All outgoing edges
+    , internedNodeEdges :: ![Edge]
+    }
+
+data Node = InternedNode {-# UNPACK #-} !InternedNode
           | EmptyNode
           | InternedMu {-# UNPACK #-} !InternedMu
           | Rec {-# UNPACK #-} !RecNodeId
 
 instance Eq Node where
-  (InternedNode i1 _) == (InternedNode i2 _) = i1 == i2
-  EmptyNode           == EmptyNode           = True
-  (InternedMu mu1)    == (InternedMu mu2)    = internedMuId mu1 == internedMuId mu2
-  Rec i1              == Rec i2              = i1 == i2
-  _                   == _                   = False
+  InternedNode l == InternedNode r = internedNodeId l == internedNodeId r
+  InternedMu   l == InternedMu   r = internedMuId   l == internedMuId   r
+  Rec          l == Rec          r =                l ==                r
+  EmptyNode      == EmptyNode      = True
+  _              == _              = False
 
 instance Show Node where
-  show (InternedNode _ es) = "(Node " <> show es <> ")"
+  show (InternedNode node) = "(Node " <> show (internedNodeEdges node) <> ")"
   show EmptyNode           = "EmptyNode"
   show (InternedMu mu)     = "(Mu " <> show (internedMuBody mu) <> ")"
   show (Rec n)             = "(Rec " <> show n <> ")"
@@ -136,20 +145,23 @@ instance Ord Node where
     where
       nodeDescriptorInt :: Node -> Int
       nodeDescriptorInt EmptyNode           = -1
-      nodeDescriptorInt (InternedNode i _)  = 3*i
+      nodeDescriptorInt (InternedNode node) = 3*i
+        where
+          i = internedNodeId node
       nodeDescriptorInt (InternedMu mu)     = 3*i + 1
         where
           i = internedMuId mu
       nodeDescriptorInt (Rec (RecNodeId i)) = 3*i + 2
 
 instance Hashable Node where
-  hashWithSalt s EmptyNode          = s `hashWithSalt` (-1 :: Int)
-  hashWithSalt s (InternedMu mu)    = s `hashWithSalt` (-2 :: Int) `hashWithSalt` i
+  hashWithSalt s EmptyNode           = s `hashWithSalt` (-1 :: Int)
+  hashWithSalt s (InternedMu mu)     = s `hashWithSalt` (-2 :: Int) `hashWithSalt` i
     where
       i = internedMuId mu
-  hashWithSalt s (Rec i)            = s `hashWithSalt` (-3 :: Int) `hashWithSalt` i
-  hashWithSalt s (InternedNode i _) = s `hashWithSalt` i
-
+  hashWithSalt s (Rec i)             = s `hashWithSalt` (-3 :: Int) `hashWithSalt` i
+  hashWithSalt s (InternedNode node) = s `hashWithSalt` i
+    where
+      i = internedNodeId node
 
 ----------------------
 ------ Getters and setters
@@ -157,7 +169,7 @@ instance Hashable Node where
 
 nodeIdentity :: Node -> Id
 nodeIdentity (InternedMu   mu)   = internedMuId mu
-nodeIdentity (InternedNode i _)  = i
+nodeIdentity (InternedNode node) = internedNodeId node
 nodeIdentity (Rec (RecNodeId i)) = i
 nodeIdentity n                   = error $ "nodeIdentity: unexpected node " <> show n
 
@@ -204,7 +216,10 @@ instance Interned Node where
 
   describe = DNode
 
-  identify i (UninternedNode es) = InternedNode i es
+  identify i (UninternedNode es) = InternedNode $ MkInternedNode {
+        internedNodeId    = i
+      , internedNodeEdges = es
+      }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
         internedMuId   = i
@@ -294,7 +309,7 @@ mkEdge s ns ecs
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
 pattern Node :: [Edge] -> Node
-pattern Node es <- (InternedNode _ es) where
+pattern Node es <- (InternedNode (internedNodeEdges -> es)) where
   Node es = case removeEmptyEdges es of
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
@@ -393,7 +408,7 @@ substFree old new = go
 
     go' :: Node -> Node
     go' EmptyNode               = EmptyNode
-    go' (InternedNode _ es)     = intern $ UninternedNode (map goEdge es)
+    go' (InternedNode node)     = intern $ UninternedNode (map goEdge (internedNodeEdges node))
     go' (InternedMu mu)         = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec (RecNodeId nid)) (internedMuBody mu))
     go' n@(Rec (RecNodeId nid)) = if nid == old
                                     then new
