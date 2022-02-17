@@ -226,7 +226,7 @@ spec = do
                                                  ]
            collectAllIds (InternedMu   mu)   = Set.unions [
                                                    Set.singleton (internedMuId mu)
-                                                 , Set.union (collectAllIds (internedMuBody mu)) (collectAllIds (internedMuNoId mu))
+                                                 , Set.union (collectAllIds (internedMuBody mu)) (collectAllIds (internedMuShape mu))
                                                  ]
            collectAllIds (Rec _)             = Set.empty
 
