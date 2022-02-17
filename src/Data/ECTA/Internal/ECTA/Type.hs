@@ -53,7 +53,12 @@ import Data.Memoization
 -------------------------- Mu node table ------------------------
 -----------------------------------------------------------------
 
-newtype RecNodeId = RecNodeId { unRecNodeId :: Id }
+data RecNodeId =
+    -- | Reference to the 'Id' of an interned 'Mu' node
+    RecInt !Id
+
+    -- | Reference to an as-yet uninterned 'Mu' node, for which the 'Id' is not yet known
+  | RecUnint
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable RecNodeId
@@ -129,7 +134,7 @@ data InternedNode = MkInternedNode {
 data Node = InternedNode {-# UNPACK #-} !InternedNode
           | EmptyNode
           | InternedMu {-# UNPACK #-} !InternedMu
-          | Rec {-# UNPACK #-} !RecNodeId
+          | Rec !RecNodeId
 
 instance Eq Node where
   InternedNode l == InternedNode r = internedNodeId l == internedNodeId r
@@ -155,7 +160,12 @@ instance Ord Node where
       nodeDescriptorInt (InternedMu mu)     = 3*i + 1
         where
           i = internedMuId mu
-      nodeDescriptorInt (Rec (RecNodeId i)) = 3*i + 2
+      nodeDescriptorInt (Rec recId)         = 3*i + 2
+        where
+          i = case recId of
+                RecInt nid -> nid
+                _otherwise -> error $ "compare: unexpected " <> show recId
+
 
 instance Hashable Node where
   hashWithSalt s EmptyNode           = s `hashWithSalt` (-1 :: Int)
@@ -183,7 +193,7 @@ nodeDepth (Rec _)             = 0
 nodeIdentity :: Node -> Id
 nodeIdentity (InternedMu   mu)   = internedMuId mu
 nodeIdentity (InternedNode node) = internedNodeId node
-nodeIdentity (Rec (RecNodeId i)) = i
+nodeIdentity (Rec (RecInt i))    = i
 nodeIdentity n                   = error $ "nodeIdentity: unexpected node " <> show n
 
 setChildren :: Edge -> [Node] -> Edge
@@ -211,7 +221,7 @@ data UninternedNode =
 instance Eq UninternedNode where
   UninternedNode es   == UninternedNode es'  = es == es'
   UninternedEmptyNode == UninternedEmptyNode = True
-  UninternedMu mu     == UninternedMu mu'    = mu (RecNodeId (-1)) == mu' (RecNodeId (-1))
+  UninternedMu mu     == UninternedMu mu'    = mu (RecUnint) == mu' (RecUnint)
   _                   == _                   = False
 
 instance Hashable UninternedNode where
@@ -220,7 +230,7 @@ instance Hashable UninternedNode where
       go :: UninternedNode -> Int
       go  UninternedEmptyNode = hashWithSalt salt (0 :: Int, ())
       go (UninternedNode es)  = hashWithSalt salt (1 :: Int, es)
-      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (RecNodeId (-1)))
+      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (RecUnint))
 
 instance Interned Node where
   type Uninterned  Node = UninternedNode
@@ -237,15 +247,15 @@ instance Interned Node where
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
         internedMuId   = i
-      , internedMuBody = n (RecNodeId i)
+      , internedMuBody = n (RecInt i)
 
         -- In order to establish the invariant for internedMuNoId, we need to know
         --
-        -- > substFree i (Rec (RecNodeId (-1)) (n i) == n (-1)
-        -- > == n (RecNodeId (-1))
+        -- > substFree i (Rec RecUnint) (n i) == n (-1)
+        -- > == n (Recunint)
         --
         -- This follows directly from the parametricity requirement on 'UninternedMu'.
-      , internedMuNoId = n (RecNodeId (-1))
+      , internedMuNoId = n RecUnint
       }
 
   cache = nodeCache
@@ -391,11 +401,11 @@ createMu f = intern $ UninternedMu (f . Rec)
 -- for performance considerations.
 matchMu :: Node -> Maybe (Node -> Node)
 matchMu (InternedMu mu) = Just $ \n' ->
-    if n' == Rec (RecNodeId (-1)) then
-      -- This is an important special case, because the term with @(RecNodeId (-1))@ as the ID is the one that is used
-      -- for interning. It is justified by the equality
+    if n' == Rec RecUnint then
+      -- This is an important special case, because the term with RecUnint as the ID is the one that is used for interning.
+      -- It is justified by the equality
       --
-      -- >    substFree internedMuId (Rec (RecNodeId (-1)) internedMuBody
+      -- >    substFree internedMuId (Rec RecUnint) internedMuBody
       -- > == internedMuNoId
       --
       -- which is the invariant of 'internedMuNoId'.
@@ -421,12 +431,12 @@ substFree old new = go
     {-# NOINLINE go #-}
 
     go' :: Node -> Node
-    go' EmptyNode               = EmptyNode
-    go' (InternedNode node)     = intern $ UninternedNode (map goEdge (internedNodeEdges node))
-    go' (InternedMu mu)         = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
-    go' n@(Rec (RecNodeId nid)) = if nid == old
-                                    then new
-                                    else n
+    go' EmptyNode           = EmptyNode
+    go' (InternedNode node) = intern $ UninternedNode (map goEdge (internedNodeEdges node))
+    go' (InternedMu mu)     = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
+    go' n@(Rec recId)       = if recId == RecInt old
+                                then new
+                                else n
 
     goEdge :: Edge -> Edge
     goEdge e = setChildren e $ map go (edgeChildren e)
