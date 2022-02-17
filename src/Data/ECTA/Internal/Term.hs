@@ -16,6 +16,7 @@ import qualified Data.Text as Text
 import Data.Aeson ( ToJSON(..), FromJSON(..) )
 import qualified Data.Aeson as Aeson
 import GHC.Generics ( Generic )
+import Text.Read ( Read(..) )
 
 import Data.Interned.Text ( InternedText, internedTextId )
 
@@ -54,12 +55,15 @@ instance ToJSON Symbol where
 instance FromJSON Symbol where
   parseJSON = Aeson.withText "Symbol" (\s -> return $ Symbol (fromString (tail $ init $ Text.unpack s)))
 
+instance Read Symbol where
+  readPrec = Symbol <$> readPrec
+
 ---------------------------------------------------------------
 ---------------------------- Terms ----------------------------
 ---------------------------------------------------------------
 
 data Term = Term !Symbol ![Term]
-  deriving ( Eq, Ord, Generic )
+  deriving ( Eq, Ord, Read, Generic )
 
 instance Hashable Term
 

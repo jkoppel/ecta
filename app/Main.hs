@@ -69,4 +69,4 @@ hppArgs = HPPArgs {
 main :: IO ()
 main = do
     args <- cmdArgs hppArgs
-    runBenchmark (searchMode args) (read $ benchmark args)
+    runBenchmark (read $ benchmark args)

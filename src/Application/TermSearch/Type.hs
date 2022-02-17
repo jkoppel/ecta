@@ -22,8 +22,8 @@ data ExportType
 
 instance Hashable ExportType
 
-data Benchmark = Benchmark Text Int String ([(Text, ExportType)], ExportType)
-  deriving (Eq, Ord, Show, Read, Data)
+data Benchmark = Benchmark Text Int Term ([(Text, ExportType)], ExportType)
+  deriving (Eq, Ord, Show, Read)
 
 type ArgType = (Symbol, Node)
 
