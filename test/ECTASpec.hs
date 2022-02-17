@@ -193,3 +193,13 @@ spec = do
     it "naive and sophisticated enumeration are equivalent on nodes without mu" $
       property $ mapSize (min 3) $
         \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (getAllTerms $ reducePartially n)
+
+  describe "node depth" $ do
+    it "no Mu" $
+      nodeDepth (Node [Edge "a" []]) `shouldBe` 0
+    it "single Mu" $
+      nodeDepth (Mu $ \x -> Node [Edge "f" [x]]) `shouldBe` 1
+    it "two parallel Mus" $
+      nodeDepth (Node [Edge "h" [Mu $ \x -> Node [Edge "g" [x]], Mu $ \x -> Node [Edge "h" [x]]]]) `shouldBe` 1
+    it "nested Mu" $
+      nodeDepth (Mu $ \x -> Node [Edge "f" [x], Edge "g" [Mu $ \y -> Node [Edge "g" [y]]]]) `shouldBe` 2
