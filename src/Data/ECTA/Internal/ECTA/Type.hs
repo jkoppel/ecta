@@ -17,6 +17,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , InternedMu(..)
   , UninternedNode(..)
   , nodeIdentity
+  , nodeDepth
   , modifyNode
   , createMu
   ) where
@@ -120,6 +121,9 @@ data InternedNode = MkInternedNode {
 
       -- | All outgoing edges
     , internedNodeEdges :: ![Edge]
+
+      -- | Maximum Mu nesting depth in the term
+    , internedNodeDepth :: !Int
     }
 
 data Node = InternedNode {-# UNPACK #-} !InternedNode
@@ -162,6 +166,15 @@ instance Hashable Node where
   hashWithSalt s (InternedNode node) = s `hashWithSalt` i
     where
       i = internedNodeId node
+
+-- | Maximum number of nested Mus in the term
+--
+-- @O(1) provided that there are no unbounded Mu chains in the term.
+nodeDepth :: Node -> Int
+nodeDepth EmptyNode           = 0
+nodeDepth (InternedNode node) = internedNodeDepth node
+nodeDepth (InternedMu   mu)   = 1 + nodeDepth (internedMuBody mu)
+nodeDepth (Rec _)             = 0
 
 ----------------------
 ------ Getters and setters
@@ -219,6 +232,7 @@ instance Interned Node where
   identify i (UninternedNode es) = InternedNode $ MkInternedNode {
         internedNodeId    = i
       , internedNodeEdges = es
+      , internedNodeDepth = maximum (0 : concatMap (map nodeDepth . edgeChildren) es) -- depth is always >= 0
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
