@@ -123,14 +123,14 @@ crush f = \n -> evalState (go n) Set.empty
     go EmptyNode             = return mempty
     go (Rec _)               = return mempty
     go n@(InternedMu mu)     = mappend (f n) <$> go (internedMuBody mu)
-    go n@(InternedNode _ es) = do
+    go n@(InternedNode node) = do
       seen <- get
       let nId = nodeIdentity n
       if Set.member nId seen then
         return mempty
        else do
         modify' (Set.insert nId)
-        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) es)
+        mappend (f n) <$> (mconcat <$> mapM (\(Edge _ ns) -> mconcat <$> mapM go ns) (internedNodeEdges node))
 
 onNormalNodes :: (Monoid m) => (Node -> m) -> (Node -> m)
 onNormalNodes f n@(Node _) = f n

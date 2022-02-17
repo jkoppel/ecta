@@ -88,20 +88,23 @@ mkPartialGraph :: Node -> PartialGraph
 mkPartialGraph = crush onNode
   where
     onNode :: Node -> PartialGraph
-    onNode EmptyNode             = error "mkPartialGraph: impossible (crush does not invoke function on EmptyNode)"
-    onNode (InternedNode nid es) = let (edgeNodes, fr, to) = unzip3 $ imap (onEdge nid) es in
-                                     mempty {
-                                         partialNormal   = [nid]
-                                       , partialEdges    = edgeNodes
-                                       , partialFromNode = fr
-                                       , partialFromEdge = concat to
+    onNode EmptyNode           = error "mkPartialGraph: impossible (crush does not invoke function on EmptyNode)"
+    onNode (InternedNode node) = let (edgeNodes, fr, to) = unzip3 $ imap (onEdge nid) es in
+                                   mempty {
+                                       partialNormal   = [nid]
+                                     , partialEdges    = edgeNodes
+                                     , partialFromNode = fr
+                                     , partialFromEdge = concat to
+                                     }
+      where
+        nid = internedNodeId    node
+        es  = internedNodeEdges node
+    onNode (InternedMu mu)     = case internedMuBody mu of
+                                   InternedNode node -> mempty {
+                                         partialMu = [(internedMuId mu, internedNodeId node)]
                                        }
-    onNode (InternedMu mu)       = case internedMuBody mu of
-                                     InternedNode nid _ -> mempty {
-                                           partialMu = [(internedMuId mu, nid)]
-                                         }
-                                     _otherwise         -> error "mkPartialGraph: expected Node as a child of a Mu"
-    onNode (Rec _)               = mempty
+                                   _otherwise         -> error "mkPartialGraph: expected Node as a child of a Mu"
+    onNode (Rec _)             = mempty
 
     onEdge :: Id                                  -- Id of the " from " node
            -> Int                                 -- Index of the edge
