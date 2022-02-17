@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Data.ECTA.Internal.ECTA.Type (
@@ -58,7 +59,18 @@ data RecNodeId =
     RecInt !Id
 
     -- | Reference to an as-yet uninterned 'Mu' node, for which the 'Id' is not yet known
-  | RecUnint
+    --
+    -- The 'Int' argument is used to distinguish between multiple nested 'Mu' nodes.
+    --
+    -- NOTE: This is intentionally not an 'Id': it does not refer to the 'Id' of any interned node.
+  | RecUnint Int
+
+    -- | Placeholder variable that we use /only/ for depth calculations
+    --
+    -- The invariant that this is used /only/ for depth calculations, along with the observation that depth calculation
+    -- does not depend on the exact choice of variable, justifies subtituting any other variable for 'RecDepth' in terms
+    -- containing 'RecDepth' in all contexts.
+  | RecDepth
   deriving ( Eq, Ord, Show, Generic )
 
 instance Hashable RecNodeId
@@ -116,8 +128,9 @@ data InternedMu = MkInternedMu {
       --
       -- Invariant:
       --
-      -- > substFree internedMuId (Rec (RecNodeId (-1)) == internedMuNoId
-    , internedMuNoId :: !Node
+      -- >    substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody)) internedMuBody
+      -- > == internedMuShape
+    , internedMuShape :: !Node
     }
   deriving (Show)
 
@@ -218,12 +231,14 @@ data UninternedNode =
       -- The function should be parametric in the Id:
       --
       -- > substFree i (Rec j) (f i) == f j
+      --
+      -- See 'shape' for additional discussion.
     | UninternedMu !(RecNodeId -> Node)
 
 instance Eq UninternedNode where
   UninternedNode es   == UninternedNode es'  = es == es'
   UninternedEmptyNode == UninternedEmptyNode = True
-  UninternedMu mu     == UninternedMu mu'    = mu (RecUnint) == mu' (RecUnint)
+  UninternedMu mu     == UninternedMu mu'    = shape mu == shape mu'
   _                   == _                   = False
 
 instance Hashable UninternedNode where
@@ -232,7 +247,7 @@ instance Hashable UninternedNode where
       go :: UninternedNode -> Int
       go  UninternedEmptyNode = hashWithSalt salt (0 :: Int, ())
       go (UninternedNode es)  = hashWithSalt salt (1 :: Int, es)
-      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (RecUnint))
+      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, shape mu)
 
 instance Interned Node where
   type Uninterned  Node = UninternedNode
@@ -248,26 +263,81 @@ instance Interned Node where
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
-        internedMuId   = i
-      , internedMuBody = n (RecInt i)
+        internedMuId    = i
+      , internedMuBody  = n (RecInt i)
 
         -- In order to establish the invariant for internedMuNoId, we need to know
         --
-        -- > substFree i (Rec RecUnint) (n i) == n (-1)
-        -- > == n (Recunint)
+        -- >    substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody)) internedMuBody
+        -- > == internedMuShape
         --
-        -- This follows directly from the parametricity requirement on 'UninternedMu'.
-      , internedMuNoId = n RecUnint
+        -- This follows from parametricity:
+        --
+        -- >    internedMuShape
+        -- >      -- { definition of internedMuShape }
+        -- > == shape n
+        -- >      -- { definition of shape }
+        -- > == n (RecUnint (nodeDepth (n RecDepth)))
+        -- >      -- { by parametricity, depth is independent of the variable number }
+        -- > == n (RecUnint (nodeDepth (n (RecInt i))))
+        -- >      -- { parametricity again }
+        -- > == substFree i (Rec (RecUnint (nodeDepth (n (RecInt i)))) (n (RecInt i))
+        -- >      -- { definition of internedMuId and internedMuBody }
+        -- > == substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody))) internedMuBody
+        --
+        -- QED.
+      , internedMuShape = shape n
       }
 
   cache = nodeCache
-
 
 instance Hashable (Description Node)
 
 nodeCache :: Cache Node
 nodeCache = unsafePerformIO freshCache
 {-# NOINLINE nodeCache #-}
+
+-- | Compute the " shape " of the body of a 'Mu'
+--
+-- During interning we need to know the shape of the body of a 'Mu' node /before/ we know the 'Id' of that node. We do
+-- this by replacing any 'Rec' nodes in the node by placeholders. We have to be careful here however to correctly assign
+-- placeholders in the presence of nested 'Mu' nodes. For example, if the user writes a term such as
+--
+-- > -- f (f (f ... (g (g (g ... a)))))
+-- > Mu $ \r -> Node [
+-- >     Edge "f" [r]
+-- >   , Edge "g" [ Mu $ \r' -> Node [
+-- >                    Edge "g" [r']
+-- >                  , Edge "a" []
+-- >                  ]
+-- >              ]
+-- >   ]
+--
+-- we should be careful not to accidentially identify @r@ and @r'@.
+--
+-- Precondition: the function must be parametric in the choice of variable names:
+--
+-- > substFree i (Rec j) (f i) == f j
+--
+-- Put another way, we must rule out /exotic terms/: in our case, exotic terms would be uninterned @Mu@ nodes that
+-- have one shape when given one variable, and another shape when given a different variable. We do not have such terms.
+-- (Of course, a function such as substitution /does/ do one thing if it sees one variable and another thing when it
+-- sees a different variable, but this is okay: substitution is a function /on/ terms, mapping non-exotic terms to
+-- non-exotic terms.)
+--
+-- Implementation note: We are calling the function twice: once to compute the depth of the node, and then a second time
+-- to give it the right placeholder variable. Some observations:
+--
+-- o Semantically, this is okay; if we were working with a first order representation, it would be the equivalent of
+--   first executing some kind of function @Node -> Int@, followed by some kind of substitution @Node -> Node@. It's the
+--   same with the higher order representation, except that in /principle/ the function could do entirely different
+--   things when given 'RecDepth' versus some other kind of placeholder; the parametricity precondition rules this out.
+-- o It's slightly inefficient, but since this lives at the user interface boundary only, performance here is not
+--   critical: internally we work with interned nodes only, and this function is not relevant.
+-- o It /is/ important that the placeholder we pick here is uniquely determined by the node itself: this is what
+--   justifies using 'shape' during interning.
+shape :: (RecNodeId -> Node) -> Node
+shape f = f (RecUnint (nodeDepth (f RecDepth)))
 
 -----------------------------------------------------------------
 ------------------------ Interning Edges ------------------------
@@ -378,13 +448,20 @@ _collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Ju
 -- >   -- { case for @InternedMu mu@ }
 -- > foo (InternedMu mu) | Just f <- matchMu (InternedMu m) = createMu f
 -- >   -- { definition of matchMu }
--- > foo (InternedMu mu) = let f = \n' -> if n' == Rec (RecNodeId (-1)) then internedMuNoId mu else substFree (internedMuId mu) n' (internedMuBody mu)
+-- > foo (InternedMu mu) = let f = \n' ->
+-- >                          if | n' == Rec (RecUnint (nodeDepth (internedMuBody mu))) ->
+-- >                                internedMuShape mu
+-- >                            | n' == Rec RecDepth ->
+-- >                                internedMuShape mu
+-- >                            | otherwise ->
+-- >                                substFree (internedMuId mu) n' (internedMuBody mu)
 -- >                       in createMu f
 -- >   -- { definition of createMu }
 -- > foo (InternedMu mu) = intern $ UninternedMu (f . Rec)
 --
--- At this point, `intern` will apply @f . Rec@ to the identifier @RecNodeId (-1)@ in order to do the hash lookup.
--- This will trigger the special case in @f@, and immediately return @internedMuId@, which will be in the cache.
+-- At this point, `intern` will call `shape (f . Rec)`, which will call `f . Rec` twice: once with `RecDepth` to compute
+-- the depth, and then once again with that depth to substitute a placeholder. Both of these special cases will use
+-- 'internedMuShape' (and moreover, the depth calculation on 'internedMuShape' is @O(1)@).
 pattern Mu :: (Node -> Node) -> Node
 pattern Mu f <- (matchMu -> Just f)
   where
@@ -403,17 +480,21 @@ createMu f = intern $ UninternedMu (f . Rec)
 -- for performance considerations.
 matchMu :: Node -> Maybe (Node -> Node)
 matchMu (InternedMu mu) = Just $ \n' ->
-    if n' == Rec RecUnint then
-      -- This is an important special case, because the term with RecUnint as the ID is the one that is used for interning.
-      -- It is justified by the equality
-      --
-      -- >    substFree internedMuId (Rec RecUnint) internedMuBody
-      -- > == internedMuNoId
-      --
-      -- which is the invariant of 'internedMuNoId'.
-      internedMuNoId mu
-    else
-      substFree (internedMuId mu) n' (internedMuBody mu)
+    if | n' == Rec (RecUnint (nodeDepth (internedMuBody mu))) ->
+          -- Special case justified by the invariant on 'internedMuShape'
+          internedMuShape mu
+       | n' == Rec RecDepth ->
+          -- The use of 'RecDepth' implies that we are computing a depth:
+          --
+          -- >    nodeDepth (substFree (internedMuId mu) (Rec RecDepth)) (internedMuBody mu))
+          -- >      -- { depth calculation does not depend on choice of variable }
+          -- > == nodeDepth (substFree (internedMuId mu) Rec (RecUnint (nodeDepth (internedMuBody mu)))) (internedMuBody mu))
+          -- >      -- { invariant of internedMuShape }
+          -- > == nodeDepth internedMuShape
+          internedMuShape mu
+       | otherwise  ->
+          substFree (internedMuId mu) n' (internedMuBody mu)
+
 matchMu _otherwise = Nothing
 
 -- | Substitution
