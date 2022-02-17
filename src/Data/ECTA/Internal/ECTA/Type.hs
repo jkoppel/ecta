@@ -205,13 +205,13 @@ data UninternedNode =
       --
       -- The function should be parametric in the Id:
       --
-      -- > substFree i (Rec (RecNodeId j)) (f i) == f j
-    | UninternedMu !(Id -> Node)
+      -- > substFree i (Rec j) (f i) == f j
+    | UninternedMu !(RecNodeId -> Node)
 
 instance Eq UninternedNode where
   UninternedNode es   == UninternedNode es'  = es == es'
   UninternedEmptyNode == UninternedEmptyNode = True
-  UninternedMu mu     == UninternedMu mu'    = mu (-1) == mu' (-1)
+  UninternedMu mu     == UninternedMu mu'    = mu (RecNodeId (-1)) == mu' (RecNodeId (-1))
   _                   == _                   = False
 
 instance Hashable UninternedNode where
@@ -220,7 +220,7 @@ instance Hashable UninternedNode where
       go :: UninternedNode -> Int
       go  UninternedEmptyNode = hashWithSalt salt (0 :: Int, ())
       go (UninternedNode es)  = hashWithSalt salt (1 :: Int, es)
-      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (-1))
+      go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, mu (RecNodeId (-1)))
 
 instance Interned Node where
   type Uninterned  Node = UninternedNode
@@ -237,15 +237,15 @@ instance Interned Node where
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
         internedMuId   = i
-      , internedMuBody = n i
+      , internedMuBody = n (RecNodeId i)
 
         -- In order to establish the invariant for internedMuNoId, we need to know
         --
         -- > substFree i (Rec (RecNodeId (-1)) (n i) == n (-1)
-        -- > == n (-1)
+        -- > == n (RecNodeId (-1))
         --
         -- This follows directly from the parametricity requirement on 'UninternedMu'.
-      , internedMuNoId = n (-1)
+      , internedMuNoId = n (RecNodeId (-1))
       }
 
   cache = nodeCache
@@ -369,9 +369,9 @@ _collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Ju
 -- > foo (InternedMu mu) = let f = \n' -> if n' == Rec (RecNodeId (-1)) then internedMuNoId mu else substFree (internedMuId mu) n' (internedMuBody mu)
 -- >                       in createMu f
 -- >   -- { definition of createMu }
--- > foo (InternedMu mu) = intern $ UninternedMu (f . Rec . RecNodeId)
+-- > foo (InternedMu mu) = intern $ UninternedMu (f . Rec)
 --
--- At this point, `intern` will apply @f . Rec . RecNodeId@ to the identifier @(-1)@ in order to do the hash lookup.
+-- At this point, `intern` will apply @f . Rec@ to the identifier @RecNodeId (-1)@ in order to do the hash lookup.
 -- This will trigger the special case in @f@, and immediately return @internedMuId@, which will be in the cache.
 pattern Mu :: (Node -> Node) -> Node
 pattern Mu f <- (matchMu -> Just f)
@@ -383,7 +383,7 @@ pattern Mu f <- (matchMu -> Just f)
 -- Implementation note: 'createMu' and 'matchMu' interact in non-trivial ways; see docs of the 'Mu' pattern synonym
 -- for performance considerations.
 createMu :: (Node -> Node) -> Node
-createMu f = intern $ UninternedMu (f . Rec . RecNodeId)
+createMu f = intern $ UninternedMu (f . Rec)
 
 -- | Match on a 'Mu' node
 --
@@ -392,8 +392,8 @@ createMu f = intern $ UninternedMu (f . Rec . RecNodeId)
 matchMu :: Node -> Maybe (Node -> Node)
 matchMu (InternedMu mu) = Just $ \n' ->
     if n' == Rec (RecNodeId (-1)) then
-      -- This is an important special case, because the term with (-1) as the ID is the one that is used for interning.
-      -- It is justified by the equality
+      -- This is an important special case, because the term with @(RecNodeId (-1))@ as the ID is the one that is used
+      -- for interning. It is justified by the equality
       --
       -- >    substFree internedMuId (Rec (RecNodeId (-1)) internedMuBody
       -- > == internedMuNoId
@@ -423,7 +423,7 @@ substFree old new = go
     go' :: Node -> Node
     go' EmptyNode               = EmptyNode
     go' (InternedNode node)     = intern $ UninternedNode (map goEdge (internedNodeEdges node))
-    go' (InternedMu mu)         = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec (RecNodeId nid)) (internedMuBody mu))
+    go' (InternedMu mu)         = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
     go' n@(Rec (RecNodeId nid)) = if nid == old
                                     then new
                                     else n
