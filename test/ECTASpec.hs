@@ -2,9 +2,12 @@
 
 module ECTASpec ( spec ) where
 
+import Control.Exception (evaluate)
 import qualified Data.HashSet as HashSet
 import Data.IORef ( newIORef, readIORef, modifyIORef )
 import qualified Data.Text as Text
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 
 import System.IO.Unsafe ( unsafePerformIO )
 
@@ -201,5 +204,31 @@ spec = do
       nodeDepth (Mu $ \x -> Node [Edge "f" [x]]) `shouldBe` 1
     it "two parallel Mus" $
       nodeDepth (Node [Edge "h" [Mu $ \x -> Node [Edge "g" [x]], Mu $ \x -> Node [Edge "h" [x]]]]) `shouldBe` 1
-    it "nested Mu" $
+    it "nested" $
       nodeDepth (Mu $ \x -> Node [Edge "f" [x], Edge "g" [Mu $ \y -> Node [Edge "g" [y]]]]) `shouldBe` 2
+
+  describe "nested Mu" $
+    it "references to different Mu nodes are not confused" $
+     property $ do
+       -- Two nodes with very similar structure
+       -- We are precise about evaluation order here: what we are testing is that after the first term have been
+       -- interned, we do /NOT/ reuse that term when interning the second. (If we /did/ confuse different references
+       -- to 'Mu' nodes, @m@ looks precisely like the inner @Mu@ node of @n@.)
+       n <- evaluate $ Mu $ \r1 -> Mu $ \r2 -> Node [Edge "f" [r1], Edge "g" [r2], Edge "a" []]
+       m <- evaluate $ Mu $ \r              -> Node [Edge "f" [r ], Edge "g" [r ], Edge "a" []]
+
+       -- This is a low-level test; crush doesn't work, because we don't see what 'InternedMu' caches.
+       let collectAllIds :: Node -> Set Int
+           collectAllIds EmptyNode           = Set.empty
+           collectAllIds (InternedNode node) = Set.unions [
+                                                   Set.singleton (internedNodeId node)
+                                                 , Set.unions $ concatMap (map collectAllIds . edgeChildren) (internedNodeEdges node)
+                                                 ]
+           collectAllIds (InternedMu   mu)   = Set.unions [
+                                                   Set.singleton (internedMuId mu)
+                                                 , Set.union (collectAllIds (internedMuBody mu)) (collectAllIds (internedMuNoId mu))
+                                                 ]
+           collectAllIds (Rec _)             = Set.empty
+
+       Set.intersection (collectAllIds n) (collectAllIds m) `shouldBe` Set.empty
+

@@ -119,6 +119,7 @@ data InternedMu = MkInternedMu {
       -- > substFree internedMuId (Rec (RecNodeId (-1)) == internedMuNoId
     , internedMuNoId :: !Node
     }
+  deriving (Show)
 
 data InternedNode = MkInternedNode {
       -- | The 'Id' of the node itself
@@ -130,6 +131,7 @@ data InternedNode = MkInternedNode {
       -- | Maximum Mu nesting depth in the term
     , internedNodeDepth :: !Int
     }
+  deriving (Show)
 
 data Node = InternedNode {-# UNPACK #-} !InternedNode
           | EmptyNode
