@@ -26,8 +26,8 @@ import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 ------------------------------------------------------------------------------
-tau :: Mode -> Node
-tau Normal = createMu
+tau :: Node
+tau = createMu
   (\n -> union
     (  [arrowType n n, var1, var2, var3, var4]
     ++ map (Node . (:[]) . constructorToEdge n) usedConstructors
@@ -39,22 +39,22 @@ tau Normal = createMu
 
   usedConstructors = allConstructors
 
-tau HKTV = createMu
-  (\n -> union
-    (  [appType n n, arrowType n n, var1, var2, var3, var4]
-    ++ constructors
-    ++ map (constructorToEdge n) usedConstructors
-    )
-  )
- where
-  constructorToEdge :: Node -> (Text, Int) -> Node
-  constructorToEdge n (nm, arity) = foldl appType (typeConst nm) (replicate arity n)
+-- tau HKTV = createGloballyUniqueMu
+--   (\n -> union
+--     (  [appType n n, arrowType n n, var1, var2, var3, var4]
+--     ++ constructors
+--     ++ map (constructorToEdge n) usedConstructors
+--     )
+--   )
+--  where
+--   constructorToEdge :: Node -> (Text, Int) -> Node
+--   constructorToEdge n (nm, arity) = foldl appType (typeConst nm) (replicate arity n)
 
-  constructors = map (typeConst . fst) allConstructors
+--   constructors = map (typeConst . fst) allConstructors
 
-  usedConstructors = allConstructors
+--   usedConstructors = allConstructors
 
-tau _ = error "not implemented"
+-- tau _ = error "not implemented"
 
 allConstructors :: [(Text, Int)]
 allConstructors =
@@ -68,26 +68,26 @@ allConstructors =
     (nm, length ts) : concatMap getConstructors ts
   getConstructors (ExportForall _ t) = getConstructors t
 
-generalize :: Mode -> Node -> Node
-generalize m n@(Node [_]) = Node
+generalize :: Node -> Node
+generalize n@(Node [_]) = Node
   [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
  where
   vars                = [var1, var2, var3, var4, varAcc]
-  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then tau m else x) n
+  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then tau else x) n
   (Node [Edge s ns']) = nWithVarsRemoved
-  
+
   pathsForVar :: Node -> [Path]
   pathsForVar v = pathsMatching (== v) n
-generalize _ n = error $ "cannot generalize: " ++ show n
+generalize n = error $ "cannot generalize: " ++ show n
 
 -- Use of `getPath (path [0, 2]) n1` instead of `tau` effectively pre-computes some reduction.
 -- Sometimes this can be desirable, but for enumeration,
-app :: Mode -> Node -> Node -> Node
-app m n1 n2 = Node
+app :: Node -> Node -> Node
+app n1 n2 = Node
   [ mkEdge
       "app"
       [ {- getPath (path [0, 2]) n1 -}
-        tau m
+        tau
       , theArrowNode
       , n1
       , n2
@@ -194,37 +194,37 @@ app m n1 n2 = Node
 --     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
 --   )
 
-applyOperator :: Mode -> Node
-applyOperator m = Node
+applyOperator :: Node
+applyOperator = Node
   [ constFunc
     "$"
-    (generalize m $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-  , constFunc "Data.Function.id" (generalize m $ arrowType var1 var1)
+    (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+  , constFunc "id" (generalize $ arrowType var1 var1)
   ]
 
 filterType :: Node -> Node -> Node
 filterType n t =
   Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
-termsK :: Mode -> Node -> Bool -> Int -> [Node]
-termsK _ _ _     0 = []
-termsK _ anyArg False 1 = [anyArg, anyFunc]
-termsK mode anyArg True  1 = [anyArg, anyFunc, applyOperator mode]
-termsK mode anyArg _ 2 =
-  [ app mode anyListFunc (union [anyNonNilFunc, anyArg, applyOperator mode])
-  , app mode fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator mode])
-  , app mode (union [anyNonListFunc, anyArg]) (union (termsK mode anyArg True 1))
+termsK :: Node -> Bool -> Int -> [Node]
+termsK _ _     0 = []
+termsK anyArg False 1 = [anyArg, anyFunc]
+termsK anyArg True  1 = [anyArg, anyFunc, applyOperator]
+termsK anyArg _ 2 =
+  [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
+  , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
+  , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
   ]
-termsK mode anyArg _ k = map constructApp [1 .. (k - 1)]
+termsK anyArg _ k = map constructApp [1 .. (k - 1)]
  where
   constructApp :: Int -> Node
   constructApp i =
-    app mode (union (termsK mode anyArg False i)) (union (termsK mode anyArg True (k - i)))
+    app (union (termsK anyArg False i)) (union (termsK anyArg True (k - i)))
 
-relevantTermK :: Mode -> Node -> Bool -> Int -> [ArgType] -> [Node]
-relevantTermK mode anyArg includeApplyOp k []       = termsK mode anyArg includeApplyOp k
-relevantTermK _ _      _              1 [(x, t)] = [Node [constArg x t]]
-relevantTermK mode anyArg _ k argNames
+relevantTermK :: Node -> Bool -> Int -> [ArgType] -> [Node]
+relevantTermK anyArg includeApplyOp k []       = termsK anyArg includeApplyOp k
+relevantTermK _      _              1 [(x, t)] = [Node [constArg x t]]
+relevantTermK anyArg _ k argNames
   | k < length argNames = []
   | otherwise = concatMap (\i -> map (constructApp i) allSplits) [1 .. (k - 1)]
  where
@@ -232,16 +232,16 @@ relevantTermK mode anyArg _ k argNames
 
   constructApp :: Int -> ([ArgType], [ArgType]) -> Node
   constructApp i (xs, ys) =
-    let f = union (relevantTermK mode anyArg False i xs)
-        x = union (relevantTermK mode anyArg True (k - i) ys)
-    in  app mode f x
+    let f = union (relevantTermK anyArg False i xs)
+        x = union (relevantTermK anyArg True (k - i) ys)
+    in  app f x
 
-relevantTermsUptoK :: Mode -> Node -> [ArgType] -> Int -> Node
-relevantTermsUptoK mode anyArg args k = union
+relevantTermsUptoK :: Node -> [ArgType] -> Int -> Node
+relevantTermsUptoK anyArg args k = union
   (map (union . relevantTermsForArgs) [1 .. k])
  where
   relevantTermsForArgs k =
-    concatMap (relevantTermK mode anyArg True k) (permutations args)
+    concatMap (relevantTermK anyArg True k) (permutations args)
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term
@@ -266,7 +266,7 @@ getText (Symbol s) = s
 hoogleComps :: [Edge]
 hoogleComps =
   filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
-    $ map (uncurry (parseHoogleComponent Normal) . swap)
+    $ map (uncurry parseHoogleComponent . swap)
     $ Map.toList hoogleComponents
 
 anyFunc :: Node
@@ -336,9 +336,9 @@ anyNonNothingFunc =
 ---------------------------------------------------------------------------------------
 -------------------------- Importing components from Hoogle+ --------------------------
 ---------------------------------------------------------------------------------------
-parseHoogleComponent :: Mode -> Text -> ExportType -> Edge
-parseHoogleComponent mode name t =
-  constFunc (Symbol name) (generalize mode $ exportTypeToFta mode t)
+parseHoogleComponent :: Text -> ExportType -> Edge
+parseHoogleComponent name t =
+  constFunc (Symbol name) (generalize $ exportTypeToFta t)
 
 reduceFully :: Node -> Node
 -- reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially [])

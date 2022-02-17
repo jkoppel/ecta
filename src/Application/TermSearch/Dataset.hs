@@ -13,26 +13,22 @@ import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 
-exportTypeToFta :: Mode -> ExportType -> Node
-exportTypeToFta _ (ExportVar "a"  ) = var1
-exportTypeToFta _ (ExportVar "b"  ) = var2
-exportTypeToFta _ (ExportVar "c"  ) = var3
-exportTypeToFta _ (ExportVar "d"  ) = var4
-exportTypeToFta _ (ExportVar "acc") = varAcc
-exportTypeToFta _ (ExportVar v) =
+exportTypeToFta :: ExportType -> Node
+exportTypeToFta (ExportVar "a"  ) = var1
+exportTypeToFta (ExportVar "b"  ) = var2
+exportTypeToFta (ExportVar "c"  ) = var3
+exportTypeToFta (ExportVar "d"  ) = var4
+exportTypeToFta (ExportVar "acc") = varAcc
+exportTypeToFta (ExportVar v) =
   error
     $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got "
     ++ show v
-exportTypeToFta m (ExportFun t1 t2) =
-  arrowType (exportTypeToFta m t1) (exportTypeToFta m t2)
-exportTypeToFta m (ExportCons "Fun" [t1, t2]) =
-  arrowType (exportTypeToFta m t1) (exportTypeToFta m t2)
-exportTypeToFta m (ExportCons s ts) =
-  case m of
-    Normal -> mkDatatype s (map (exportTypeToFta m) ts)
-    HKTV -> foldl appType (typeConst s) (map (exportTypeToFta m) ts)
-    _ -> error "not implemented"
-exportTypeToFta m (ExportForall _ t) = exportTypeToFta m t
+exportTypeToFta (ExportFun t1 t2) =
+  arrowType (exportTypeToFta t1) (exportTypeToFta t2)
+exportTypeToFta (ExportCons "Fun" [t1, t2]) =
+  arrowType (exportTypeToFta t1) (exportTypeToFta t2)
+exportTypeToFta (ExportCons s ts) = mkDatatype s (map exportTypeToFta ts)
+exportTypeToFta (ExportForall _ t) = exportTypeToFta t
 
 speciallyTreatedFunctions :: [Symbol]
 speciallyTreatedFunctions =
