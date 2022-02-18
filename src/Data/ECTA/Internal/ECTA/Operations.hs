@@ -50,13 +50,15 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
-import Data.Hashable ( hash )
+import Data.Hashable ( hash, Hashable(..) )
 import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
+import           Data.Map ( Map )
+import qualified Data.Map as Map
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -69,7 +71,7 @@ import Data.ECTA.Internal.Term
 
 --   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased ( Id, intern )
+import Data.Interned.Extended.HashTableBased
 --import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 --import Data.Interned.Extended.SingleThreaded ( intern )
 
@@ -218,32 +220,148 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") doIntersect
-{-# NOINLINE intersect #-}
+intersect = curry intersectTop
 
+-- | For closed terms, memoize the empty environment application
+intersectTop :: (Node, Node) -> Node
+intersectTop = memo (NameTag "intersectTop") $ \(a, b) ->
+    let (IS f) = intersectDom (emptyIntersectionDom, a, b)
+    in f Map.empty
 
--- 7/4/21: The unrolling strategy for intersection totally does not generalize beyond
--- recursive nodes which have a self cycle.
+------ Intersection internals
+
+-- | Once we have computed the intersection, we just need to know the 'Id's assigned to the resulting shape
 --
--- The following will enter an infinite recursion:
---  > t = createGloballyUniqueMu (\n -> Node  [Edge "a" [Node [Edge "a" [n]]]])
---  > intersect t (Node [Edge "a" [t]])
-doIntersect :: Node -> Node -> Node
-doIntersect EmptyNode _         = EmptyNode
-doIntersect _         EmptyNode = EmptyNode
-doIntersect n@(Mu _)  (Mu _)    = n -- TODO: Update for multiple Mu's
-doIntersect n1@(Mu _) n2        = doIntersect (unfoldOuterRec n1) n2
-doIntersect n1        n2@(Mu _) = doIntersect n1                  (unfoldOuterRec n2)
-doIntersect n1@(Node es1) n2@(Node es2)
-  | n1 == n2                            = n1
-  | n2 <  n1                            = intersect n2 n1
-                                          -- `hash` gives a unique ID of the symbol because they're interned
-  | otherwise                           = let joined = hashJoin (hash . edgeSymbol) intersectEdgeSameSymbol es1 es2
-                                          in Node joined
-                                             --Node $ dropRedundantEdges joined
-                                             --mkNodeAlreadyNubbed $ dropRedundantEdges joined
-doIntersect n1 n2 = error $ "doIntersect: Unexpected " <> show n1 <> " " <> show n2
+-- We separate these two things out, because the shape can be memoized independent of the 'Id's.
+--
+-- Two goals:
+--
+-- 1. Forcing the 'IntersectionShape' to WHNF itself should not result in any recursive calls
+--    (so that the recursion isn't totally unrolled before memoization can happen).
+-- 2. But forcing the /function/ to WHNF /should/ result in all recursive calls to happen, /before/
+--    the function is executed.
+data IntersectionShape a = IS (Map (Id, Id) Node -> a)
 
+-- | Commute @[]@ and 'IntersectionShape'
+sequenceIntersectionShape :: [IntersectionShape a] -> IntersectionShape [a]
+sequenceIntersectionShape = IS . go []
+  where
+    go :: [Map (Id, Id) Node -> a] -> [IntersectionShape a] -> Map (Id, Id) Node -> [a]
+    go acc []         = \env -> reverse (map ($ env) acc)
+    go acc (IS !f:fs) = go (f:acc) fs
+
+-- | Intersection domain
+--
+-- When we are computing an intersection, we want to memoize the shape of that intersection independent of the exact
+-- values we choose for 'Id's: that is, independent from the 'IntersectionEnv'. /However/, when computing an
+-- intersection we /do/ need to know whether we have seen a particular intersection problem before, to avoid
+-- infinite unrolling. That is, we need the /domain/ of the 'IntersectionEnv' to know which decisions to make, even if
+-- we don't need the /codomain/ for those decisions.
+data IntersectionDom = ID {
+      -- | Value of all free variables inside the term
+      idFree :: Map Id Node
+
+      -- | Intersection problems we encountered previously
+    , idRecInt :: Set (Id, Id)
+    }
+  deriving (Show, Eq)
+
+emptyIntersectionDom :: IntersectionDom
+emptyIntersectionDom = ID Map.empty Set.empty
+
+instance Hashable IntersectionDom where
+  hashWithSalt s (ID free recInt) = hashWithSalt s (Map.toList free, Set.toList recInt)
+
+-- | Compute intersection in the given domain
+--
+-- Contract: the resulting intersection shape must be applied to a map with 'idRecInt' as its domain.
+intersectDom :: (IntersectionDom, Node, Node) -> IntersectionShape Node
+{-# NOINLINE intersectDom #-}
+intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
+  where
+    onNode :: IntersectionDom -> Node -> Node -> IntersectionShape Node
+    onNode !dom l r =
+        case (l, r) of
+          -- Rule out empty cases first
+          -- This justifies the use of nodeIdentity (@i@, @j@) for the other cases
+          (EmptyNode, _) -> IS $ \_ -> EmptyNode
+          (_, EmptyNode) -> IS $ \_ -> EmptyNode
+
+          -- For closed terms, improve memoization performance by using the empty environment
+          _ | Set.null (freeVars l), Set.null (freeVars r), not (Map.null (idFree dom)) -> IS $ \_ -> intersect l r
+
+          -- Special case for self-intersection (equality check is cheap of course: just uses the interned 'Id')
+          _ | l == r, Set.null (freeVars l) -> IS $ \_ -> l
+
+          -- Always intersect nodes in the same order. This is important for two reasons:
+          --
+          -- 1. It will increase the probability of a cache hit (i.e., improve memoization)
+          -- 2. It will increase the probability of being able to use 'ieRecInt'
+          _ | l > r -> intersectDom (dom, r, l)
+
+          -- If we have seen this exact problem before, refer to enclosing Mu
+          _ | Set.member (i, j) (idRecInt dom) -> IS $ \env -> env Map.! (i, j)
+
+          -- When encountering a 'Mu', extend the domain in two ways:
+          --
+          -- 1. Entry in 'idRecInt': if we see the exact same intersection problem again, we can refer back to the Mu
+          --    node we create here.
+          -- 2. Entry in 'idFree'': we need to know the value of the free variable if we need to unroll
+          (InternedMu l', InternedMu r') ->
+            IS $ case intersectDom (extendEnv [(i, l), (j, r)], internedMuBody l', internedMuBody r') of
+                  IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (InternedMu l', _) ->
+            IS $ case intersectDom (extendEnv [(i, l)], internedMuBody l', r) of
+                   IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (_, InternedMu r') ->
+            IS $ case intersectDom (extendEnv [(j, r)], l, internedMuBody r') of
+                   IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+
+           -- When encountering a free variable, look up the corresponding value in the environment.
+          (Rec l', _) -> intersectDom (dom, findFreeVar l', r)
+          (_, Rec r') -> intersectDom (dom, l, findFreeVar r')
+
+          -- Finally, the real intersection work happens here
+          (InternedNode l', InternedNode r') ->
+             IS $ case sequenceIntersectionShape $ hashJoin (hash . edgeSymbol)
+                                                            (\e e' -> intersectDomEdge (dom, e, e'))
+                                                            (internedNodeEdges l')
+                                                            (internedNodeEdges r') of
+                    IS !f -> \env -> Node (f env)
+      where
+        -- Node identifies
+        -- Should only be used (forced) if previously established the nodes are not empty.
+        i, j :: Id
+        i = nodeIdentity l
+        j = nodeIdentity r
+
+        -- Extend domain when we encounter a 'Mu'
+        -- We might see one or two 'Mu's (if we happen to see a 'Mu' on both sides at once)
+        extendEnv :: [(Id, Node)] -> IntersectionDom
+        extendEnv bindings = ID {
+              idFree   = Map.union (Map.fromList bindings) (idFree dom)
+            , idRecInt = Set.insert (i, j) (idRecInt dom)
+            }
+
+        findFreeVar :: RecNodeId -> Node
+        findFreeVar (RecInt intId) | Just n <- Map.lookup intId (idFree dom) = n
+        findFreeVar recId = error $ "findFreeVar: unexpected " <> show recId
+
+intersectDomEdge :: (IntersectionDom, Edge, Edge) -> IntersectionShape Edge
+{-# NOINLINE intersectDomEdge #-}
+intersectDomEdge = memo (NameTag "IntersectionDomEdge") (\(dom, l, r) -> onEdge dom l r)
+  where
+    onEdge :: IntersectionDom -> Edge -> Edge -> IntersectionShape Edge
+    onEdge !dom l r =
+        IS $ let !cs = edgeEcs l `combineEqConstraints` edgeEcs r
+             in if constraintsAreContradictory cs
+                  then \_ -> emptyEdge
+                  else case sequenceIntersectionShape $ zipWith (\a b -> intersectDom (dom, a, b))
+                                                                (edgeChildren l)
+                                                                (edgeChildren r) of
+                         IS !f -> \env -> intern $ UninternedEdge (edgeSymbol l) (f env) cs
+
+------ Additional intersection utility
 
 _nodeDropRedundantEdges :: Node -> Node
 _nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es

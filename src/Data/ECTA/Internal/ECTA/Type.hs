@@ -21,11 +21,17 @@ module Data.ECTA.Internal.ECTA.Type (
   , numNestedMu
   , modifyNode
   , createMu
+  , freeVars
+  , stronglyIsomorphic
   ) where
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+import           Data.Map.Strict ( Map )
+import qualified Data.Map.Strict as Map
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 
 import GHC.Generics ( Generic )
 
@@ -143,6 +149,9 @@ data InternedNode = MkInternedNode {
 
       -- | Maximum Mu nesting depth in the term
     , internedNodeNumNestedMu :: !Int
+
+      -- | Free variables in the node
+    , internedNodeFree :: !(Set Id)
     }
   deriving (Show)
 
@@ -200,6 +209,52 @@ numNestedMu EmptyNode           = 0
 numNestedMu (InternedNode node) = internedNodeNumNestedMu node
 numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
 numNestedMu (Rec _)             = 0
+
+-- | All free (regular) variables inside the node
+--
+-- @O(1) provided that there are no unbounded Mu chains in the term.
+freeVars :: Node -> Set Id
+freeVars EmptyNode           = Set.empty
+freeVars (InternedNode node) = internedNodeFree node
+freeVars (InternedMu   mu)   = Set.delete (internedMuId mu) (freeVars (internedMuBody mu))
+freeVars (Rec (RecInt i))    = Set.singleton i
+freeVars (Rec _)             = Set.empty
+
+-- | Check if two nodes are strongly isomorphic
+--
+-- Checks that two nodes have the exact same structure, modulo node 'Id's and modulo redundant 'Mu' nodes
+-- (but not modulo unrolling, hence "strongly").
+--
+-- This function is only used in testing.
+--
+-- TODO: Ideally, two nodes that are strongly isomorphic would be /equal/. Something isn't going quite right in
+-- interning.
+stronglyIsomorphic :: Node -> Node -> Bool
+stronglyIsomorphic = onNode Set.empty
+  where
+    onNode :: Set (Id, Id) -> Node -> Node -> Bool
+    -- Nodes that are equal are definitely strongly isomorphic (currently sadly not the other way around, see above)
+    onNode _ l r | l == r = True
+
+    -- Order the nodes so that the environment always contains the lower Id first
+    onNode env l r | l > r = onNode env r l
+
+    -- One case for each of the constructors (if the constructors don't match, the terms are not strongly isomorphic)
+    onNode !_    EmptyNode         EmptyNode        = True
+    onNode !env (InternedNode l)  (InternedNode r)  = and $ zipWith (onEdge env) (internedNodeEdges l) (internedNodeEdges r)
+    onNode !env (InternedMu   l)  (InternedMu   r)  = onNode (Set.insert (internedMuId l, internedMuId r) env) (internedMuBody l) (internedMuBody r)
+    onNode !env (InternedMu   l)                r   = onNode                                              env  (internedMuBody l)                 r
+    onNode !env               l   (InternedMu   r)  = onNode                                              env                  l  (internedMuBody r)
+    onNode !env (Rec (RecInt  l)) (Rec  (RecInt r)) = (l, r) `Set.member` env
+    onNode !_   (Rec          l)  (Rec          r)  = l == r
+    onNode !_   _                 _                 = False
+
+    onEdge :: Set (Id, Id) -> Edge -> Edge -> Bool
+    onEdge !env l r = and [
+          edgeSymbol l == edgeSymbol r
+        , edgeEcs    l == edgeEcs    r
+        , and $ zipWith (onNode env) (edgeChildren l) (edgeChildren r)
+        ]
 
 ----------------------
 ------ Getters and setters
@@ -260,6 +315,7 @@ instance Interned Node where
         internedNodeId          = i
       , internedNodeEdges       = es
       , internedNodeNumNestedMu = maximum (0 : concatMap (map numNestedMu . edgeChildren) es) -- depth is always >= 0
+      , internedNodeFree        = Set.unions $ concatMap (map freeVars . edgeChildren) es
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
@@ -405,8 +461,12 @@ mkEdge s ns ecs
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
 pattern Node :: [Edge] -> Node
-pattern Node es <- (InternedNode (internedNodeEdges -> es)) where
-  Node es = case removeEmptyEdges es of
+pattern Node es <- (InternedNode (internedNodeEdges -> es))
+  where
+    Node = mkNode
+
+mkNode :: [Edge] -> Node
+mkNode es = case removeEmptyEdges es of
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
@@ -497,6 +557,10 @@ matchMu (InternedMu mu) = Just $ \n' ->
 
 matchMu _otherwise = Nothing
 
+-------------------
+------ Substitution
+-------------------
+
 -- | Substitution
 --
 -- @substFree i n@ will replace all occurrences of @Rec (RecNodeId i)@ by @n@. We appeal to the uniqueness of node IDs
@@ -507,20 +571,56 @@ matchMu _otherwise = Nothing
 --
 -- > substFree i (Rec (RecNodeId i)) == id
 substFree :: Id -> Node -> Node -> Node
-substFree old new = go
+substFree old = substFree' . Map.singleton old
+
+-- | Generalization of 'substFree' to arbitrary number of substitutions
+--
+-- The somewhat unusual ordering the arguments is to facilitate memoization; see below.
+substFree' :: Map Id Node -> Node -> Node
+substFree' env n = let ~(Shape f) = extractShape n
+                   in f env
+
+------ Substitution internals
+
+-- | The shape of a something is that something with holes for as-yet unknown 'Id's
+--
+-- See 'IntersectionShape' for additional discussion.
+data Shape a = Shape (Map Id Node -> a)
+
+-- | Commute @[]@ and 'Shape'
+--
+-- Forces all elements in the list
+sequenceShape :: [Shape a] -> Shape [a]
+sequenceShape = Shape . go []
   where
-    go :: Node -> Node
-    go = memo (NameTag "substFree") go'
-    {-# NOINLINE go #-}
+    go :: [Map Id Node -> a] -> [Shape a] -> Map Id Node -> [a]
+    go acc []            = \env -> reverse (map ($ env) acc)
+    go acc (Shape !f:fs) = go (f:acc) fs
 
-    go' :: Node -> Node
-    go' EmptyNode           = EmptyNode
-    go' (InternedNode node) = intern $ UninternedNode (map goEdge (internedNodeEdges node))
-    go' (InternedMu mu)     = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
-    go' n@(Rec recId)       = if recId == RecInt old
-                                then new
-                                else n
+-- | Extract the shape from a term
+--
+-- Somewhat serendipitously (or does this point to some deeper truth?) this also serves as a definition of substitution:
+-- any free variables in the original node will become " holes " in the 'Shape'.
+extractShape :: Node -> Shape Node
+{-# NOINLINE extractShape #-}
+extractShape = memo (NameTag "extractShape") onNode
+  where
+    onNode :: Node -> Shape Node
+    onNode EmptyNode           = Shape $ \_ -> EmptyNode
+    onNode (InternedNode node) = Shape $ case sequenceShape $ map extractShapeEdge (internedNodeEdges node) of
+                                           Shape !f -> \env -> mkNode (f env)
+    onNode (InternedMu mu)     = Shape $ case onNode (internedMuBody mu) of
+                                           Shape !f -> \env -> createMu $ \recNode -> f (Map.insert (internedMuId mu) recNode env)
+    onNode (Rec (RecInt i))    = Shape $ \env -> case Map.lookup i env of
+                                                   Nothing -> error $ "extractShape: dangling " <> show (RecInt i)
+                                                   Just n  -> n
+    onNode (Rec recNodeId)     = Shape $ \_ -> Rec recNodeId
 
-    goEdge :: Edge -> Edge
-    goEdge e = setChildren e $ map go (edgeChildren e)
-
+extractShapeEdge :: Edge -> Shape Edge
+{-# NOINLINE extractShapeEdge #-}
+extractShapeEdge = memo (NameTag "extractShapeEdge") onEdge
+  where
+    onEdge :: Edge -> Shape Edge
+    onEdge e =
+        Shape $ case sequenceShape (map extractShape (edgeChildren e)) of
+                  Shape !f -> setChildren e . f
