@@ -19,7 +19,7 @@ import Data.ECTA.Internal.ECTA.Operations
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Term
-import TermSearch
+import TermSearch ( uptoDepth4 )
 
 import Test.Generators.ECTA ()
 
@@ -106,7 +106,7 @@ spec = do
     it "reduces paths constrained by equality constraints" $
         reducePartially ex2 `shouldBe` reducePartially ex1
 
-  describe "intersection" $ do
+  describe "intersection properties" $ do
     it "intersection commutes with naiveDenotation" $
       property $ mapSize (min 3) $ \n1 n2 -> HashSet.fromList (naiveDenotation $ intersect n1 n2)
                                                `shouldBe` HashSet.intersection (HashSet.fromList $ naiveDenotation n1)
@@ -123,6 +123,44 @@ spec = do
 
     it "intersect is idempotent" $
       property $ \n1 -> intersect n1 n1 == n1
+
+  describe "intersection examples" $ do
+
+    -- Intersection examples without Mu nodes
+    --
+    -- Note: Intersection between 1 and 3 is not well-defined: must be same-sorted.
+
+    it "remove leaf choice" $
+      intersect intTest1 intTest2 `shouldBe` intTest1
+
+    it "remove non-leaf choice" $
+      intersect intTest3 intTest4 `shouldBe` intTest3
+
+    -- This test is a bit indirect: the intersection results in a term with what I /think/ is an inaccessible branch.
+    -- Not sure if there is a clean-up pass we can do.
+    it "add constraints" $
+      naiveDenotation (intersect intTest5 intTest6) `shouldBe` [Term "g" [Term "a" [],Term "b" []]]
+
+    -- Intersection examples with Mu nodes
+
+    it "intersect (one-step loop) with (its own unfolding: step, one-step)" $
+      (intersect intTest7 intTest8, intTest8) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "intersect (one-step loop) with (two-step loop)" $
+      intersect intTest7 intTest9 `shouldBe` intTest9
+
+    it "intersect (one-step loop) with (one step, two-step loop)" $
+      (intersect intTest7 intTest10, intTest10) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "intersect (one step, one-step loop) with (two-step loop)" $
+      (intersect intTest8 intTest9, intTest10) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "intersect (one step, one-step loop) with (one step, two-step loop)" $
+      intersect intTest8 intTest10 `shouldBe` intTest10
+
+    -- This was the example that in the previous implementation of 'intersect' caused an infinite loop
+    it "intersect (two-step loop) with (one step, two-step loop)" $
+      (intersect intTest9 intTest10, intTest8) `shouldSatisfy` uncurry stronglyIsomorphic
 
   describe "reduction" $ do
     it "reduction preserves naiveDenotation" $
@@ -174,8 +212,8 @@ spec = do
           ns'  = reduceEqConstraints ecs ns
           ns'' = reduceEqConstraints ecs ns'
           f    = \n -> Node [Edge "f" [n]]
-      in (ns' == ns'') && ns' == [f $ f $ f $ f infiniteFNode, f $ f $ f $ infiniteFNode]
-         `shouldBe` True
+      in do shouldBe ns' ns''
+            shouldSatisfy (ns', [f $ f $ f $ f infiniteFNode, f $ f $ f $ infiniteFNode]) (and . uncurry (zipWith stronglyIsomorphic))
 
     it "refold folds the simplest unrolled input" $
       refold (Node [Edge "f" [infiniteFNode]]) `shouldBe` infiniteFNode
@@ -232,3 +270,68 @@ spec = do
 
        Set.intersection (collectAllIds n) (collectAllIds m) `shouldBe` Set.empty
 
+-------------------------------------
+--- Example inputs for the intersection tests
+-------------------------------------
+
+-- | Single zero-argument term
+intTest1 :: Node
+intTest1 = Node [Edge "f" []]
+
+-- | Two zero-argument terms
+intTest2 :: Node
+intTest2 = Node [Edge "f" [], Edge "g" []]
+
+-- | Single one-argument term, two possible arguments
+intTest3 :: Node
+intTest3 = Node [Edge "f" [Node [Edge "a" [], Edge "b" []]]]
+
+-- | Two one-argument terms, each two possible arguments (chosen from the same set)
+intTest4 :: Node
+intTest4 = Node [Edge "f" args, Edge "g" args]
+  where
+    args :: [Node]
+    args = [arg]
+
+    arg :: Node
+    arg = Node [Edge "a" [], Edge "b" []]
+
+-- | Two two-argument terms, no choice for arguments
+intTest5 :: Node
+intTest5 = Node [Edge "f" args, Edge "g" args]
+  where
+    args :: [Node]
+    args = [arg1, arg2]
+
+    arg1, arg2 :: Node
+    arg1 = Node [Edge "a" []]
+    arg2 = Node [Edge "b" []]
+
+-- | Two two-argument terms, same choice for arguments, but constrain the two arguments to be the same if choosing f
+intTest6 :: Node
+intTest6 = Node [mkEdge "f" args cs, Edge "g" args]
+  where
+    args :: [Node]
+    args = [arg, arg]
+
+    arg :: Node
+    arg = Node [Edge "a" [], Edge "b" []]
+
+    cs :: EqConstraints
+    cs = mkEqConstraints [[path [0], path [1]]]
+
+-- | f (f (f (... a)))
+intTest7 :: Node
+intTest7 = createMu $ \r -> Node [Edge "f" [r], Edge "a" []]
+
+-- | intTest7, once unrolled
+intTest8 :: Node
+intTest8 = unfoldOuterRec intTest7
+
+-- | Like intTest7, but with an 'inner' unrolling: two f edges before recursing
+intTest9 :: Node
+intTest9 = createMu $ \r -> Node [Edge "f" [Node [Edge "f" [r], Edge "a" []]], Edge "a" []]
+
+-- | Like intTest9, but with a single additional node on top (not an unrolling: this would result in /two/ additional nodes)
+intTest10 :: Node
+intTest10 = Node [Edge "f" [intTest9], Edge "a" []]

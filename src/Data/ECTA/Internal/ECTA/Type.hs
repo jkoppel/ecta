@@ -21,11 +21,17 @@ module Data.ECTA.Internal.ECTA.Type (
   , numNestedMu
   , modifyNode
   , createMu
+  , stronglyIsomorphic
   ) where
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+import           Data.Map.Strict ( Map )
+import qualified Data.Map.Strict as Map
+import Data.Maybe ( fromMaybe )
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 
 import GHC.Generics ( Generic )
 
@@ -200,6 +206,42 @@ numNestedMu EmptyNode           = 0
 numNestedMu (InternedNode node) = internedNodeNumNestedMu node
 numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
 numNestedMu (Rec _)             = 0
+
+-- | Check if two nodes are strongly isomorphic
+--
+-- Checks that two nodes have the exact same structure, modulo node 'Id's and modulo redundant 'Mu' nodes
+-- (but not modulo unrolling, hence "strongly").
+--
+-- This function is only used in testing.
+--
+-- TODO: Ideally, two nodes that are strongly isomorphic would be /equal/. Something isn't going quite right in
+-- interning.
+stronglyIsomorphic :: Node -> Node -> Bool
+stronglyIsomorphic = onNode Set.empty
+  where
+    onNode :: Set (Id, Id) -> Node -> Node -> Bool
+    -- Nodes that are equal are definitely strongly isomorphic (currently sadly not the other way around, see above)
+    onNode _ l r | l == r = True
+
+    -- Order the nodes so that the environment always contains the lower Id first
+    onNode env l r | l > r = onNode env r l
+
+    -- One case for each of the constructors (if the constructors don't match, the terms are not strongly isomorphic)
+    onNode !_    EmptyNode         EmptyNode        = True
+    onNode !env (InternedNode l)  (InternedNode r)  = and $ zipWith (onEdge env) (internedNodeEdges l) (internedNodeEdges r)
+    onNode !env (InternedMu   l)  (InternedMu   r)  = onNode (Set.insert (internedMuId l, internedMuId r) env) (internedMuBody l) (internedMuBody r)
+    onNode !env (InternedMu   l)                r   = onNode                                              env  (internedMuBody l)                 r
+    onNode !env               l   (InternedMu   r)  = onNode                                              env                  l  (internedMuBody r)
+    onNode !env (Rec (RecInt  l)) (Rec  (RecInt r)) = (l, r) `Set.member` env
+    onNode !_   (Rec          l)  (Rec          r)  = l == r
+    onNode !_   _                 _                 = False
+
+    onEdge :: Set (Id, Id) -> Edge -> Edge -> Bool
+    onEdge !env l r = and [
+          edgeSymbol l == edgeSymbol r
+        , edgeEcs    l == edgeEcs    r
+        , and $ zipWith (onNode env) (edgeChildren l) (edgeChildren r)
+        ]
 
 ----------------------
 ------ Getters and setters
@@ -405,8 +447,12 @@ mkEdge s ns ecs
 {-# COMPLETE Node, EmptyNode, Mu, Rec #-}
 
 pattern Node :: [Edge] -> Node
-pattern Node es <- (InternedNode (internedNodeEdges -> es)) where
-  Node es = case removeEmptyEdges es of
+pattern Node es <- (InternedNode (internedNodeEdges -> es))
+  where
+    Node = mkNode
+
+mkNode :: [Edge] -> Node
+mkNode es = case removeEmptyEdges es of
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
@@ -507,20 +553,30 @@ matchMu _otherwise = Nothing
 --
 -- > substFree i (Rec (RecNodeId i)) == id
 substFree :: Id -> Node -> Node -> Node
-substFree old new = go
+substFree old new n = substFree' n $ Map.singleton old new
+
+-- | Generalization of 'substFree' to arbitrary number of substitutions
+--
+-- The somewhat unusual ordering the arguments is to facilitate memoization; see below.
+substFree' :: Node -> Map Id Node -> Node
+substFree' = onNode
   where
-    go :: Node -> Node
-    go = memo (NameTag "substFree") go'
-    {-# NOINLINE go #-}
+    -- Substitution is defined entirely by the term. This means that we can memoize independent of the environment.
+    onNode :: Node -> Map Id Node -> Node
+    onNode = memo (NameTag "substFree'.onNode") onNode'
+    {-# NOINLINE onNode #-}
 
-    go' :: Node -> Node
-    go' EmptyNode           = EmptyNode
-    go' (InternedNode node) = intern $ UninternedNode (map goEdge (internedNodeEdges node))
-    go' (InternedMu mu)     = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
-    go' n@(Rec recId)       = if recId == RecInt old
-                                then new
-                                else n
+    onNode' :: Node -> Map Id Node -> Node
+    onNode' EmptyNode            !_   = EmptyNode
+    onNode' (InternedNode node)  !env = mkNode $ map ((\e -> onEdge e env)) (internedNodeEdges node)
+    onNode' (InternedMu mu)      !env = createMu $ \r -> onNode (internedMuBody mu) (Map.insert (internedMuId mu) r env)
+    onNode' n@(Rec (RecInt nid)) !env = fromMaybe n (Map.lookup nid env)
+    onNode' (Rec recId)          !_   = Rec recId
 
-    goEdge :: Edge -> Edge
-    goEdge e = setChildren e $ map go (edgeChildren e)
+    onEdge :: Edge -> Map Id Node -> Edge
+    onEdge = memo (NameTag "substFree'.onEdge") onEdge'
+    {-# NOINLINE onEdge #-}
+
+    onEdge' :: Edge -> Map Id Node -> Edge
+    onEdge' e env = setChildren e $ map (\n -> onNode n env) (edgeChildren e)
 
