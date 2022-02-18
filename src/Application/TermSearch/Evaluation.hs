@@ -3,7 +3,6 @@ module Application.TermSearch.Evaluation
     , runBenchmark
     ) where
 
-import           Control.Monad                  ( when )
 import           Data.Time                      ( diffUTCTime
                                                 , getCurrentTime
                                                 )
@@ -19,7 +18,6 @@ import Data.List (permutations)
 import           Data.ECTA
 import           Data.ECTA.Term
 
-import           Application.TermSearch.Benchmark
 import           Application.TermSearch.Dataset
 import           Application.TermSearch.TermSearch
 import           Application.TermSearch.Type
@@ -36,10 +34,8 @@ runBenchmark (Benchmark name depth sol (args, res)) = do
         !filterNode = filterType
             (union $ concatMap (relevantTermK anyArg True depth) (permutations argNodes))
             resNode
-    nodeCons <- getCurrentTime
 
-    -- timeout (300 * 10 ^ 6) $ do
-    do
+    _ <- timeout (300 * 10 ^ (6 :: Int)) $ do
         reducedNode <- reduceFullyAndLog filterNode
         -- let reducedNode = reduceFully filterNode
         let foldedNode = refold reducedNode

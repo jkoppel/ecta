@@ -4,41 +4,31 @@
 
 module Application.TermSearch.TermSearch where
 
-import           Application.TermSearch.Benchmark
-import           Application.TermSearch.Dataset
-import           Application.TermSearch.Type
-import           Application.TermSearch.Utils
-import           Control.Monad                  ( when )
-import qualified Data.Bifunctor                as Bi
-import           Data.ECTA
-import           Data.ECTA.Paths
-import           Data.ECTA.Term
 import           Data.List                      ( (\\)
-                                                , isInfixOf
-                                                , isPrefixOf
                                                 , permutations
                                                 )
 import           Data.List.Extra                ( nubOrd )
-import           Data.Map                       ( Map )
 import qualified Data.Map                      as Map
 import           Data.Text                      ( Text )
-import qualified Data.Text                     as Text
-import           Data.Time
-import           Debug.Trace
-import           Language.Dot                   ( renderDot )
 import           System.IO                      ( hFlush
                                                 , stdout
                                                 )
-import           System.Timeout
-import           Text.Pretty.Simple             ( pPrint )
-import           Text.RawString.QQ
 import Data.Tuple (swap)
 import Data.Maybe (fromJust)
 import           Utility.Fixpoint
 
+import           Data.ECTA
+import           Data.ECTA.Paths
+import           Data.ECTA.Term
+
+import           Application.TermSearch.Dataset
+import           Application.TermSearch.Type
+import           Application.TermSearch.Utils
+
 ------------------------------------------------------------------------------
+
 tau :: Node
-tau = createGloballyUniqueMu
+tau = createMu
   (\n -> union
     (  [arrowType n n, var1, var2, var3, var4]
     ++ map (Node . (:[]) . constructorToEdge n) usedConstructors
@@ -49,23 +39,6 @@ tau = createGloballyUniqueMu
   constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
 
   usedConstructors = allConstructors
-
--- tau HKTV = createGloballyUniqueMu
---   (\n -> union
---     (  [appType n n, arrowType n n, var1, var2, var3, var4]
---     ++ constructors
---     ++ map (constructorToEdge n) usedConstructors
---     )
---   )
---  where
---   constructorToEdge :: Node -> (Text, Int) -> Node
---   constructorToEdge n (nm, arity) = foldl appType (typeConst nm) (replicate arity n)
-
---   constructors = map (typeConst . fst) allConstructors
-
---   usedConstructors = allConstructors
-
--- tau _ = error "not implemented"
 
 allConstructors :: [(Text, Int)]
 allConstructors =
@@ -111,99 +84,151 @@ app n1 n2 = Node
       )
   ]
 
--- f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
--- f1 = constFunc "Nothing" (maybeType tau)
--- f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
--- f3 = constFunc
---   "fromMaybe"
---   (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
--- f4 = constFunc "listToMaybe"
---                (generalize $ arrowType (listType var1) (maybeType var1))
--- f5 = constFunc "maybeToList"
---                (generalize $ arrowType (maybeType var1) (listType var1))
--- f6 = constFunc
---   "catMaybes"
---   (generalize $ arrowType (listType (maybeType var1)) (listType var1))
--- f7 = constFunc
---   "mapMaybe"
---   (generalize $ arrowType (arrowType var1 (maybeType var2))
---                           (arrowType (listType var1) (listType var2))
---   )
--- f8 = constFunc "id" (generalize $ arrowType var1 var1)
--- f9 = constFunc
---   "replicate"
---   (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
--- f10 = constFunc
---   "foldr"
---   (generalize $ arrowType (arrowType var1 (arrowType var2 var2))
---                           (arrowType var2 (arrowType (listType var1) var2))
---   )
--- f11 = constFunc
---   "iterate"
---   (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1))
---   )
--- f12 = constFunc
---   "(!!)"
---   (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
--- f13 = constFunc
---   "either"
---   (generalize $ arrowType
---     (arrowType var1 var3)
---     (arrowType (arrowType var2 var3)
---                (arrowType (constrType2 "Either" var1 var2) var3)
---     )
---   )
--- f14 = constFunc
---   "Left"
---   (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
--- f15 = constFunc "id" (generalize $ arrowType var1 var1)
--- f16 = constFunc
---   "(,)"
---   (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
--- f17 =
---   constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
--- f18 =
---   constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
--- f19 = constFunc
---   "foldl"
---   (generalize $ arrowType (arrowType var2 (arrowType var1 var2))
---                           (arrowType var2 (arrowType (listType var1) var2))
---   )
--- f20 = constFunc
---   "swap"
---   ( generalize
---   $ arrowType (constrType2 "Pair" var1 var2) (constrType2 "Pair" var2 var1)
---   )
--- f21 = constFunc
---   "curry"
---   (generalize $ arrowType (arrowType (constrType2 "Pair" var1 var2) var3)
---                           (arrowType var1 (arrowType var2 var3))
---   )
--- f22 = constFunc
---   "uncurry"
---   (generalize $ arrowType (arrowType var1 (arrowType var2 var3))
---                           (arrowType (constrType2 "Pair" var1 var2) var3)
---   )
--- f23 = constFunc "head" (generalize $ arrowType (listType var1) var1)
--- f24 = constFunc "last" (generalize $ arrowType (listType var1) var1)
--- f25 = constFunc
---   "Data.ByteString.foldr"
---   (generalize $ arrowType
---     (arrowType (constrType0 "Word8") (arrowType var2 var2))
---     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
---   )
--- f26 = constFunc
---   "unfoldr"
---   (generalize $ arrowType
---     (arrowType var1 (maybeType (constrType2 "Pair" (constrType0 "Word8") var1)))
---     (arrowType var1 (constrType0 "ByteString"))
---   )
--- f27 = constFunc
---   "Data.ByteString.foldrChunks"
---   (generalize $ arrowType
---     (arrowType (constrType0 "ByteString") (arrowType var2 var2))
---     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
---   )
+f1 :: Edge
+f1 = constFunc "Nothing" (maybeType tau)
+
+f2 :: Edge
+f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
+
+f3 :: Edge
+f3 = constFunc
+  "fromMaybe"
+  (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
+
+f4 :: Edge
+f4 = constFunc "listToMaybe"
+               (generalize $ arrowType (listType var1) (maybeType var1))
+
+f5 :: Edge
+f5 = constFunc "maybeToList"
+               (generalize $ arrowType (maybeType var1) (listType var1))
+
+f6 :: Edge
+f6 = constFunc
+  "catMaybes"
+  (generalize $ arrowType (listType (maybeType var1)) (listType var1))
+
+f7 :: Edge
+f7 = constFunc
+  "mapMaybe"
+  (generalize $ arrowType (arrowType var1 (maybeType var2))
+                          (arrowType (listType var1) (listType var2))
+  )
+
+f8 :: Edge
+f8 = constFunc "id" (generalize $ arrowType var1 var1)
+
+f9 :: Edge
+f9 = constFunc
+  "replicate"
+  (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+
+f10 :: Edge
+f10 = constFunc
+  "foldr"
+  (generalize $ arrowType (arrowType var1 (arrowType var2 var2))
+                          (arrowType var2 (arrowType (listType var1) var2))
+  )
+
+f11 :: Edge
+f11 = constFunc
+  "iterate"
+  (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1))
+  )
+
+f12 :: Edge
+f12 = constFunc
+  "(!!)"
+  (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
+
+f13 :: Edge
+f13 = constFunc
+  "either"
+  (generalize $ arrowType
+    (arrowType var1 var3)
+    (arrowType (arrowType var2 var3)
+               (arrowType (constrType2 "Either" var1 var2) var3)
+    )
+  )
+
+f14 :: Edge
+f14 = constFunc
+  "Left"
+  (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
+
+f15 :: Edge
+f15 = constFunc "id" (generalize $ arrowType var1 var1)
+
+f16 :: Edge
+f16 = constFunc
+  "(,)"
+  (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
+
+f17 :: Edge
+f17 =
+  constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
+
+f18 :: Edge
+f18 =
+  constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
+
+f19 :: Edge
+f19 = constFunc
+  "foldl"
+  (generalize $ arrowType (arrowType var2 (arrowType var1 var2))
+                          (arrowType var2 (arrowType (listType var1) var2))
+  )
+
+f20 :: Edge
+f20 = constFunc
+  "swap"
+  ( generalize
+  $ arrowType (constrType2 "Pair" var1 var2) (constrType2 "Pair" var2 var1)
+  )
+
+f21 :: Edge
+f21 = constFunc
+  "curry"
+  (generalize $ arrowType (arrowType (constrType2 "Pair" var1 var2) var3)
+                          (arrowType var1 (arrowType var2 var3))
+  )
+
+f22 :: Edge
+f22 = constFunc
+  "uncurry"
+  (generalize $ arrowType (arrowType var1 (arrowType var2 var3))
+                          (arrowType (constrType2 "Pair" var1 var2) var3)
+  )
+
+f23 :: Edge
+f23 = constFunc "head" (generalize $ arrowType (listType var1) var1)
+
+f24 :: Edge
+f24 = constFunc "last" (generalize $ arrowType (listType var1) var1)
+
+f25 :: Edge
+f25 = constFunc
+  "Data.ByteString.foldr"
+  (generalize $ arrowType
+    (arrowType (constrType0 "Word8") (arrowType var2 var2))
+    (arrowType var2 (arrowType (constrType0 "ByteString") var2))
+  )
+
+f26 :: Edge
+f26 = constFunc
+  "unfoldr"
+  (generalize $ arrowType
+    (arrowType var1 (maybeType (constrType2 "Pair" (constrType0 "Word8") var1)))
+    (arrowType var1 (constrType0 "ByteString"))
+  )
+
+f27 :: Edge
+f27 = constFunc
+  "Data.ByteString.foldrChunks"
+  (generalize $ arrowType
+    (arrowType (constrType0 "ByteString") (arrowType var2 var2))
+    (arrowType var2 (arrowType (constrType0 "ByteString") var2))
+  )
 
 applyOperator :: Node
 applyOperator = Node
@@ -251,8 +276,8 @@ relevantTermsUptoK :: Node -> [ArgType] -> Int -> Node
 relevantTermsUptoK anyArg args k = union
   (map (union . relevantTermsForArgs) [1 .. k])
  where
-  relevantTermsForArgs k =
-    concatMap (relevantTermK anyArg True k) (permutations args)
+  relevantTermsForArgs i =
+    concatMap (relevantTermK anyArg True i) (permutations args)
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term
@@ -273,7 +298,6 @@ dropTypes n = n
 
 getText :: Symbol -> Text
 getText (Symbol s) = s
-getText _          = error "unknown symbol"
 
 hoogleComps :: [Edge]
 hoogleComps =
@@ -316,8 +340,7 @@ listReps = map (fromJust . (`Map.lookup` groupMapping)) [ "Data.Maybe.listToMayb
                                             ]
 
 isListFunction :: Symbol -> Bool
-isListFunction (Symbol sym) = sym `elem` listReps  
-isListFunction _ = False
+isListFunction (Symbol sym) = sym `elem` listReps
 
 maybeReps :: [Text]
 maybeReps = map (fromJust . (`Map.lookup` groupMapping)) [ "Data.Maybe.maybeToList"
@@ -361,7 +384,7 @@ substTerm :: Term -> Term
 substTerm (Term (Symbol sym) ts) = Term (Symbol $ maybe sym id (Map.lookup sym groupMapping)) (map substTerm ts)
 
 checkSolution :: Term -> [Term] -> IO ()
-checkSolution target [] = return ()
+checkSolution _ [] = return ()
 checkSolution target (s : solutions)
   | prettyTerm s == target = print (prettyTerm s)
   | otherwise = do
@@ -384,6 +407,7 @@ prettyPrintAllTerms sol n = do
 reduceFullyAndLog :: Node -> IO Node
 reduceFullyAndLog = go 0
  where
+  go :: Int -> Node -> IO Node 
   go i n = do
     putStrLn
       $  "Round "

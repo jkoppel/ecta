@@ -4,8 +4,6 @@ module Application.TermSearch.Dataset where
 
 import           Data.ECTA
 import           Data.ECTA.Term
-import           Data.List                      ( (\\) )
-import           Data.List.Extra                ( nubOrd )
 import           Data.Map                       ( Map )
 import qualified Data.Map                      as Map
 import           Data.Text                      ( Text )

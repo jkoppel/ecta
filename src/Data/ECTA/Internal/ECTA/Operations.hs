@@ -54,7 +54,6 @@ import Data.Hashable ( hash )
 import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
-import Data.List.Extra ( nubOrd )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
@@ -65,11 +64,6 @@ import qualified Data.IntMap as IntMap
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
-import Language.Dot.Pretty
-import Debug.Trace
-import Data.Aeson (encode)
-import System.IO.Unsafe (unsafePerformIO)
-import qualified Data.ByteString.Lazy as BS
 
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
@@ -77,7 +71,7 @@ import Data.ECTA.Internal.Term
 
 --   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased ( Id, intern )
+import Data.Interned.Extended.HashTableBased ( Id )
 -- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 -- import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
@@ -338,7 +332,6 @@ instance Pathable Node Node where
   getPath _                EmptyNode = EmptyNode
   getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath EmptyPath        n         = n
-  getPath p                (Mu n)    = getPath p (unfoldRec n)
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -348,7 +341,6 @@ instance Pathable Node Node where
   getAllAtPath _               EmptyNode = []
   getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath EmptyPath       n         = [n]
-  getAllAtPath p               (Mu n)    = getAllAtPath p (unfoldRec n)
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -392,28 +384,6 @@ withoutRedundantEdges n = mapNodes dropReds n
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
 
--- | check whether the intersection result equals to any ancestors
-occursCheck :: [Node] -> Node -> [Path] -> Bool
-occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps))
-  where
-    -- | inits excluding empty and itself
-    pathStrictInits :: Path -> [Path]
-    pathStrictInits (Path ps) = map Path (init (tail (inits ps)))
-
-    getPrefixPaths :: [Path] -> [Path]
-    getPrefixPaths = nubOrd . concatMap pathStrictInits
-
-    getPrefixNodes :: [Path] -> [(Path, Node)]
-    getPrefixNodes ps = map (\p -> (p, getPath p oldNodes)) (getPrefixPaths ps)
-
-    -- only do this for nodes that is not a Mu
-    nodeGroups :: [(Path, Node)] -> [[(Path, Node)]]
-    nodeGroups ns = let res = clusterByHash (hash . snd) ns
-                     in res
-
-    hasOverlap :: [(Path, Node)] -> Bool
-    hasOverlap ng = newNode `elem` (map snd ng)
-
 ---------------
 --- Reducing Equality Constraints
 ---------------
@@ -426,8 +396,7 @@ reducePartially ecs = go -- memo (NameTag "reducePartially") go
     go (Mu n)     = Mu n
     go n@(Node _) = modifyNode n $ \es -> map (\e -> setChildren e (reduceChildren (createConstraints e) (edgeChildren e)))
                                           $ map (reduceEdgeIntersection ecs) es
-    -- go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createConstraints e) (edgeChildren e)})
-    --                                       $ map (reduceEdgeIntersection ecs) es
+    go (Rec _)    = error "reducePartially: unexpected Rec"
 
     createConstraints :: Edge -> [[Path]]
     createConstraints e = ecsGetPaths (edgeEcs e) ++ ecs
@@ -436,11 +405,11 @@ reducePartially ecs = go -- memo (NameTag "reducePartially") go
     reduceChildrenAt pMap i n = reducePartially (IntMap.findWithDefault [] i pMap) n
 
     reduceChildren :: [[Path]] -> [Node] -> [Node]
-    reduceChildren ecs children = zipWith (reduceChildrenAt (propagateConstraint ecs)) [0..] children
+    reduceChildren eclasses children = zipWith (reduceChildrenAt (propagateConstraint eclasses)) [0..] children
 
     addPathToIntMap :: Path -> IntMap [Path] -> IntMap [Path]
     addPathToIntMap EmptyPath m = m
-    addPathToIntMap (ConsPath p EmptyPath) m = m
+    addPathToIntMap (ConsPath _ EmptyPath) m = m
     addPathToIntMap (ConsPath p ps) m = IntMap.insertWith (++) p [ps] m
 
     toIntMap :: [Path] -> IntMap [Path]
