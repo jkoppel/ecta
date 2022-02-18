@@ -26,7 +26,6 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
-import Data.Aeson ( ToJSON, FromJSON )
 import GHC.Generics ( Generic )
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -108,9 +107,6 @@ instance Ord Edge where
 
 instance Hashable Edge where
   hashWithSalt s e = s `hashWithSalt` (edgeId e)
-
-instance ToJSON Edge
-instance FromJSON Edge
 
 -----------------------------------------------------------------
 ------------------------------ Nodes ----------------------------
@@ -252,9 +248,6 @@ instance Hashable UninternedNode where
       go (UninternedNode es)  = hashWithSalt salt (1 :: Int, es)
       go (UninternedMu mu)    = hashWithSalt salt (2 :: Int, shape mu)
 
-instance ToJSON UninternedNode
-instance FromJSON UninternedNode
-
 instance Interned Node where
   type Uninterned  Node = UninternedNode
   data Description Node = DNode !UninternedNode
@@ -356,8 +349,6 @@ data UninternedEdge = UninternedEdge { uEdgeSymbol    :: !Symbol
   deriving ( Eq, Show, Generic )
 
 instance Hashable UninternedEdge
-instance ToJSON UninternedEdge
-instance FromJSON UninternedEdge
 
 instance Interned Edge where
   type Uninterned  Edge = UninternedEdge

@@ -2,15 +2,11 @@
 
 module Application.TermSearch.Utils where
 
-import           Data.List.Extra                ( nubOrd )
-import qualified Data.Map                      as Map
 import           Data.Text                      ( Text )
 
 import           Data.ECTA
 import           Data.ECTA.Paths
 import           Data.ECTA.Term
-
-import           Application.TermSearch.Type
 
 typeConst :: Text -> Node
 typeConst s = Node [Edge (Symbol s) []]
@@ -62,7 +58,7 @@ getRepOf ((x, fnames):xs) fname
   | otherwise = getRepOf xs fname
 
 replicatorTau :: Node
-replicatorTau = createGloballyUniqueMu
+replicatorTau = createMu
   (\n -> union
     ([var1, var2] ++ map (Node . (: []) . constructorToEdge n) usedConstructors)
   )
