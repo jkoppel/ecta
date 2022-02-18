@@ -4053,9 +4053,9 @@ rawHKTVExport :: [(Text, ExportType)]
 rawHKTVExport = []
 
 hoogleComponents :: Map ExportType Text
--- hoogleComponents = fst (mkGroups rawHooglePlusExport)
-hoogleComponents = fst (mkGroups augumentedComponents)
+hoogleComponents = fst (mkGroups rawHooglePlusExport)
+-- hoogleComponents = fst (mkGroups augumentedComponents)
 
 groupMapping :: Map Text Text
--- groupMapping = snd (mkGroups rawHooglePlusExport)
-groupMapping = snd (mkGroups augumentedComponents)
+groupMapping = snd (mkGroups rawHooglePlusExport)
+-- groupMapping = snd (mkGroups augumentedComponents)
