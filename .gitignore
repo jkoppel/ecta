@@ -4,3 +4,6 @@
 
 *.pkl
 *.csv
+
+log
+*.log
