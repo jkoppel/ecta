@@ -13,8 +13,8 @@ import           Data.Text                      ( Text )
 import           System.IO                      ( hFlush
                                                 , stdout
                                                 )
-import Data.Tuple (swap)
-import Data.Maybe (fromJust)
+import Data.Tuple ( swap )
+import Data.Maybe ( fromMaybe )
 import           Utility.Fixpoint
 
 import           Data.ECTA
@@ -278,40 +278,44 @@ fromJustFunc :: Node
 fromJustFunc = Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) hoogleComps
 
 maybeFunctions :: [Symbol]
-maybeFunctions = ["Data.Maybe.fromJust", "Data.Maybe.maybeToList", "Data.Maybe.isJust", "Data.Maybe.isNothing"]
+maybeFunctions = ["Data.Maybe.fromJust"
+                  , "Data.Maybe.maybeToList"
+                  , "Data.Maybe.isJust"
+                  , "Data.Maybe.isNothing"
+                  ]
 
 listReps :: [Text]
-listReps = map (fromJust . (`Map.lookup` groupMapping)) [ "Data.Maybe.listToMaybe"
-                                            , "Data.Either.lefts"
-                                            , "Data.Either.rights"
-                                            , "Data.Either.partitionEithers"
-                                            , "Data.Maybe.catMaybes"
-                                            , "GHC.List.head"
-                                            , "GHC.List.last"
-                                            , "GHC.List.tail"
-                                            , "GHC.List.init"
-                                            , "GHC.List.null"
-                                            , "GHC.List.length"
-                                            , "GHC.List.reverse"
-                                            , "GHC.List.concat"
-                                            , "GHC.List.concatMap"
-                                            , "GHC.List.sum"
-                                            , "GHC.List.product"
-                                            , "GHC.List.maximum"
-                                            , "GHC.List.minimum"
-                                            , "(GHC.List.!!)"
-                                            , "(GHC.List.++)"
-                                            ]
+listReps = map toMappedName [ "Data.Maybe.listToMaybe"
+                            , "Data.Either.lefts"
+                            , "Data.Either.rights"
+                            , "Data.Either.partitionEithers"
+                            , "Data.Maybe.catMaybes"
+                            , "GHC.List.head"
+                            , "GHC.List.last"
+                            , "GHC.List.tail"
+                            , "GHC.List.init"
+                            , "GHC.List.null"
+                            , "GHC.List.length"
+                            , "GHC.List.reverse"
+                            , "GHC.List.concat"
+                            , "GHC.List.concatMap"
+                            , "GHC.List.sum"
+                            , "GHC.List.product"
+                            , "GHC.List.maximum"
+                            , "GHC.List.minimum"
+                            , "(GHC.List.!!)"
+                            , "(GHC.List.++)"
+                            ]
 
 isListFunction :: Symbol -> Bool
 isListFunction (Symbol sym) = sym `elem` listReps
 
 maybeReps :: [Text]
-maybeReps = map (fromJust . (`Map.lookup` groupMapping)) [ "Data.Maybe.maybeToList"
-                                             , "Data.Maybe.isJust"
-                                             , "Data.Maybe.isNothing"
-                                             , "Data.Maybe.fromJust"
-                                             ]
+maybeReps = map toMappedName [ "Data.Maybe.maybeToList"
+                              , "Data.Maybe.isJust"
+                              , "Data.Maybe.isNothing"
+                              , "Data.Maybe.fromJust"
+                              ]
 
 isMaybeFunction :: Symbol -> Bool
 isMaybeFunction (Symbol sym) = sym `elem` maybeReps
@@ -327,11 +331,14 @@ anyNonListFunc = Node $ filter
   hoogleComps
 
 anyNonNilFunc :: Node
-anyNonNilFunc = Node $ filter (\e -> edgeSymbol e /= (Symbol . fromJust $ Map.lookup "Nil" groupMapping)) hoogleComps
+anyNonNilFunc = Node $ filter (\e -> edgeSymbol e /= (Symbol $ toMappedName "Nil")) hoogleComps
 
 anyNonNothingFunc :: Node
 anyNonNothingFunc =
-  Node $ filter (\e -> edgeSymbol e /= (Symbol . fromJust $ Map.lookup "Data.Maybe.Nothing" groupMapping)) hoogleComps
+  Node $ filter (\e -> edgeSymbol e /= (Symbol $ toMappedName "Data.Maybe.Nothing")) hoogleComps
+
+toMappedName :: Text -> Text
+toMappedName x = fromMaybe x (Map.lookup x groupMapping)
 
 ---------------------------------------------------------------------------------------
 -------------------------- Importing components from Hoogle+ --------------------------
