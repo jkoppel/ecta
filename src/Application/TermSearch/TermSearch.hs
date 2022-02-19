@@ -15,6 +15,7 @@ import           System.IO                      ( hFlush
                                                 )
 import Data.Tuple ( swap )
 import Data.Maybe ( fromMaybe )
+
 import           Utility.Fixpoint
 
 import           Data.ECTA
@@ -230,13 +231,31 @@ f27 = constFunc
     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
   )
 
+f28 :: Edge
+f28 = constFunc
+  "bool"
+  (generalize $ arrowType 
+    var1 (arrowType var1 (arrowType (constrType0 "Bool") var1))
+  )
+
+f29 :: Edge
+f29 = constFunc
+  "lookup"
+  (generalize $ arrowType
+    (constrType1 "@@hplusTC@@Eq" var1)
+    (arrowType var1 (arrowType (constrType2 "Pair" var1 var2) (maybeType var2)))
+  )
+
+f30 :: Edge
+f30 = constFunc "nil" (generalize $ listType var1) 
+
 applyOperator :: Node
-applyOperator = Node
-  [ constFunc
-    "$"
-    (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-  , constFunc "id" (generalize $ arrowType var1 var1)
-  ]
+applyOperator = Node []
+  -- [ constFunc
+  --   "$"
+  --   (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+  -- , constFunc "id" (generalize $ arrowType var1 var1)
+  -- ]
 
 filterType :: Node -> Node -> Node
 filterType n t =
@@ -301,14 +320,14 @@ getText (Symbol s) = s
 
 hoogleComps :: [Edge]
 hoogleComps =
-  filter (\e -> edgeSymbol e `notElem` speciallyTreatedFunctions)
+  filter (\e -> edgeSymbol e `notElem` (map (Symbol . toMappedName) speciallyTreatedFunctions))
     $ map (uncurry parseHoogleComponent . swap)
     $ Map.toList hoogleComponents
 
 anyFunc :: Node
 anyFunc = Node hoogleComps
--- anyFunc = Node [f10, f16, f17, f18, f19]
--- anyFunc = Node [f16, f23, f24, f10, f19, f17, f18, f20, f25, f26, f1, f2, f3, f4, f5, f6, f7, f8, f9, f11, f12, f13, f14, f15, f21, f22]
+-- anyFunc = Node [f23, f30]
+-- anyFunc = Node [f16, f23, f24, f10, f19, f17, f18, f20, f25, f26, f1, f2, f3, f4, f5, f6, f7, f8, f9, f11, f12, f13, f14, f15, f21, f22, f28]
 
 fromJustFunc :: Node
 fromJustFunc = Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) hoogleComps
@@ -355,7 +374,7 @@ maybeReps = map toMappedName [ "Data.Maybe.maybeToList"
 
 isMaybeFunction :: Symbol -> Bool
 isMaybeFunction (Symbol sym) = sym `elem` maybeReps
-  
+
 anyListFunc :: Node
 anyListFunc = Node $ filter (isListFunction . edgeSymbol) hoogleComps
 
@@ -367,11 +386,11 @@ anyNonListFunc = Node $ filter
   hoogleComps
 
 anyNonNilFunc :: Node
-anyNonNilFunc = Node $ filter (\e -> edgeSymbol e /= (Symbol $ toMappedName "Nil")) hoogleComps
+anyNonNilFunc = Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Nil")) hoogleComps
 
 anyNonNothingFunc :: Node
 anyNonNothingFunc =
-  Node $ filter (\e -> edgeSymbol e /= (Symbol $ toMappedName "Data.Maybe.Nothing")) hoogleComps
+  Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Data.Maybe.Nothing")) hoogleComps
 
 toMappedName :: Text -> Text
 toMappedName x = fromMaybe x (Map.lookup x groupMapping)
@@ -384,8 +403,8 @@ parseHoogleComponent name t =
   constFunc (Symbol name) (generalize $ exportTypeToFta t)
 
 reduceFully :: Node -> Node
--- reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially [])
-reduceFully = fixUnbounded (reducePartially [])
+reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
+-- reduceFully = fixUnbounded (reducePartially)
 
 substTerm :: Term -> Term
 substTerm (Term (Symbol sym) ts) = Term (Symbol $ maybe sym id (Map.lookup sym groupMapping)) (map substTerm ts)
@@ -396,6 +415,7 @@ checkSolution target (s : solutions)
   | prettyTerm s == target = print (prettyTerm s)
   | otherwise = do
     print (prettyTerm s)
+    -- print (s)
     checkSolution target solutions
 
 prettyPrintAllTerms :: Term -> Node -> IO ()
@@ -404,17 +424,10 @@ prettyPrintAllTerms sol n = do
   let ts = getAllTerms n
   checkSolution sol ts
 
-#ifdef PROFILE_CACHES
-  Memoization.printAllCacheMetrics
-  Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
-  Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
-  Text.putStrLn ""
-#endif
-
 reduceFullyAndLog :: Node -> IO Node
 reduceFullyAndLog = go 0
  where
-  go :: Int -> Node -> IO Node 
+  go :: Int -> Node -> IO Node
   go i n = do
     putStrLn
       $  "Round "
@@ -425,5 +438,7 @@ reduceFullyAndLog = go 0
       ++ show (edgeCount n)
       ++ " edges"
     hFlush stdout
-    let n' = reducePartially [] n
+    -- putStrLn $ renderDot $ toDot n
+    -- print n
+    let n' = withoutRedundantEdges (reducePartially n)
     if n == n' then return n else go (i + 1) n'

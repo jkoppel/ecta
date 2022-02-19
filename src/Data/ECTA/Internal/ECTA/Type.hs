@@ -390,7 +390,7 @@ substFree old new = go
 
     go' :: Node -> Node
     go' EmptyNode               = EmptyNode
-    go' (InternedNode _ es)     = intern $ UninternedNode (map goEdge es)
+    go' (InternedNode _ es)     = intern $ UninternedNode $ nubSort (map goEdge es)
     go' (InternedMu mu)         = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec (RecNodeId nid)) (internedMuBody mu))
     go' n@(Rec (RecNodeId nid)) = if nid == old
                                     then new

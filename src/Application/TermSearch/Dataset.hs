@@ -3,7 +3,6 @@
 module Application.TermSearch.Dataset where
 
 import           Data.ECTA
-import           Data.ECTA.Term
 import           Data.Map                       ( Map )
 import qualified Data.Map                      as Map
 import           Data.Text                      ( Text )
@@ -30,7 +29,7 @@ exportTypeToFta (ExportCons "Fun" [t1, t2]) =
 exportTypeToFta (ExportCons s ts) = mkDatatype s (map exportTypeToFta ts)
 exportTypeToFta (ExportForall _ t) = exportTypeToFta t
 
-speciallyTreatedFunctions :: [Symbol]
+speciallyTreatedFunctions :: [Text]
 speciallyTreatedFunctions =
   [ -- `($)` is hardcoded to only be in argument position
     "(Data.Function.$)"

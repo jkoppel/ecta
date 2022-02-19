@@ -51,7 +51,6 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
-import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
@@ -71,7 +70,7 @@ import Data.ECTA.Internal.Term
 
 --   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased ( Id )
+import Data.Interned.Extended.HashTableBased ( Id, intern )
 -- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 -- import Data.Interned.Extended.SingleThreaded ( intern )
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
@@ -151,20 +150,17 @@ nodeEdges n@(Mu _)  = nodeEdges (unfoldOuterRec n)
 nodeEdges _         = []
 
 refold :: Node -> Node
-refold n = if HashMap.null muNodeMap then
-             n
-           else
-             fixUnbounded tryUnfold n
-  where
-    muNodeMap :: HashMap Node Node
-    muNodeMap = crush (\case x@(Mu _) -> HashMap.singleton (unfoldOuterRec x) x
-                             _        -> HashMap.empty)
+refold = memo (NameTag "refold") $ \n -> 
+  let muNodeMap = crush (\x -> case x of
+                                Mu _ -> HashMap.singleton (unfoldOuterRec x) x
+                                _    -> HashMap.empty)
                       n
-
-    tryUnfold :: Node -> Node
-    tryUnfold x = case HashMap.lookup x muNodeMap of
-                    Just y  -> y
-                    Nothing -> x
+      tryUnfold x = case HashMap.lookup x muNodeMap of
+                      Just y  -> y
+                      Nothing -> x
+  in if HashMap.null muNodeMap 
+        then n
+        else fixUnbounded (mapNodes tryUnfold) n
 
 unfoldBounded :: Int -> Node -> Node
 unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
@@ -219,7 +215,7 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") (\n1 n2 -> let n = refold $ nodeDropRedundantEdges $ doIntersect n1 n2
+intersect = memo2 (NameTag "intersect") (\n1 n2 -> let n = refold (nodeDropRedundantEdges (doIntersect n1 n2))
                                                     in n)
 {-# NOINLINE intersect #-}
 
@@ -330,8 +326,8 @@ instance Pathable Node Node where
   type Emptyable Node = Node
 
   getPath _                EmptyNode = EmptyNode
-  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath EmptyPath        n         = n
+  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -339,8 +335,8 @@ instance Pathable Node Node where
   getPath p                n         = error $ "getPath: unexpected path " <> show p <> " for node " <> show n
 
   getAllAtPath _               EmptyNode = []
-  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath EmptyPath       n         = [n]
+  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -388,21 +384,25 @@ withoutRedundantEdges n = mapNodes dropReds n
 --- Reducing Equality Constraints
 ---------------
 
-reducePartially :: [[Path]] -> Node -> Node
-reducePartially ecs = go -- memo (NameTag "reducePartially") go
-  where
-    go :: Node -> Node
-    go EmptyNode  = EmptyNode
-    go (Mu n)     = Mu n
-    go n@(Node _) = modifyNode n $ \es -> map (\e -> setChildren e (reduceChildren (createConstraints e) (edgeChildren e)))
-                                          $ map (reduceEdgeIntersection ecs) es
-    go (Rec _)    = error "reducePartially: unexpected Rec"
+reducePartially :: Node -> Node
+reducePartially = memo (NameTag "reducePartially") (reducePartially' [])
+{-# NOINLINE reducePartially #-}
 
-    createConstraints :: Edge -> [[Path]]
-    createConstraints e = ecsGetPaths (edgeEcs e) ++ ecs
+reducePartially' :: [[Path]] -> Node -> Node
+reducePartially' = memo2 (NameTag "reducePartially'") go
+  where
+    go :: [[Path]] -> Node -> Node
+    go _ EmptyNode  = EmptyNode
+    go _ (Mu n)     = Mu n
+    go ecs n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createConstraints ecs e) (edgeChildren e)})
+                                          $ map (reduceEdgeIntersection ecs) es
+    go _ (Rec _)    = error "reducePartially: unexpected Rec"
+
+    createConstraints :: [[Path]] -> Edge -> [[Path]]
+    createConstraints ecs e = ecsGetPaths (edgeEcs e) ++ ecs
 
     reduceChildrenAt :: IntMap [[Path]] -> Int -> Node -> Node
-    reduceChildrenAt pMap i n = reducePartially (IntMap.findWithDefault [] i pMap) n
+    reduceChildrenAt pMap i n = reducePartially' (IntMap.findWithDefault [] i pMap) n
 
     reduceChildren :: [[Path]] -> [Node] -> [Node]
     reduceChildren eclasses children = zipWith (reduceChildrenAt (propagateConstraint eclasses)) [0..] children
@@ -417,6 +417,7 @@ reducePartially ecs = go -- memo (NameTag "reducePartially") go
 
     propagateConstraint :: [[Path]] -> IntMap [[Path]]
     propagateConstraint pss = foldr (IntMap.mergeWithKey (\_ a b -> Just (a:b)) (IntMap.map (:[])) id . toIntMap) IntMap.empty pss
+{-# NOINLINE reducePartially' #-}
 
 reduceEdgeIntersection :: [[Path]] -> Edge -> Edge
 reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
