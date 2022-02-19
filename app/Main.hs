@@ -26,7 +26,7 @@ printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map e
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
-    let n' = reducePartially [] n
+    let n' = reducePartially n
     Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
     Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
     Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
