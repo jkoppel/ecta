@@ -214,12 +214,11 @@ f30 :: Edge
 f30 = constFunc "nil" (generalize $ listType var1) 
 
 applyOperator :: Node
-applyOperator = Node []
-  -- [ constFunc
-  --   "$"
-  --   (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-  -- , constFunc "id" (generalize $ arrowType var1 var1)
-  -- ]
+applyOperator = Node [ constFunc
+    "$"
+    (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+  , constFunc "id" (generalize $ arrowType var1 var1)
+  ]
 
 filterType :: Node -> Node -> Node
 filterType n t =
@@ -378,7 +377,7 @@ checkSolution _ [] = return ()
 checkSolution target (s : solutions)
   | prettyTerm s == target = print (prettyTerm s)
   | otherwise = do
-    print (prettyTerm s)
+    -- print (prettyTerm s)
     -- print (s)
     checkSolution target solutions
 
@@ -405,4 +404,4 @@ reduceFullyAndLog = go 0
     -- putStrLn $ renderDot $ toDot n
     -- print n
     let n' = withoutRedundantEdges (reducePartially n)
-    if n == n' then return n else go (i + 1) n'
+    if n == n' || i >= 30 then return n else go (i + 1) n'
