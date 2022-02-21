@@ -18,7 +18,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , InternedMu(..)
   , UninternedNode(..)
   , nodeIdentity
-  , nodeDepth
+  , numNestedMu
   , modifyNode
   , createMu
   ) where
@@ -128,7 +128,7 @@ data InternedMu = MkInternedMu {
       --
       -- Invariant:
       --
-      -- >    substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody)) internedMuBody
+      -- >    substFree internedMuId (Rec (RecUnint (numNestedMu internedMuBody)) internedMuBody
       -- > == internedMuShape
     , internedMuShape :: !Node
     }
@@ -142,7 +142,7 @@ data InternedNode = MkInternedNode {
     , internedNodeEdges :: ![Edge]
 
       -- | Maximum Mu nesting depth in the term
-    , internedNodeDepth :: !Int
+    , internedNodeNumNestedMu :: !Int
     }
   deriving (Show)
 
@@ -195,11 +195,11 @@ instance Hashable Node where
 -- | Maximum number of nested Mus in the term
 --
 -- @O(1) provided that there are no unbounded Mu chains in the term.
-nodeDepth :: Node -> Int
-nodeDepth EmptyNode           = 0
-nodeDepth (InternedNode node) = internedNodeDepth node
-nodeDepth (InternedMu   mu)   = 1 + nodeDepth (internedMuBody mu)
-nodeDepth (Rec _)             = 0
+numNestedMu :: Node -> Int
+numNestedMu EmptyNode           = 0
+numNestedMu (InternedNode node) = internedNodeNumNestedMu node
+numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
+numNestedMu (Rec _)             = 0
 
 ----------------------
 ------ Getters and setters
@@ -257,9 +257,9 @@ instance Interned Node where
   describe = DNode
 
   identify i (UninternedNode es) = InternedNode $ MkInternedNode {
-        internedNodeId    = i
-      , internedNodeEdges = es
-      , internedNodeDepth = maximum (0 : concatMap (map nodeDepth . edgeChildren) es) -- depth is always >= 0
+        internedNodeId          = i
+      , internedNodeEdges       = es
+      , internedNodeNumNestedMu = maximum (0 : concatMap (map numNestedMu . edgeChildren) es) -- depth is always >= 0
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
@@ -268,7 +268,7 @@ instance Interned Node where
 
         -- In order to establish the invariant for internedMuNoId, we need to know
         --
-        -- >    substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody)) internedMuBody
+        -- >    substFree internedMuId (Rec (RecUnint (numNestedMu internedMuBody)) internedMuBody
         -- > == internedMuShape
         --
         -- This follows from parametricity:
@@ -277,13 +277,13 @@ instance Interned Node where
         -- >      -- { definition of internedMuShape }
         -- > == shape n
         -- >      -- { definition of shape }
-        -- > == n (RecUnint (nodeDepth (n RecDepth)))
+        -- > == n (RecUnint (numNestedMu (n RecDepth)))
         -- >      -- { by parametricity, depth is independent of the variable number }
-        -- > == n (RecUnint (nodeDepth (n (RecInt i))))
+        -- > == n (RecUnint (numNestedMu (n (RecInt i))))
         -- >      -- { parametricity again }
-        -- > == substFree i (Rec (RecUnint (nodeDepth (n (RecInt i)))) (n (RecInt i))
+        -- > == substFree i (Rec (RecUnint (numNestedMu (n (RecInt i)))) (n (RecInt i))
         -- >      -- { definition of internedMuId and internedMuBody }
-        -- > == substFree internedMuId (Rec (RecUnint (nodeDepth internedMuBody))) internedMuBody
+        -- > == substFree internedMuId (Rec (RecUnint (numNestedMu internedMuBody))) internedMuBody
         --
         -- QED.
       , internedMuShape = shape n
@@ -337,7 +337,7 @@ nodeCache = unsafePerformIO freshCache
 -- o It /is/ important that the placeholder we pick here is uniquely determined by the node itself: this is what
 --   justifies using 'shape' during interning.
 shape :: (RecNodeId -> Node) -> Node
-shape f = f (RecUnint (nodeDepth (f RecDepth)))
+shape f = f (RecUnint (numNestedMu (f RecDepth)))
 
 -----------------------------------------------------------------
 ------------------------ Interning Edges ------------------------
@@ -449,7 +449,7 @@ _collapseEmptyEdge e@(Edge _ ns) = if any (== EmptyNode) ns then Nothing else Ju
 -- > foo (InternedMu mu) | Just f <- matchMu (InternedMu m) = createMu f
 -- >   -- { definition of matchMu }
 -- > foo (InternedMu mu) = let f = \n' ->
--- >                          if | n' == Rec (RecUnint (nodeDepth (internedMuBody mu))) ->
+-- >                          if | n' == Rec (RecUnint (numNestedMu (internedMuBody mu))) ->
 -- >                                internedMuShape mu
 -- >                            | n' == Rec RecDepth ->
 -- >                                internedMuShape mu
@@ -480,17 +480,17 @@ createMu f = intern $ UninternedMu (f . Rec)
 -- for performance considerations.
 matchMu :: Node -> Maybe (Node -> Node)
 matchMu (InternedMu mu) = Just $ \n' ->
-    if | n' == Rec (RecUnint (nodeDepth (internedMuBody mu))) ->
+    if | n' == Rec (RecUnint (numNestedMu (internedMuBody mu))) ->
           -- Special case justified by the invariant on 'internedMuShape'
           internedMuShape mu
        | n' == Rec RecDepth ->
           -- The use of 'RecDepth' implies that we are computing a depth:
           --
-          -- >    nodeDepth (substFree (internedMuId mu) (Rec RecDepth)) (internedMuBody mu))
+          -- >    numNestedMu (substFree (internedMuId mu) (Rec RecDepth)) (internedMuBody mu))
           -- >      -- { depth calculation does not depend on choice of variable }
-          -- > == nodeDepth (substFree (internedMuId mu) Rec (RecUnint (nodeDepth (internedMuBody mu)))) (internedMuBody mu))
+          -- > == numNestedMu (substFree (internedMuId mu) Rec (RecUnint (numNestedMu (internedMuBody mu)))) (internedMuBody mu))
           -- >      -- { invariant of internedMuShape }
-          -- > == nodeDepth internedMuShape
+          -- > == numNestedMu internedMuShape
           internedMuShape mu
        | otherwise  ->
           substFree (internedMuId mu) n' (internedMuBody mu)

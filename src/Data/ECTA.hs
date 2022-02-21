@@ -12,7 +12,7 @@ module Data.ECTA (
 
   , Node(Node, EmptyNode)
   , nodeEdges
-  , nodeDepth
+  , numNestedMu
   , createMu
 
   -- * Operations

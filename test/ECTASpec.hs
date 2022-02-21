@@ -197,15 +197,15 @@ spec = do
       property $ mapSize (min 3) $
         \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (getAllTerms $ reducePartially n)
 
-  describe "node depth" $ do
+  describe "counted nested Mu" $ do
     it "no Mu" $
-      nodeDepth (Node [Edge "a" []]) `shouldBe` 0
+      numNestedMu (Node [Edge "a" []]) `shouldBe` 0
     it "single Mu" $
-      nodeDepth (Mu $ \x -> Node [Edge "f" [x]]) `shouldBe` 1
+      numNestedMu (Mu $ \x -> Node [Edge "f" [x]]) `shouldBe` 1
     it "two parallel Mus" $
-      nodeDepth (Node [Edge "h" [Mu $ \x -> Node [Edge "g" [x]], Mu $ \x -> Node [Edge "h" [x]]]]) `shouldBe` 1
+      numNestedMu (Node [Edge "h" [Mu $ \x -> Node [Edge "g" [x]], Mu $ \x -> Node [Edge "h" [x]]]]) `shouldBe` 1
     it "nested" $
-      nodeDepth (Mu $ \x -> Node [Edge "f" [x], Edge "g" [Mu $ \y -> Node [Edge "g" [y]]]]) `shouldBe` 2
+      numNestedMu (Mu $ \x -> Node [Edge "f" [x], Edge "g" [Mu $ \y -> Node [Edge "g" [y]]]]) `shouldBe` 2
 
   describe "nested Mu" $
     it "references to different Mu nodes are not confused" $
