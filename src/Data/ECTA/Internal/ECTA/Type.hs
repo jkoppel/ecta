@@ -26,6 +26,7 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+
 import GHC.Generics ( Generic )
 
 import System.IO.Unsafe ( unsafePerformIO )
@@ -81,7 +82,6 @@ instance Hashable RecNodeId
 data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
-                         deriving (Generic)
 
 instance Show Edge where
   show e | edgeEcs e == EmptyConstraints = "(Edge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ ")"
@@ -107,6 +107,7 @@ instance Ord Edge where
 
 instance Hashable Edge where
   hashWithSalt s e = s `hashWithSalt` (edgeId e)
+
 
 -----------------------------------------------------------------
 ------------------------------ Nodes ----------------------------
@@ -391,9 +392,10 @@ removeEmptyEdges :: [Edge] -> [Edge]
 removeEmptyEdges = filter (not . isEmptyEdge)
 
 mkEdge :: Symbol -> [Node] -> EqConstraints -> Edge
+mkEdge _ _  ecs
+   | constraintsAreContradictory ecs = emptyEdge
 mkEdge s ns ecs
-  | constraintsAreContradictory ecs = emptyEdge
-  | otherwise                       = intern $ UninternedEdge s ns ecs
+   | otherwise                       = intern $ UninternedEdge s ns ecs
 
 
 -------------------

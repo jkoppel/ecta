@@ -359,11 +359,11 @@ enumerateFully = do
     ExpansionDone    -> return ()
     ExpansionNext uv -> do UVarUnenumerated (Just n) scs <- getUVarValue uv
                            if scs == Sequence.Empty then
-                            case n of
-                              Mu _ -> return ()
-                              _    -> enumerateOutUVar uv >> enumerateFully
-                           else
-                            enumerateOutUVar uv >> enumerateFully
+                             case n of
+                               Mu _ -> return ()
+                               _    -> enumerateOutUVar uv >> enumerateFully
+                            else
+                             enumerateOutUVar uv >> enumerateFully
 ---------------------
 -------- Expanding an enumerated term fragment into a term
 ---------------------
