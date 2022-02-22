@@ -31,8 +31,6 @@ dependencies:
 - time
 - unordered-containers
 - vector
-- pretty-simple
-- time
 default-extensions:
   - BangPatterns
   - ConstraintKinds
