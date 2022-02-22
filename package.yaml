@@ -33,9 +33,6 @@ dependencies:
 - vector
 - pretty-simple
 - time
-- bytestring
-- aeson
-- cmdargs
 default-extensions:
   - BangPatterns
   - ConstraintKinds

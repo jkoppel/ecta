@@ -88,10 +88,8 @@ library
       ViewPatterns
   ghc-options: -Wall
   build-depends:
-      aeson
-    , array
+      array
     , base
-    , bytestring
     , cmdargs
     , containers
     , equivalence
@@ -151,9 +149,7 @@ executable compact-coupled-terms-exe
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
-      aeson
-    , base
-    , bytestring
+      base
     , cmdargs
     , compact-coupled-terms
     , containers
@@ -214,9 +210,7 @@ test-suite unit-tests
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-orphans
   build-depends:
       QuickCheck
-    , aeson
     , base
-    , bytestring
     , cmdargs
     , compact-coupled-terms
     , containers
@@ -274,9 +268,7 @@ benchmark mainbench
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
-      aeson
-    , base
-    , bytestring
+      base
     , cmdargs
     , compact-coupled-terms
     , containers
