@@ -52,7 +52,7 @@ import Data.List ( isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..) )
 import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
-import Data.Vector ( Vector )
+import           Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import Data.Vector.Instances ()
 import GHC.Exts ( inline )
