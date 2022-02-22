@@ -232,3 +232,31 @@ spec = do
 
        Set.intersection (collectAllIds n) (collectAllIds m) `shouldBe` Set.empty
 
+  describe "redundant Mu" $ do
+    it "redundant inner 'Mu' is skipped" $
+      let n = Mu $ \r1 -> Mu $ \_r2 -> Node [Edge "f" [r1]]
+          m = Mu $ \r1 ->              Node [Edge "f" [r1]]
+      in (n, m) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "redundant outer 'Mu' is skipped" $
+      let n = Mu $ \_r1 -> Mu $ \r2 -> Node [Edge "f" [r2]]
+          m = Mu $ \ r1 ->             Node [Edge "f" [r1]]
+      in (n, m) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "two redundant 'Mu's both skipped" $
+      let n = Mu $ \_r1 -> Mu $ \_r2 -> Node [Edge "f" []]
+          m =                           Node [Edge "f" []]
+      in (n, m) `shouldSatisfy` uncurry stronglyIsomorphic
+
+    it "non-redundant outer Mu is not skipped" $
+      let n = Mu $ \r1 -> Mu $ \_r2 -> Node [Edge "f" [r1]]
+      in n `shouldSatisfy` isMu
+
+    it "non-redundant inner Mu is not skipped" $
+      let n = Mu $ \r1 -> Mu $ \r2 -> Node [Edge "f" [r1], Edge "g" [r2]]
+          m = Mu $ \r1 ->             Node [Edge "f" [r1], Edge "g" [r1]]
+      in (n, m) `shouldSatisfy` (not . uncurry stronglyIsomorphic)
+
+isMu :: Node -> Bool
+isMu (InternedMu _) = True
+isMu _              = False

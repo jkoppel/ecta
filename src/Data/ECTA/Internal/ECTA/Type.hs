@@ -22,6 +22,8 @@ module Data.ECTA.Internal.ECTA.Type (
   , freeVars
   , modifyNode
   , createMu
+  , createMuDontCleanup
+  , stronglyIsomorphic
   ) where
 
 import Data.Function ( on )
@@ -245,6 +247,60 @@ freeVars (InternedMu   mu)   = case freeVars (internedMuBody mu) of
                                  FreeVarsUnknown  -> FreeVarsUnknown
 freeVars (Rec (RecInt i))    = FreeVarsKnown $ Set.singleton i
 freeVars (Rec _)             = FreeVarsUnknown
+
+-- | Check if two nodes are strongly isomorphic
+--
+-- Checks that two nodes have the exact same structure, modulo node 'Id's (but not modulo unrolling, hence "strongly").
+-- This function is only used in testing.
+--
+-- TODO: Ideally, two nodes that are strongly isomorphic would be /equal/. With the current setup, this is hard to
+-- achieve. Consider a node with a redundant 'Mu':
+--
+-- > Mu $ \r -> Mu \r' -> Node [Edge "f" [Node [Edge "g" [r]]]]
+--
+-- The 'Id' of a 'Mu' node is determined by the /shape/ of the body. As explained in 'FreeVars', we cannot easily drop
+-- 'Mu' nodes from such a shape. It's not impossible to do, but we'd need to do a bit more work: /if/ we modify 'shape'
+-- to post-process the term so that 'RecUnint' are proper de Bruijn levels, so that the shape of the outer mu would be
+--
+-- > Node [Edge "f" [Node [Edge "g" [Rec (RecUnint 0)]]]]
+--
+-- and the shape of the inner 'Mu' would be
+--
+-- > Node [Edge "f" [Node [Edge "g" [Rec (RecUnint 1)]]]]
+--
+-- this would be doable with a small tweak to the current setup:
+--
+-- 1. First compute the depth of the term (as we do now).
+-- 2. Use that to apply the function to a known-to-be-unique variable (as we do now).
+-- 3. Post-process the resulting term to turn this unique variable into a de Bruijn index (this step would be new).
+--
+-- While this would arguably be more elegant than what we do now, and would mean that strong isomorphism is equality,
+-- in practice we don't depend on this in the library, and the additional post-processing step would have some cost
+-- associated with it. Something to experiment with at some point.
+stronglyIsomorphic :: Node -> Node -> Bool
+stronglyIsomorphic = onNode Set.empty
+  where
+    onNode :: Set (Id, Id) -> Node -> Node -> Bool
+    -- Nodes that are equal are definitely strongly isomorphic (currently sadly not the other way around, see above)
+    onNode _ l r | l == r = True
+
+    -- Order the nodes so that the environment always contains the lower Id first
+    onNode env l r | l > r = onNode env r l
+
+    -- One case for each of the constructors (if the constructors don't match, the terms are not strongly isomorphic)
+    onNode !_    EmptyNode         EmptyNode        = True
+    onNode !env (InternedNode l)  (InternedNode r)  = and $ zipWith (onEdge env) (internedNodeEdges l) (internedNodeEdges r)
+    onNode !env (InternedMu   l)  (InternedMu   r)  = onNode (Set.insert (internedMuId l, internedMuId r) env) (internedMuBody l) (internedMuBody r)
+    onNode !env (Rec (RecInt  l)) (Rec  (RecInt r)) = (l, r) `Set.member` env
+    onNode !_   (Rec          l)  (Rec          r)  = l == r
+    onNode !_   _                 _                 = False
+
+    onEdge :: Set (Id, Id) -> Edge -> Edge -> Bool
+    onEdge !env l r = and [
+          edgeSymbol l == edgeSymbol r
+        , edgeEcs    l == edgeEcs    r
+        , and $ zipWith (onNode env) (edgeChildren l) (edgeChildren r)
+        ]
 
 ----------------------
 ------ Getters and setters
@@ -523,7 +579,23 @@ pattern Mu f <- (matchMu -> Just f)
 -- Implementation note: 'createMu' and 'matchMu' interact in non-trivial ways; see docs of the 'Mu' pattern synonym
 -- for performance considerations.
 createMu :: (Node -> Node) -> Node
-createMu f = intern $ UninternedMu (f . Rec)
+createMu = postProcess . createMuDontCleanup
+  where
+    postProcess :: Node -> Node
+    postProcess n@(InternedMu mu)
+      | FreeVarsKnown free <- freeVars (internedMuBody mu)
+      , internedMuId mu `Set.notMember` free
+      = internedMuBody mu
+
+      | otherwise = n
+
+    postProcess _otherwise = error "postProcess: impossible"
+
+-- | Version of 'createMu' that does not does not attempt to omit redundant 'Mu' nodes
+--
+-- This is exported for the benefit of tests only.
+createMuDontCleanup :: (Node -> Node) -> Node
+createMuDontCleanup f = intern $ UninternedMu (f . Rec)
 
 -- | Match on a 'Mu' node
 --
