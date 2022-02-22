@@ -293,7 +293,6 @@ enumerateEdge scs e = do
 ---------------------
 
 data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
-    deriving (Show)
 
 -- Can speed this up with bitvectors
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
