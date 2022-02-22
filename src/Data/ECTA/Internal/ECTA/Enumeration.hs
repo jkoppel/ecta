@@ -217,7 +217,6 @@ assimilateUvarVal uvTarg uvSrc
     UVarEliminated -> return () -- Happens from duplicate constraints
     _              -> do
       let v = intersectUVarValue srcVal targVal
-      -- traceShow ("assimilateUvarVal: " ++ show v) $ return ()
       guard (contents v /= Just EmptyNode)
       uvarValues.(ix $ uvarToInt uvTarg) .= v
       uvarValues.(ix $ uvarToInt uvSrc)  .= UVarEliminated
@@ -300,7 +299,6 @@ data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
 firstExpandableUVar = do
     values <- use uvarValues
-    -- traceShow values $ return ()
     -- check representative uvars because only representatives are updated
     candidateMaps <- mapM (\i -> do rep <- getUVarRepresentative (intToUVar i)
                                     v <- getUVarValue rep
