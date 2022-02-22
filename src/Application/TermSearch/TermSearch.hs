@@ -26,6 +26,7 @@ import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 ------------------------------------------------------------------------------
+
 tau :: Node
 tau = createMu
   (\n -> union
@@ -39,26 +40,10 @@ tau = createMu
 
   usedConstructors = allConstructors
 
--- tau HKTV = createGloballyUniqueMu
---   (\n -> union
---     (  [appType n n, arrowType n n, var1, var2, var3, var4]
---     ++ constructors
---     ++ map (constructorToEdge n) usedConstructors
---     )
---   )
---  where
---   constructorToEdge :: Node -> (Text, Int) -> Node
---   constructorToEdge n (nm, arity) = foldl appType (typeConst nm) (replicate arity n)
-
---   constructors = map (typeConst . fst) allConstructors
-
---   usedConstructors = allConstructors
-
--- tau _ = error "not implemented"
-
 allConstructors :: [(Text, Int)]
 allConstructors =
-  nubOrd (concatMap getConstructors (Map.keys hoogleComponents)) \\ [("Fun", 2)]
+  nubOrd (concatMap getConstructors (Map.keys hoogleComponents))
+    \\ [("Fun", 2)]
  where
   getConstructors :: TypeSkeleton -> [(Text, Int)]
   getConstructors (TVar _    ) = []
