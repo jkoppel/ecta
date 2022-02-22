@@ -2,11 +2,21 @@
 
 module Application.TermSearch.Utils where
 
+import           Data.Map                       ( Map  )
+import qualified Data.Map                       as Map
 import           Data.Text                      ( Text )
+import qualified Data.Text                      as Text
+
 
 import           Data.ECTA
 import           Data.ECTA.Paths
 import           Data.ECTA.Term
+
+import           Application.TermSearch.Type
+
+--------------------------------------------------------------------------------
+------------------------------- Type Constructors ------------------------------
+--------------------------------------------------------------------------------
 
 typeConst :: Text -> Node
 typeConst s = Node [Edge (Symbol s) []]
@@ -38,6 +48,10 @@ appType n1 n2 = Node [Edge "TyApp" [n1, n2]]
 mkDatatype :: Text -> [Node] -> Node
 mkDatatype s ns = Node [Edge (Symbol s) ns]
 
+--------------------
+------- Functions and arguments
+--------------------
+
 constFunc :: Symbol -> Node -> Edge
 constFunc s t = Edge s [t]
 
@@ -51,11 +65,30 @@ var3 = Node [Edge "var3" []]
 var4 = Node [Edge "var4" []]
 varAcc = Node [Edge "acc" []]
 
+--------------------------------------------------------------------------------
+
+--------------------
+------- Component Grouping
+--------------------
+
+mkGroups :: [(Text, TypeSkeleton)] -> (Map TypeSkeleton Text, Map Text Text)
+mkGroups [] = (Map.empty, Map.empty)
+mkGroups ((name, typ):comps) = let (groups, nameToRepresentative) = mkGroups comps
+                                   freshName = Text.pack ("f" <> show (Map.size groups))
+                                in if typ `Map.member` groups 
+                                  then (groups, Map.insert name (groups Map.! typ) nameToRepresentative)
+                                  else (Map.insert typ freshName groups, Map.insert name freshName nameToRepresentative)
+
 getRepOf :: [(Text, [Text])] -> Text -> Text
 getRepOf [] fname = error $ "cannot find " ++ show fname ++ " in any group"
 getRepOf ((x, fnames):xs) fname
   | fname `elem` fnames = x
   | otherwise = getRepOf xs fname
+
+
+--------------------
+------- Different cases of loops
+--------------------
 
 replicatorTau :: Node
 replicatorTau = createMu
@@ -78,9 +111,7 @@ replicator = Node
                  (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])
         ]
       , Node [
-        -- mkEdge "Pair" [tau, tau]
-        -- (mkEqConstraints [[path [0,0], path [0,1], path [1]]])
-              Edge "Pair" [replicatorTau, replicatorTau]]
+        Edge "Pair" [replicatorTau, replicatorTau]]
       ]
       (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])
   ]

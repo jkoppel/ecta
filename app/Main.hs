@@ -7,7 +7,8 @@ import Data.List ( nub )
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
-import System.Console.CmdArgs hiding (Mode, Normal)
+
+import System.Console.CmdArgs ( Data, Typeable, cmdArgs, argPos, auto, (&=) )
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
@@ -15,9 +16,6 @@ import Data.ECTA.Term
 import Data.Persistent.UnionFind
 
 import Application.TermSearch.Evaluation
-import Application.TermSearch.Type
-
-import Language.Dot.Pretty
 
 ----------------------------------------------------------
 
@@ -47,18 +45,17 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 --------------------------------------------------------------------------------
 
-data HPPArgs = HPPArgs 
-    { benchmark :: String
-    , searchMode :: Mode
-    } deriving (Data, Typeable)
+data HPPArgs = HPPArgs { benchmark :: String
+                       }
+  deriving (Data, Typeable)
 
+hppArgs :: HPPArgs
 hppArgs = HPPArgs {
     benchmark = "" &= argPos 0
-  , searchMode = Normal &= help "Search mode: [normal, hktv, lambda]"
   } &= auto
 
 
 main :: IO ()
 main = do
-    args <- cmdArgs hppArgs
-    runBenchmark (read $ benchmark args)
+    query <- cmdArgs hppArgs
+    runBenchmark (read $ benchmark query)

@@ -1,7 +1,7 @@
 module Application.TermSearch.Type
-  ( ExportType(..)
+  ( TypeSkeleton(..)
   , Benchmark(..)
-  , ArgType
+  , Argument
   , Mode(..)
   ) where
 
@@ -13,19 +13,23 @@ import           GHC.Generics                   ( Generic )
 import           Data.ECTA
 import           Data.ECTA.Term
 
-data ExportType
-  = ExportVar Text
-  | ExportFun ExportType ExportType
-  | ExportCons Text [ExportType]
-  | ExportForall Text ExportType
+data TypeSkeleton
+  = TVar Text
+  | TFun TypeSkeleton TypeSkeleton
+  | TCons Text [TypeSkeleton]
   deriving (Eq, Ord, Show, Read, Data, Generic)
 
-instance Hashable ExportType
+instance Hashable TypeSkeleton
 
-data Benchmark = Benchmark Text Int Term ([(Text, ExportType)], ExportType)
+data Benchmark = Benchmark { bmName      :: Text
+                           , bmSize      :: Int
+                           , bmSolution  :: Term
+                           , bmArguments :: [(Text, TypeSkeleton)]
+                           , bmGoalType  :: TypeSkeleton
+                           }
   deriving (Eq, Ord, Show, Read)
 
-type ArgType = (Symbol, Node)
+type Argument = (Symbol, Node)
 
 data Mode
   = Normal

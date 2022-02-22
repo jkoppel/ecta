@@ -25,7 +25,6 @@ module Data.ECTA.Internal.Paths (
   , toPathTrie
   , fromPathTrie
   , pathTrieDescend
-  , pathTrieAscend
 
   , PathEClass(PathEClass, ..)
   , unPathEClass
@@ -48,17 +47,18 @@ module Data.ECTA.Internal.Paths (
 import Prelude hiding ( round )
 
 import Data.Function ( on )
+import Data.Hashable ( Hashable )
 import Data.List ( isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..) )
-import Data.Hashable ( Hashable )
 import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
 import Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import Data.Vector.Instances ()
-import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
+
+import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Text.Extended.Pretty
@@ -272,12 +272,6 @@ pathTrieDescend (PathTrie v)                i = if Vector.length v > i then
 pathTrieDescend (PathTrieSingleChild j pt') i
                 | i == j                      = pt'
                 | otherwise                   = EmptyPathTrie
-
-pathTrieAscend :: PathTrie -> Int -> PathTrie
-pathTrieAscend EmptyPathTrie i = PathTrieSingleChild i TerminalPathTrie
-pathTrieAscend TerminalPathTrie i = PathTrieSingleChild i TerminalPathTrie
-pathTrieAscend pt@(PathTrieSingleChild _ _) i = PathTrieSingleChild i pt
-pathTrieAscend pt@(PathTrie v) i = error "pathTrieAscend: not implemented for PathTrie"
 
 --------------------------------------------------------------------------
 ---------------------- Equality constraints over paths -------------------

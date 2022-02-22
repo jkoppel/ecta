@@ -4,30 +4,25 @@ module Application.TermSearch.Dataset where
 
 import           Data.ECTA
 import           Data.Map                       ( Map )
-import qualified Data.Map                      as Map
 import           Data.Text                      ( Text )
-import qualified Data.Text                     as Text
 
 import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 
-exportTypeToFta :: ExportType -> Node
-exportTypeToFta (ExportVar "a"  ) = var1
-exportTypeToFta (ExportVar "b"  ) = var2
-exportTypeToFta (ExportVar "c"  ) = var3
-exportTypeToFta (ExportVar "d"  ) = var4
-exportTypeToFta (ExportVar "acc") = varAcc
-exportTypeToFta (ExportVar v) =
+typeToFta :: TypeSkeleton -> Node
+typeToFta (TVar "a"  ) = var1
+typeToFta (TVar "b"  ) = var2
+typeToFta (TVar "c"  ) = var3
+typeToFta (TVar "d"  ) = var4
+typeToFta (TVar "acc") = varAcc
+typeToFta (TVar v) =
   error
     $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got "
     ++ show v
-exportTypeToFta (ExportFun t1 t2) =
-  arrowType (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons "Fun" [t1, t2]) =
-  arrowType (exportTypeToFta t1) (exportTypeToFta t2)
-exportTypeToFta (ExportCons s ts) = mkDatatype s (map exportTypeToFta ts)
-exportTypeToFta (ExportForall _ t) = exportTypeToFta t
+typeToFta (TFun  t1    t2      ) = arrowType (typeToFta t1) (typeToFta t2)
+typeToFta (TCons "Fun" [t1, t2]) = arrowType (typeToFta t1) (typeToFta t2)
+typeToFta (TCons s     ts      ) = mkDatatype s (map typeToFta ts)
 
 speciallyTreatedFunctions :: [Text]
 speciallyTreatedFunctions =
@@ -38,4023 +33,1102 @@ speciallyTreatedFunctions =
     "Data.Function.id"
   ]
 
-rawHooglePlusExport :: [(Text, ExportType)]
-rawHooglePlusExport =
+hooglePlusComponents :: [(Text, TypeSkeleton)]
+hooglePlusComponents =
   [ ( "(Data.Bool.&&)"
-    , ExportFun (ExportCons "Bool" [])
-                (ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
+    , TFun (TCons "Bool" []) (TFun (TCons "Bool" []) (TCons "Bool" []))
     )
   , ( "(Data.Bool.||)"
-    , ExportFun (ExportCons "Bool" [])
-                (ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
+    , TFun (TCons "Bool" []) (TFun (TCons "Bool" []) (TCons "Bool" []))
     )
   , ( "(Data.Eq./=)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
+    , TFun (TCons "@@hplusTC@@Eq" [TVar "a"])
+           (TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" [])))
     )
   , ( "(Data.Eq.==)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
+    , TFun (TCons "@@hplusTC@@Eq" [TVar "a"])
+           (TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" [])))
+    )
+  , ( "(Data.Function.$)"
+    , TFun (TFun (TVar "a") (TVar "b")) (TFun (TVar "a") (TVar "b"))
     )
   , ( "(GHC.List.!!)"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportFun (ExportCons "Int" []) (ExportVar "a"))
-      )
+    , TFun (TCons "List" [TVar "a"]) (TFun (TCons "Int" []) (TVar "a"))
     )
   , ( "(GHC.List.++)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "List" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TCons "List" [TVar "a"])
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
-  , ( "@@hplusTCInstance@@0EqBool"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0EqChar"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Char" []]
-    )
-  , ( "@@hplusTCInstance@@0EqDouble"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Double" []]
-    )
-  , ( "@@hplusTCInstance@@0EqFloat"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0EqInt"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0EqUnit"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Unit" []]
-    )
+  , ("@@hplusTCInstance@@0EqBool"  , TCons "@@hplusTC@@Eq" [TCons "Bool" []])
+  , ("@@hplusTCInstance@@0EqChar"  , TCons "@@hplusTC@@Eq" [TCons "Char" []])
+  , ("@@hplusTCInstance@@0EqDouble", TCons "@@hplusTC@@Eq" [TCons "Double" []])
+  , ("@@hplusTCInstance@@0EqFloat" , TCons "@@hplusTC@@Eq" [TCons "Float" []])
+  , ("@@hplusTCInstance@@0EqInt"   , TCons "@@hplusTC@@Eq" [TCons "Int" []])
+  , ("@@hplusTCInstance@@0EqUnit"  , TCons "@@hplusTC@@Eq" [TCons "Unit" []])
   , ( "@@hplusTCInstance@@0IsString"
-    , ExportCons "@@hplusTC@@IsString" [ExportCons "Builder" []]
+    , TCons "@@hplusTC@@IsString" [TCons "Builder" []]
     )
   , ( "@@hplusTCInstance@@0NumDouble"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Double" []]
+    , TCons "@@hplusTC@@Num" [TCons "Double" []]
     )
-  , ( "@@hplusTCInstance@@0NumFloat"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0NumInt"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdBool"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdChar"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Char" []]
-    )
+  , ("@@hplusTCInstance@@0NumFloat", TCons "@@hplusTC@@Num" [TCons "Float" []])
+  , ("@@hplusTCInstance@@0NumInt"  , TCons "@@hplusTC@@Num" [TCons "Int" []])
+  , ("@@hplusTCInstance@@0OrdBool" , TCons "@@hplusTC@@Ord" [TCons "Bool" []])
+  , ("@@hplusTCInstance@@0OrdChar" , TCons "@@hplusTC@@Ord" [TCons "Char" []])
   , ( "@@hplusTCInstance@@0OrdDouble"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Double" []]
+    , TCons "@@hplusTC@@Ord" [TCons "Double" []]
     )
-  , ( "@@hplusTCInstance@@0OrdFloat"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdInt"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowBool"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowChar"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Char" []]
-    )
+  , ("@@hplusTCInstance@@0OrdFloat", TCons "@@hplusTC@@Ord" [TCons "Float" []])
+  , ("@@hplusTCInstance@@0OrdInt"  , TCons "@@hplusTC@@Ord" [TCons "Int" []])
+  , ("@@hplusTCInstance@@0ShowBool", TCons "@@hplusTC@@Show" [TCons "Bool" []])
+  , ("@@hplusTCInstance@@0ShowChar", TCons "@@hplusTC@@Show" [TCons "Char" []])
   , ( "@@hplusTCInstance@@0ShowDouble"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Double" []]
+    , TCons "@@hplusTC@@Show" [TCons "Double" []]
     )
   , ( "@@hplusTCInstance@@0ShowFloat"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Float" []]
+    , TCons "@@hplusTC@@Show" [TCons "Float" []]
     )
-  , ( "@@hplusTCInstance@@0ShowInt"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowUnit"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Unit" []]
-    )
+  , ("@@hplusTCInstance@@0ShowInt" , TCons "@@hplusTC@@Show" [TCons "Int" []])
+  , ("@@hplusTCInstance@@0ShowUnit", TCons "@@hplusTC@@Show" [TCons "Unit" []])
   , ( "@@hplusTCInstance@@1Show"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Show" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Show"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Show" [TVar "a"])
+      (TFun (TCons "@@hplusTC@@Show" [TVar "b"])
+            (TCons "@@hplusTC@@Show" [TCons "Either" [TVar "a", TVar "b"]])
       )
     )
   , ( "@@hplusTCInstance@@2Read"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Read" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Read" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Read"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Read" [TVar "a"])
+      (TFun (TCons "@@hplusTC@@Read" [TVar "b"])
+            (TCons "@@hplusTC@@Read" [TCons "Either" [TVar "a", TVar "b"]])
       )
     )
   , ( "@@hplusTCInstance@@3Ord"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Ord" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Ord"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Ord" [TVar "a"])
+      (TFun (TCons "@@hplusTC@@Ord" [TVar "b"])
+            (TCons "@@hplusTC@@Ord" [TCons "Either" [TVar "a", TVar "b"]])
       )
     )
   , ( "@@hplusTCInstance@@4Eq"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Eq" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Eq"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Eq" [TVar "a"])
+      (TFun (TCons "@@hplusTC@@Eq" [TVar "b"])
+            (TCons "@@hplusTC@@Eq" [TCons "Either" [TVar "a", TVar "b"]])
       )
     )
   , ( "@@hplusTCInstance@@6Semigroup"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportCons "@@hplusTC@@Semigroup"
-                    [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-        )
-      )
+    , TCons "@@hplusTC@@Semigroup" [TCons "Either" [TVar "a", TVar "b"]]
     )
   , ( "@@hplusTCInstance@@9Eq"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportCons "@@hplusTC@@Eq" [ExportCons "List" [ExportVar "a"]])
-      )
+    , TFun (TCons "@@hplusTC@@Eq" [TVar "a"])
+           (TCons "@@hplusTC@@Eq" [TCons "List" [TVar "a"]])
     )
   , ( "Cons"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TVar "a") (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
-  , ("Data.Bool.False", ExportCons "Bool" [])
-  , ("Data.Bool.True" , ExportCons "Bool" [])
+  , ("Data.Bool.False", TCons "Bool" [])
+  , ("Data.Bool.True" , TCons "Bool" [])
   , ( "Data.Bool.bool"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Bool" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TVar "a") (TFun (TVar "a") (TFun (TCons "Bool" []) (TVar "a")))
     )
-  , ("Data.Bool.not", ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
-  , ("Data.Bool.otherwise", ExportCons "Bool" [])
+  , ("Data.Bool.not"      , TFun (TCons "Bool" []) (TCons "Bool" []))
+  , ("Data.Bool.otherwise", TCons "Bool" [])
   , ( "Data.ByteString.Builder.byteString"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
+    , TFun (TCons "ByteString" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.byteStringHex"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
+    , TFun (TCons "ByteString" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.char7"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
+    , TFun (TCons "Char" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.char8"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
+    , TFun (TCons "Char" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.charUtf8"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
+    , TFun (TCons "Char" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.doubleBE"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
+    , TFun (TCons "Double" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.doubleDec"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
+    , TFun (TCons "Double" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.doubleHexFixed"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
+    , TFun (TCons "Double" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.doubleLE"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
+    , TFun (TCons "Double" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.floatBE"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
+    , TFun (TCons "Float" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.floatDec"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
+    , TFun (TCons "Float" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.floatHexFixed"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
+    , TFun (TCons "Float" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.floatLE"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
+    , TFun (TCons "Float" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.hPutBuilder"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Builder" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "Builder" []) (TCons "IO" [TCons "Unit" []]))
     )
   , ( "Data.ByteString.Builder.int16BE"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int16Dec"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int16HexFixed"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int16LE"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int32BE"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int32Dec"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int32HexFixed"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int32LE"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int64BE"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int64Dec"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int64HexFixed"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int64LE"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int8"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int8Dec"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.int8HexFixed"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.intDec"
-    , ExportFun (ExportCons "Int" []) (ExportCons "Builder" [])
+    , TFun (TCons "Int" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.integerDec"
-    , ExportFun (ExportCons "Integer" []) (ExportCons "Builder" [])
+    , TFun (TCons "Integer" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.lazyByteString"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
+    , TFun (TCons "ByteString" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.lazyByteStringHex"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
+    , TFun (TCons "ByteString" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.shortByteString"
-    , ExportFun (ExportCons "ShortByteString" []) (ExportCons "Builder" [])
+    , TFun (TCons "ShortByteString" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.string7"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
+    , TFun (TCons "List" [TCons "Char" []]) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.string8"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
+    , TFun (TCons "List" [TCons "Char" []]) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.stringUtf8"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
+    , TFun (TCons "List" [TCons "Char" []]) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.toLazyByteString"
-    , ExportFun (ExportCons "Builder" []) (ExportCons "ByteString" [])
+    , TFun (TCons "Builder" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Builder.word16BE"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word16Dec"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word16Hex"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word16HexFixed"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word16LE"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word16" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word32BE"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word32Dec"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word32Hex"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word32HexFixed"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word32LE"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word32" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word64BE"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word64Dec"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word64Hex"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word64HexFixed"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word64LE"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word64" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word8"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word8Dec"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word8Hex"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.word8HexFixed"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word8" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.wordDec"
-    , ExportFun (ExportCons "Word" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Builder.wordHex"
-    , ExportFun (ExportCons "Word" []) (ExportCons "Builder" [])
+    , TFun (TCons "Word" []) (TCons "Builder" [])
     )
   , ( "Data.ByteString.Lazy.all"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.any"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.append"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "ByteString" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.appendFile"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
+    , TFun (TCons "List" [TCons "Char" []])
+           (TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []]))
     )
   , ( "Data.ByteString.Lazy.break"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
+    , TFun
+      (TFun (TCons "Word8" []) (TCons "Bool" []))
+      (TFun (TCons "ByteString" [])
+            (TCons "Pair" [TCons "ByteString" [], TCons "ByteString" []])
       )
     )
   , ( "Data.ByteString.Lazy.concat"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "ByteString" [])
+    , TFun (TCons "List" [TCons "ByteString" []]) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.concatMap"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "ByteString" []))
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.cons"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.cons'"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.copy"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.count"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Int64" []))
+    , TFun (TCons "Word8" []) (TFun (TCons "ByteString" []) (TCons "Int64" []))
     )
   , ( "Data.ByteString.Lazy.cycle"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.drop"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Int64" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.dropWhile"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.elem"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TCons "Word8" []) (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.elemIndex"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "Int64" []]))
     )
   , ( "Data.ByteString.Lazy.elemIndexEnd"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "Int64" []]))
     )
   , ( "Data.ByteString.Lazy.elemIndices"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "Int64" []])
-      )
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "List" [TCons "Int64" []]))
     )
-  , ("Data.ByteString.Lazy.empty", ExportCons "ByteString" [])
+  , ("Data.ByteString.Lazy.empty", TCons "ByteString" [])
   , ( "Data.ByteString.Lazy.filter"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.find"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Word8" []])
-      )
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "Word8" []]))
     )
   , ( "Data.ByteString.Lazy.findIndex"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "Int64" []]))
     )
   , ( "Data.ByteString.Lazy.findIndices"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "Int64" []])
-      )
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "List" [TCons "Int64" []]))
     )
   , ( "Data.ByteString.Lazy.foldl"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TCons "Word8" []) (TVar "a")))
+           (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
     )
   , ( "Data.ByteString.Lazy.foldl'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TCons "Word8" []) (TVar "a")))
+           (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
     )
   , ( "Data.ByteString.Lazy.foldl1"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TCons "Word8" [])))
+      (TFun (TCons "ByteString" []) (TCons "Word8" []))
     )
   , ( "Data.ByteString.Lazy.foldl1'"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TCons "Word8" [])))
+      (TFun (TCons "ByteString" []) (TCons "Word8" []))
     )
   , ( "Data.ByteString.Lazy.foldlChunks"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
+           (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
     )
   , ( "Data.ByteString.Lazy.foldr"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "Word8" [])
-                   (ExportFun (ExportVar "a") (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TFun (TCons "Word8" []) (TFun (TVar "a") (TVar "a")))
+           (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
     )
   , ( "Data.ByteString.Lazy.foldr1"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TCons "Word8" [])))
+      (TFun (TCons "ByteString" []) (TCons "Word8" []))
     )
   , ( "Data.ByteString.Lazy.foldrChunks"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "ByteString" [])
-                   (ExportFun (ExportVar "a") (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
+    , TFun (TFun (TCons "ByteString" []) (TFun (TVar "a") (TVar "a")))
+           (TFun (TVar "a") (TFun (TCons "ByteString" []) (TVar "a")))
     )
   , ( "Data.ByteString.Lazy.fromChunks"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "ByteString" [])
+    , TFun (TCons "List" [TCons "ByteString" []]) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.fromStrict"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
-  , ( "Data.ByteString.Lazy.getContents"
-    , ExportCons "IO" [ExportCons "ByteString" []]
-    )
+  , ("Data.ByteString.Lazy.getContents", TCons "IO" [TCons "ByteString" []])
   , ( "Data.ByteString.Lazy.group"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
+    , TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.groupBy"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      )
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TCons "Bool" [])))
+      (TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.hGet"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Int" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "Int" []) (TCons "IO" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.hGetContents"
-    , ExportFun (ExportCons "Handle" [])
-                (ExportCons "IO" [ExportCons "ByteString" []])
+    , TFun (TCons "Handle" []) (TCons "IO" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.hGetNonBlocking"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Int" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "Int" []) (TCons "IO" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.hPut"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []]))
     )
   , ( "Data.ByteString.Lazy.hPutNonBlocking"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "ByteString" []) (TCons "IO" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.hPutStr"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
+    , TFun (TCons "Handle" [])
+           (TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []]))
     )
   , ( "Data.ByteString.Lazy.head"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
+    , TFun (TCons "ByteString" []) (TCons "Word8" [])
     )
   , ( "Data.ByteString.Lazy.index"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportFun (ExportCons "Int64" []) (ExportCons "Word8" []))
+    , TFun (TCons "ByteString" []) (TFun (TCons "Int64" []) (TCons "Word8" []))
     )
   , ( "Data.ByteString.Lazy.init"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.inits"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
+    , TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.interact"
-    , ExportFun
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-      (ExportCons "IO" [ExportCons "Unit" []])
+    , TFun (TFun (TCons "ByteString" []) (TCons "ByteString" []))
+           (TCons "IO" [TCons "Unit" []])
     )
   , ( "Data.ByteString.Lazy.intercalate"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                 (ExportCons "ByteString" [])
-      )
+    , TFun
+      (TCons "ByteString" [])
+      (TFun (TCons "List" [TCons "ByteString" []]) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.intersperse"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Word8" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.isPrefixOf"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TCons "ByteString" [])
+           (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.isSuffixOf"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TCons "ByteString" [])
+           (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.iterate"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Word8" []))
+           (TFun (TCons "Word8" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.last"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
+    , TFun (TCons "ByteString" []) (TCons "Word8" [])
     )
   , ( "Data.ByteString.Lazy.length"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Int64" [])
+    , TFun (TCons "ByteString" []) (TCons "Int64" [])
     )
   , ( "Data.ByteString.Lazy.map"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Word8" []))
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.mapAccumL"
-    , ExportForall
-      "acc"
-      (ExportFun
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "Word8" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "Word8" []])
-          )
-        )
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "ByteString" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "ByteString" []])
-          )
+    , TFun
+      (TFun
+        (TVar "acc")
+        (TFun (TCons "Word8" []) (TCons "Pair" [TVar "acc", TCons "Word8" []]))
+      )
+      (TFun
+        (TVar "acc")
+        (TFun (TCons "ByteString" [])
+              (TCons "Pair" [TVar "acc", TCons "ByteString" []])
         )
       )
     )
   , ( "Data.ByteString.Lazy.mapAccumR"
-    , ExportForall
-      "acc"
-      (ExportFun
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "Word8" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "Word8" []])
-          )
-        )
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "ByteString" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "ByteString" []])
-          )
+    , TFun
+      (TFun
+        (TVar "acc")
+        (TFun (TCons "Word8" []) (TCons "Pair" [TVar "acc", TCons "Word8" []]))
+      )
+      (TFun
+        (TVar "acc")
+        (TFun (TCons "ByteString" [])
+              (TCons "Pair" [TVar "acc", TCons "ByteString" []])
         )
       )
     )
   , ( "Data.ByteString.Lazy.maximum"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
+    , TFun (TCons "ByteString" []) (TCons "Word8" [])
     )
   , ( "Data.ByteString.Lazy.minimum"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
+    , TFun (TCons "ByteString" []) (TCons "Word8" [])
     )
   , ( "Data.ByteString.Lazy.notElem"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
+    , TFun (TCons "Word8" []) (TFun (TCons "ByteString" []) (TCons "Bool" []))
     )
   , ( "Data.ByteString.Lazy.null"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" [])
+    , TFun (TCons "ByteString" []) (TCons "Bool" [])
     )
   , ( "Data.ByteString.Lazy.pack"
-    , ExportFun (ExportCons "List" [ExportCons "Word8" []])
-                (ExportCons "ByteString" [])
+    , TFun (TCons "List" [TCons "Word8" []]) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.partition"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
+    , TFun
+      (TFun (TCons "Word8" []) (TCons "Bool" []))
+      (TFun (TCons "ByteString" [])
+            (TCons "Pair" [TCons "ByteString" [], TCons "ByteString" []])
       )
     )
   , ( "Data.ByteString.Lazy.putStr"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "IO" [ExportCons "Unit" []])
+    , TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []])
     )
   , ( "Data.ByteString.Lazy.putStrLn"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "IO" [ExportCons "Unit" []])
+    , TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []])
     )
   , ( "Data.ByteString.Lazy.readFile"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "IO" [ExportCons "ByteString" []])
+    , TFun (TCons "List" [TCons "Char" []]) (TCons "IO" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.repeat"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" [])
+    , TFun (TCons "Word8" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.replicate"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Int64" []) (TFun (TCons "Word8" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.reverse"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.scanl"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun
-        (ExportCons "Word8" [])
-        (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TCons "Word8" [])))
+      (TFun (TCons "Word8" [])
+            (TFun (TCons "ByteString" []) (TCons "ByteString" []))
       )
     )
   , ( "Data.ByteString.Lazy.singleton"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" [])
+    , TFun (TCons "Word8" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.snoc"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
+    , TFun (TCons "ByteString" [])
+           (TFun (TCons "Word8" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.span"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
+    , TFun
+      (TFun (TCons "Word8" []) (TCons "Bool" []))
+      (TFun (TCons "ByteString" [])
+            (TCons "Pair" [TCons "ByteString" [], TCons "ByteString" []])
       )
     )
   , ( "Data.ByteString.Lazy.split"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
+    , TFun
+      (TCons "Word8" [])
+      (TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.splitAt"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
+    , TFun
+      (TCons "Int64" [])
+      (TFun (TCons "ByteString" [])
+            (TCons "Pair" [TCons "ByteString" [], TCons "ByteString" []])
       )
     )
   , ( "Data.ByteString.Lazy.splitWith"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
+    , TFun
+      (TFun (TCons "Word8" []) (TCons "Bool" []))
+      (TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.stripPrefix"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "ByteString" []])
-      )
+    , TFun
+      (TCons "ByteString" [])
+      (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.stripSuffix"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "ByteString" []])
-      )
+    , TFun
+      (TCons "ByteString" [])
+      (TFun (TCons "ByteString" []) (TCons "Maybe" [TCons "ByteString" []]))
     )
   , ( "Data.ByteString.Lazy.tail"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.tails"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
+    , TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.take"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TCons "Int64" [])
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.takeWhile"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
+    , TFun (TFun (TCons "Word8" []) (TCons "Bool" []))
+           (TFun (TCons "ByteString" []) (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.toChunks"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
+    , TFun (TCons "ByteString" []) (TCons "List" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.toStrict"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
+    , TFun (TCons "ByteString" []) (TCons "ByteString" [])
     )
   , ( "Data.ByteString.Lazy.transpose"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "List" [ExportCons "ByteString" []])
+    , TFun (TCons "List" [TCons "ByteString" []])
+           (TCons "List" [TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.uncons"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportCons
-        "Maybe"
-        [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "ByteString" []]]
-      )
+    , TFun
+      (TCons "ByteString" [])
+      (TCons "Maybe" [TCons "Pair" [TCons "Word8" [], TCons "ByteString" []]])
     )
   , ( "Data.ByteString.Lazy.unfoldr"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun
-          (ExportVar "a")
-          (ExportCons
-            "Maybe"
-            [ExportCons "Pair" [ExportCons "Word8" [], ExportVar "a"]]
-          )
-        )
-        (ExportFun (ExportVar "a") (ExportCons "ByteString" []))
+    , TFun
+      (TFun (TVar "a")
+            (TCons "Maybe" [TCons "Pair" [TCons "Word8" [], TVar "a"]])
       )
+      (TFun (TVar "a") (TCons "ByteString" []))
     )
   , ( "Data.ByteString.Lazy.unpack"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "Word8" []])
+    , TFun (TCons "ByteString" []) (TCons "List" [TCons "Word8" []])
     )
   , ( "Data.ByteString.Lazy.unsnoc"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportCons
-        "Maybe"
-        [ExportCons "Pair" [ExportCons "ByteString" [], ExportCons "Word8" []]]
-      )
+    , TFun
+      (TCons "ByteString" [])
+      (TCons "Maybe" [TCons "Pair" [TCons "ByteString" [], TCons "Word8" []]])
     )
   , ( "Data.ByteString.Lazy.unzip"
-    , ExportFun
-      (ExportCons
-        "List"
-        [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "Word8" []]]
-      )
-      (ExportCons "Pair"
-                  [ExportCons "ByteString" [], ExportCons "ByteString" []]
-      )
+    , TFun (TCons "List" [TCons "Pair" [TCons "Word8" [], TCons "Word8" []]])
+           (TCons "Pair" [TCons "ByteString" [], TCons "ByteString" []])
     )
   , ( "Data.ByteString.Lazy.writeFile"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
+    , TFun (TCons "List" [TCons "Char" []])
+           (TFun (TCons "ByteString" []) (TCons "IO" [TCons "Unit" []]))
     )
   , ( "Data.ByteString.Lazy.zip"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons
-          "List"
-          [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "Word8" []]]
-        )
+    , TFun
+      (TCons "ByteString" [])
+      (TFun (TCons "ByteString" [])
+            (TCons "List" [TCons "Pair" [TCons "Word8" [], TCons "Word8" []]])
       )
     )
   , ( "Data.ByteString.Lazy.zipWith"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "Word8" [])
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun
-          (ExportCons "ByteString" [])
-          (ExportFun (ExportCons "ByteString" [])
-                     (ExportCons "List" [ExportVar "a"])
-          )
-        )
+    , TFun
+      (TFun (TCons "Word8" []) (TFun (TCons "Word8" []) (TVar "a")))
+      (TFun (TCons "ByteString" [])
+            (TFun (TCons "ByteString" []) (TCons "List" [TVar "a"]))
       )
     )
-  , ( "Data.Either.Left"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportVar "a")
-                   (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-        )
-      )
-    )
-  , ( "Data.Either.Right"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportVar "b")
-                   (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-        )
-      )
-    )
+  , ("Data.Either.Left" , TFun (TVar "a") (TCons "Either" [TVar "a", TVar "b"]))
+  , ("Data.Either.Right", TFun (TVar "b") (TCons "Either" [TVar "a", TVar "b"]))
   , ( "Data.Either.either"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a") (ExportVar "c"))
-            (ExportFun
-              (ExportFun (ExportVar "b") (ExportVar "c"))
-              (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                         (ExportVar "c")
-              )
-            )
-          )
-        )
+    , TFun
+      (TFun (TVar "a") (TVar "c"))
+      (TFun (TFun (TVar "b") (TVar "c"))
+            (TFun (TCons "Either" [TVar "a", TVar "b"]) (TVar "c"))
       )
     )
   , ( "Data.Either.fromLeft"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                     (ExportVar "a")
-          )
-        )
-      )
+    , TFun (TVar "a") (TFun (TCons "Either" [TVar "a", TVar "b"]) (TVar "a"))
     )
   , ( "Data.Either.fromRight"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "b")
-          (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                     (ExportVar "b")
-          )
-        )
-      )
+    , TFun (TVar "b") (TFun (TCons "Either" [TVar "a", TVar "b"]) (TVar "b"))
     )
   , ( "Data.Either.isLeft"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Bool" [])
-        )
-      )
+    , TFun (TCons "Either" [TVar "a", TVar "b"]) (TCons "Bool" [])
     )
   , ( "Data.Either.isRight"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Bool" [])
-        )
-      )
+    , TFun (TCons "Either" [TVar "a", TVar "b"]) (TCons "Bool" [])
     )
   , ( "Data.Either.lefts"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TCons "List" [TCons "Either" [TVar "a", TVar "b"]])
+           (TCons "List" [TVar "a"])
     )
   , ( "Data.Either.partitionEithers"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "b"]
-            ]
-          )
-        )
-      )
+    , TFun (TCons "List" [TCons "Either" [TVar "a", TVar "b"]])
+           (TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "b"]])
     )
   , ( "Data.Either.rights"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons "List" [ExportVar "b"])
-        )
-      )
+    , TFun (TCons "List" [TCons "Either" [TVar "a", TVar "b"]])
+           (TCons "List" [TVar "b"])
     )
   , ( "Data.List.group"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportCons "List" [ExportVar "a"]])
-        )
-      )
+    , TFun
+      (TCons "@@hplusTC@@Eq" [TVar "a"])
+      (TFun (TCons "List" [TVar "a"]) (TCons "List" [TCons "List" [TVar "a"]]))
     )
-  , ( "Data.Maybe.Just"
-    , ExportForall
-      "a"
-      (ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "a"]))
-    )
-  , ( "Data.Maybe.Nothing"
-    , ExportForall "a" (ExportCons "Maybe" [ExportVar "a"])
-    )
+  , ("Data.Maybe.Just"   , TFun (TVar "a") (TCons "Maybe" [TVar "a"]))
+  , ("Data.Maybe.Nothing", TCons "Maybe" [TVar "a"])
   , ( "Data.Maybe.catMaybes"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportCons "Maybe" [ExportVar "a"]])
-                 (ExportCons "List" [ExportVar "a"])
-      )
+    , TFun (TCons "List" [TCons "Maybe" [TVar "a"]]) (TCons "List" [TVar "a"])
     )
-  , ( "Data.Maybe.fromJust"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "a"))
-    )
+  , ("Data.Maybe.fromJust", TFun (TCons "Maybe" [TVar "a"]) (TVar "a"))
   , ( "Data.Maybe.fromMaybe"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TVar "a") (TFun (TCons "Maybe" [TVar "a"]) (TVar "a"))
     )
-  , ( "Data.Maybe.isJust"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
-  , ( "Data.Maybe.isNothing"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
+  , ("Data.Maybe.isJust"   , TFun (TCons "Maybe" [TVar "a"]) (TCons "Bool" []))
+  , ("Data.Maybe.isNothing", TFun (TCons "Maybe" [TVar "a"]) (TCons "Bool" []))
   , ( "Data.Maybe.listToMaybe"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "Maybe" [ExportVar "a"])
-      )
+    , TFun (TCons "List" [TVar "a"]) (TCons "Maybe" [TVar "a"])
     )
   , ( "Data.Maybe.mapMaybe"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "b"]))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
+    , TFun (TFun (TVar "a") (TCons "Maybe" [TVar "b"]))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
     )
   , ( "Data.Maybe.maybe"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "b")
-          (ExportFun
-            (ExportFun (ExportVar "a") (ExportVar "b"))
-            (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
+    , TFun
+      (TVar "b")
+      (TFun (TFun (TVar "a") (TVar "b"))
+            (TFun (TCons "Maybe" [TVar "a"]) (TVar "b"))
       )
     )
   , ( "Data.Maybe.maybeToList"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
+    , TFun (TCons "Maybe" [TVar "a"]) (TCons "List" [TVar "a"])
     )
   , ( "Data.Tuple.curry"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                       (ExportVar "c")
-            )
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-          )
-        )
-      )
+    , TFun (TFun (TCons "Pair" [TVar "a", TVar "b"]) (TVar "c"))
+           (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
     )
-  , ( "Data.Tuple.fst"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportVar "a")
-        )
-      )
-    )
-  , ( "Data.Tuple.snd"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportVar "b")
-        )
-      )
-    )
+  , ("Data.Tuple.fst", TFun (TCons "Pair" [TVar "a", TVar "b"]) (TVar "a"))
+  , ("Data.Tuple.snd", TFun (TCons "Pair" [TVar "a", TVar "b"]) (TVar "b"))
   , ( "Data.Tuple.swap"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Pair" [ExportVar "b", ExportVar "a"])
-        )
-      )
+    , TFun (TCons "Pair" [TVar "a", TVar "b"])
+           (TCons "Pair" [TVar "b", TVar "a"])
     )
   , ( "Data.Tuple.uncurry"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-            (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                       (ExportVar "c")
-            )
-          )
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
+           (TFun (TCons "Pair" [TVar "a", TVar "b"]) (TVar "c"))
     )
-  , ("GHC.Char.chr", ExportFun (ExportCons "Int" []) (ExportCons "Char" []))
+  , ("GHC.Char.chr", TFun (TCons "Int" []) (TCons "Char" []))
   , ( "GHC.Char.eqChar"
-    , ExportFun (ExportCons "Char" [])
-                (ExportFun (ExportCons "Char" []) (ExportCons "Bool" []))
+    , TFun (TCons "Char" []) (TFun (TCons "Char" []) (TCons "Bool" []))
     )
   , ( "GHC.Char.neChar"
-    , ExportFun (ExportCons "Char" [])
-                (ExportFun (ExportCons "Char" []) (ExportCons "Bool" []))
+    , TFun (TCons "Char" []) (TFun (TCons "Char" []) (TCons "Bool" []))
     )
   , ( "GHC.List.all"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-      )
+    , TFun (TFun (TVar "a") (TCons "Bool" []))
+           (TFun (TCons "List" [TVar "a"]) (TCons "Bool" []))
     )
-  , ( "GHC.List.and"
-    , ExportFun (ExportCons "List" [ExportCons "Bool" []])
-                (ExportCons "Bool" [])
-    )
+  , ("GHC.List.and", TFun (TCons "List" [TCons "Bool" []]) (TCons "Bool" []))
   , ( "GHC.List.any"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-      )
+    , TFun (TFun (TVar "a") (TCons "Bool" []))
+           (TFun (TCons "List" [TVar "a"]) (TCons "Bool" []))
     )
   , ( "GHC.List.break"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
+    , TFun
+      (TFun (TVar "a") (TCons "Bool" []))
+      (TFun (TCons "List" [TVar "a"])
+            (TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "a"]])
       )
     )
   , ( "GHC.List.concat"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportCons "List" [ExportVar "a"]])
-                 (ExportCons "List" [ExportVar "a"])
-      )
+    , TFun (TCons "List" [TCons "List" [TVar "a"]]) (TCons "List" [TVar "a"])
     )
   , ( "GHC.List.concatMap"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "b"]))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
+    , TFun (TFun (TVar "a") (TCons "List" [TVar "b"]))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
     )
-  , ( "GHC.List.cycle"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
+  , ("GHC.List.cycle", TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
   , ( "GHC.List.drop"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TCons "Int" [])
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.dropWhile"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TFun (TVar "a") (TCons "Bool" []))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.elem"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-        )
-      )
+    , TFun
+      (TCons "@@hplusTC@@Eq" [TVar "a"])
+      (TFun (TVar "a") (TFun (TCons "List" [TVar "a"]) (TCons "Bool" [])))
     )
   , ( "GHC.List.filter"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TFun (TVar "a") (TCons "Bool" []))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.foldl"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
+    , TFun (TFun (TVar "b") (TFun (TVar "a") (TVar "b")))
+           (TFun (TVar "b") (TFun (TCons "List" [TVar "a"]) (TVar "b")))
     )
   , ( "GHC.List.foldl'"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
+    , TFun (TFun (TVar "b") (TFun (TVar "a") (TVar "b")))
+           (TFun (TVar "b") (TFun (TCons "List" [TVar "a"]) (TVar "b")))
     )
   , ( "GHC.List.foldl1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TVar "a")))
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
   , ( "GHC.List.foldl1'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TVar "a")))
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
   , ( "GHC.List.foldr"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "b")))
+           (TFun (TVar "b") (TFun (TCons "List" [TVar "a"]) (TVar "b")))
     )
   , ( "GHC.List.foldr1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TVar "a")))
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
-  , ( "GHC.List.head"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-    )
-  , ( "GHC.List.init"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
+  , ("GHC.List.head", TFun (TCons "List" [TVar "a"]) (TVar "a"))
+  , ("GHC.List.init", TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
   , ( "GHC.List.iterate"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportVar "a"))
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
+    , TFun (TFun (TVar "a") (TVar "a"))
+           (TFun (TVar "a") (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.iterate'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportVar "a"))
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
+    , TFun (TFun (TVar "a") (TVar "a"))
+           (TFun (TVar "a") (TCons "List" [TVar "a"]))
     )
-  , ( "GHC.List.last"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-    )
-  , ( "GHC.List.length"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Int" []))
-    )
+  , ("GHC.List.last"  , TFun (TCons "List" [TVar "a"]) (TVar "a"))
+  , ("GHC.List.length", TFun (TCons "List" [TVar "a"]) (TCons "Int" []))
   , ( "GHC.List.lookup"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-          (ExportFun
-            (ExportVar "a")
-            (ExportFun
-              (ExportCons "List"
-                          [ExportCons "Pair" [ExportVar "a", ExportVar "b"]]
-              )
-              (ExportCons "Maybe" [ExportVar "b"])
-            )
-          )
+    , TFun
+      (TCons "@@hplusTC@@Eq" [TVar "a"])
+      (TFun
+        (TVar "a")
+        (TFun (TCons "List" [TCons "Pair" [TVar "a", TVar "b"]])
+              (TCons "Maybe" [TVar "b"])
         )
       )
     )
   , ( "GHC.List.map"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportVar "b"))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
+    , TFun (TFun (TVar "a") (TVar "b"))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
     )
   , ( "GHC.List.maximum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
   , ( "GHC.List.minimum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
   , ( "GHC.List.notElem"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-        )
-      )
+    , TFun
+      (TCons "@@hplusTC@@Eq" [TVar "a"])
+      (TFun (TVar "a") (TFun (TCons "List" [TVar "a"]) (TCons "Bool" [])))
     )
-  , ( "GHC.List.null"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
-  , ( "GHC.List.or"
-    , ExportFun (ExportCons "List" [ExportCons "Bool" []])
-                (ExportCons "Bool" [])
-    )
+  , ("GHC.List.null", TFun (TCons "List" [TVar "a"]) (TCons "Bool" []))
+  , ("GHC.List.or"  , TFun (TCons "List" [TCons "Bool" []]) (TCons "Bool" []))
   , ( "GHC.List.product"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Num" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TCons "@@hplusTC@@Num" [TVar "a"])
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
-  , ( "GHC.List.repeat"
-    , ExportForall
-      "a"
-      (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-    )
+  , ("GHC.List.repeat", TFun (TVar "a") (TCons "List" [TVar "a"]))
   , ( "GHC.List.replicate"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
+    , TFun (TCons "Int" []) (TFun (TVar "a") (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.reverse"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
+    , TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"])
     )
   , ( "GHC.List.scanl"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
+    , TFun
+      (TFun (TVar "b") (TFun (TVar "a") (TVar "b")))
+      (TFun (TVar "b")
+            (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
       )
     )
   , ( "GHC.List.scanl'"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
+    , TFun
+      (TFun (TVar "b") (TFun (TVar "a") (TVar "b")))
+      (TFun (TVar "b")
+            (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
       )
     )
   , ( "GHC.List.scanl1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TVar "a")))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.scanr"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
+    , TFun
+      (TFun (TVar "a") (TFun (TVar "b") (TVar "b")))
+      (TFun (TVar "b")
+            (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"]))
       )
     )
   , ( "GHC.List.scanr1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TVar "a")))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.span"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
+    , TFun
+      (TFun (TVar "a") (TCons "Bool" []))
+      (TFun (TCons "List" [TVar "a"])
+            (TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "a"]])
       )
     )
   , ( "GHC.List.splitAt"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
+    , TFun
+      (TCons "Int" [])
+      (TFun (TCons "List" [TVar "a"])
+            (TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "a"]])
       )
     )
   , ( "GHC.List.sum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Num" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
+    , TFun (TCons "@@hplusTC@@Num" [TVar "a"])
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
     )
-  , ( "GHC.List.tail"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
+  , ("GHC.List.tail", TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
   , ( "GHC.List.take"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TCons "Int" [])
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.takeWhile"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
+    , TFun (TFun (TVar "a") (TCons "Bool" []))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
   , ( "GHC.List.uncons"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "List" [ExportVar "a"])
-        (ExportCons
-          "Maybe"
-          [ExportCons "Pair" [ExportVar "a", ExportCons "List" [ExportVar "a"]]]
-        )
-      )
+    , TFun (TCons "List" [TVar "a"])
+           (TCons "Maybe" [TCons "Pair" [TVar "a", TCons "List" [TVar "a"]]])
     )
   , ( "GHC.List.unzip"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List" [ExportCons "Pair" [ExportVar "a", ExportVar "b"]])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "b"]
-            ]
-          )
-        )
-      )
+    , TFun (TCons "List" [TCons "Pair" [TVar "a", TVar "b"]])
+           (TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "b"]])
     )
   , ( "GHC.List.unzip3"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportCons
-              "List"
-              [ ExportCons
-                  "Pair"
-                  [ ExportCons "Pair" [ExportVar "a", ExportVar "b"]
-                  , ExportVar "c"
-                  ]
-              ]
-            )
-            (ExportCons
-              "Pair"
-              [ ExportCons
-                "Pair"
-                [ ExportCons "List" [ExportVar "a"]
-                , ExportCons "List" [ExportVar "b"]
-                ]
-              , ExportCons "List" [ExportVar "c"]
-              ]
-            )
-          )
-        )
+    , TFun
+      (TCons "List" [TCons "Pair" [TCons "Pair" [TVar "a", TVar "b"], TVar "c"]]
+      )
+      (TCons
+        "Pair"
+        [ TCons "Pair" [TCons "List" [TVar "a"], TCons "List" [TVar "b"]]
+        , TCons "List" [TVar "c"]
+        ]
       )
     )
   , ( "GHC.List.zip"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "List" [ExportVar "b"])
-            (ExportCons "List"
-                        [ExportCons "Pair" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
+    , TFun
+      (TCons "List" [TVar "a"])
+      (TFun (TCons "List" [TVar "b"])
+            (TCons "List" [TCons "Pair" [TVar "a", TVar "b"]])
       )
     )
   , ( "GHC.List.zip3"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportCons "List" [ExportVar "a"])
-            (ExportFun
-              (ExportCons "List" [ExportVar "b"])
-              (ExportFun
-                (ExportCons "List" [ExportVar "c"])
-                (ExportCons
-                  "List"
-                  [ ExportCons
-                      "Pair"
-                      [ ExportCons "Pair" [ExportVar "a", ExportVar "b"]
-                      , ExportVar "c"
-                      ]
-                  ]
-                )
-              )
-            )
+    , TFun
+      (TCons "List" [TVar "a"])
+      (TFun
+        (TCons "List" [TVar "b"])
+        (TFun
+          (TCons "List" [TVar "c"])
+          (TCons "List"
+                 [TCons "Pair" [TCons "Pair" [TVar "a", TVar "b"], TVar "c"]]
           )
         )
       )
     )
   , ( "GHC.List.zipWith"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-            (ExportFun
-              (ExportCons "List" [ExportVar "a"])
-              (ExportFun (ExportCons "List" [ExportVar "b"])
-                         (ExportCons "List" [ExportVar "c"])
-              )
-            )
-          )
-        )
+    , TFun
+      (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
+      (TFun (TCons "List" [TVar "a"])
+            (TFun (TCons "List" [TVar "b"]) (TCons "List" [TVar "c"]))
       )
     )
   , ( "GHC.List.zipWith3"
-    , ExportForall
-      "d"
-      (ExportForall
-        "c"
-        (ExportForall
-          "b"
-          (ExportForall
-            "a"
-            (ExportFun
-              (ExportFun
-                (ExportVar "a")
-                (ExportFun (ExportVar "b")
-                           (ExportFun (ExportVar "c") (ExportVar "d"))
-                )
-              )
-              (ExportFun
-                (ExportCons "List" [ExportVar "a"])
-                (ExportFun
-                  (ExportCons "List" [ExportVar "b"])
-                  (ExportFun (ExportCons "List" [ExportVar "c"])
-                             (ExportCons "List" [ExportVar "d"])
-                  )
-                )
-              )
-            )
-          )
+    , TFun
+      (TFun (TVar "a") (TFun (TVar "b") (TFun (TVar "c") (TVar "d"))))
+      (TFun
+        (TCons "List" [TVar "a"])
+        (TFun (TCons "List" [TVar "b"])
+              (TFun (TCons "List" [TVar "c"]) (TCons "List" [TVar "d"]))
         )
       )
     )
-  , ("Nil", ExportForall "a" (ExportCons "List" [ExportVar "a"]))
+  , ("Nil", TCons "List" [TVar "a"])
   , ( "Pair"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportVar "b")
-                     (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-          )
-        )
-      )
+    , TFun (TVar "a") (TFun (TVar "b") (TCons "Pair" [TVar "a", TVar "b"]))
     )
   , ( "Text.Show.show"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportCons "Char" []]))
-      )
+    , TFun (TCons "@@hplusTC@@Show" [TVar "a"])
+           (TFun (TVar "a") (TCons "List" [TCons "Char" []]))
     )
   , ( "Text.Show.showChar"
-    , ExportFun
-      (ExportCons "Char" [])
-      (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                 (ExportCons "List" [ExportCons "Char" []])
-      )
+    , TFun
+      (TCons "Char" [])
+      (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
     )
   , ( "Text.Show.showList"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Show" [TVar "a"])
+      (TFun
+        (TCons "List" [TVar "a"])
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
       )
     )
   , ( "Text.Show.showListWith"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
+    , TFun
+      (TFun
+        (TVar "a")
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
+      )
+      (TFun
+        (TCons "List" [TVar "a"])
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
       )
     )
   , ( "Text.Show.showParen"
-    , ExportFun
-      (ExportCons "Bool" [])
-      (ExportFun
-        (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                   (ExportCons "List" [ExportCons "Char" []])
-        )
-        (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                   (ExportCons "List" [ExportCons "Char" []])
-        )
+    , TFun
+      (TCons "Bool" [])
+      (TFun
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
       )
     )
   , ( "Text.Show.showString"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                 (ExportCons "List" [ExportCons "Char" []])
-      )
+    , TFun
+      (TCons "List" [TCons "Char" []])
+      (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
     )
   , ( "Text.Show.shows"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
+    , TFun
+      (TCons "@@hplusTC@@Show" [TVar "a"])
+      (TFun
+        (TVar "a")
+        (TFun (TCons "List" [TCons "Char" []]) (TCons "List" [TCons "Char" []]))
       )
     )
   , ( "Text.Show.showsPrec"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportCons "Int" [])
-          (ExportFun
-            (ExportVar "a")
-            (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                       (ExportCons "List" [ExportCons "Char" []])
-            )
+    , TFun
+      (TCons "@@hplusTC@@Show" [TVar "a"])
+      (TFun
+        (TCons "Int" [])
+        (TFun
+          (TVar "a")
+          (TFun (TCons "List" [TCons "Char" []])
+                (TCons "List" [TCons "Char" []])
           )
         )
       )
     )
   ]
 
-augumentedComponents :: [(Text, ExportType)]
-augumentedComponents =   [ ( "(Data.Bool.&&)"
-    , ExportFun (ExportCons "Bool" [])
-                (ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
+augumentedComponents :: [(Text, TypeSkeleton)]
+augumentedComponents =
+  [ ( "(Data.Function..)"
+    , TFun (TFun (TVar "b") (TVar "c"))
+           (TFun (TFun (TVar "a") (TVar "b")) (TFun (TVar "a") (TVar "c")))
+    )
+  , ( "(Data.Ord.<)"
+    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
+           (TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" [])))
+    )
+  , ( "Data.Ord.compare"
+    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
+           (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
+    )
+  , ( "Data.Function.on"
+    , TFun
+      (TFun (TVar "b") (TFun (TVar "b") (TVar "c")))
+      (TFun (TFun (TVar "a") (TVar "b"))
+            (TFun (TVar "a") (TFun (TVar "a") (TVar "c")))
+      )
+    )
+  , ( "Data.List.groupBy"
+    , TFun
+      (TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" [])))
+      (TFun (TCons "List" [TVar "a"]) (TCons "List" [TCons "List" [TVar "a"]]))
+    )
+  , ( "Data.List.sortBy"
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
+           (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
+    )
+  , ( "Data.Function.flip"
+    , TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
+           (TFun (TVar "b") (TFun (TVar "a") (TVar "c")))
     )
-  , ( "(Data.Bool.||)"
-    , ExportFun (ExportCons "Bool" [])
-                (ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
-    )
-  , ( "(Data.Eq./=)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "(Data.Eq./=)_Ord"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "(Data.Eq.==)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "(Data.Eq.==)_Ord"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "(GHC.List.!!)"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportFun (ExportCons "Int" []) (ExportVar "a"))
-      )
-    )
-  , ( "(GHC.List.++)"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "List" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@0EqBool"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0EqChar"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Char" []]
-    )
-  , ( "@@hplusTCInstance@@0EqDouble"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Double" []]
-    )
-  , ( "@@hplusTCInstance@@0EqFloat"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0EqInt"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0EqUnit"
-    , ExportCons "@@hplusTC@@Eq" [ExportCons "Unit" []]
-    )
-  , ( "@@hplusTCInstance@@0IsString"
-    , ExportCons "@@hplusTC@@IsString" [ExportCons "Builder" []]
-    )
-  , ( "@@hplusTCInstance@@0NumDouble"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Double" []]
-    )
-  , ( "@@hplusTCInstance@@0NumFloat"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0NumInt"
-    , ExportCons "@@hplusTC@@Num" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdBool"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdChar"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Char" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdDouble"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Double" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdFloat"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0OrdInt"
-    , ExportCons "@@hplusTC@@Ord" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowBool"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Bool" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowChar"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Char" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowDouble"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Double" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowFloat"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Float" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowInt"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Int" []]
-    )
-  , ( "@@hplusTCInstance@@0ShowUnit"
-    , ExportCons "@@hplusTC@@Show" [ExportCons "Unit" []]
-    )
-  , ( "@@hplusTCInstance@@1Show"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Show" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Show"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@2Read"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Read" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Read" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Read"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@3Ord"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Ord" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Ord"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@4Eq"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "@@hplusTC@@Eq" [ExportVar "b"])
-            (ExportCons "@@hplusTC@@Eq"
-                        [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@6Semigroup"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportCons "@@hplusTC@@Semigroup"
-                    [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-        )
-      )
-    )
-  , ( "@@hplusTCInstance@@9Eq"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportCons "@@hplusTC@@Eq" [ExportCons "List" [ExportVar "a"]])
-      )
-    )
-  , ( "Cons"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ("Data.Bool.False", ExportCons "Bool" [])
-  , ("Data.Bool.True" , ExportCons "Bool" [])
-  , ( "Data.Bool.bool"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Bool" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ("Data.Bool.not", ExportFun (ExportCons "Bool" []) (ExportCons "Bool" []))
-  , ("Data.Bool.otherwise", ExportCons "Bool" [])
-  , ( "Data.ByteString.Builder.byteString"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.byteStringHex"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.char7"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.char8"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.charUtf8"
-    , ExportFun (ExportCons "Char" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.doubleBE"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.doubleDec"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.doubleHexFixed"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.doubleLE"
-    , ExportFun (ExportCons "Double" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.floatBE"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.floatDec"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.floatHexFixed"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.floatLE"
-    , ExportFun (ExportCons "Float" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.hPutBuilder"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Builder" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
-    )
-  , ( "Data.ByteString.Builder.int16BE"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int16Dec"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int16HexFixed"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int16LE"
-    , ExportFun (ExportCons "Int16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int32BE"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int32Dec"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int32HexFixed"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int32LE"
-    , ExportFun (ExportCons "Int32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int64BE"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int64Dec"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int64HexFixed"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int64LE"
-    , ExportFun (ExportCons "Int64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int8"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int8Dec"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.int8HexFixed"
-    , ExportFun (ExportCons "Int8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.intDec"
-    , ExportFun (ExportCons "Int" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.integerDec"
-    , ExportFun (ExportCons "Integer" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.lazyByteString"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.lazyByteStringHex"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.shortByteString"
-    , ExportFun (ExportCons "ShortByteString" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.string7"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.string8"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.stringUtf8"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.toLazyByteString"
-    , ExportFun (ExportCons "Builder" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Builder.word16BE"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word16Dec"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word16Hex"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word16HexFixed"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word16LE"
-    , ExportFun (ExportCons "Word16" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word32BE"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word32Dec"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word32Hex"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word32HexFixed"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word32LE"
-    , ExportFun (ExportCons "Word32" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word64BE"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word64Dec"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word64Hex"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word64HexFixed"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word64LE"
-    , ExportFun (ExportCons "Word64" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word8"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word8Dec"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word8Hex"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.word8HexFixed"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.wordDec"
-    , ExportFun (ExportCons "Word" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Builder.wordHex"
-    , ExportFun (ExportCons "Word" []) (ExportCons "Builder" [])
-    )
-  , ( "Data.ByteString.Lazy.all"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.any"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.append"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.appendFile"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.break"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.concat"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.concatMap"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.cons"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.cons'"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.copy"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.count"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Int64" []))
-    )
-  , ( "Data.ByteString.Lazy.cycle"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.drop"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.dropWhile"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.elem"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.elemIndex"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.elemIndexEnd"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.elemIndices"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "Int64" []])
-      )
-    )
-  , ("Data.ByteString.Lazy.empty", ExportCons "ByteString" [])
-  , ( "Data.ByteString.Lazy.filter"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.find"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Word8" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.findIndex"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "Int64" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.findIndices"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "Int64" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.foldl"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.foldl'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.foldl1"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
-    )
-  , ( "Data.ByteString.Lazy.foldl1'"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
-    )
-  , ( "Data.ByteString.Lazy.foldlChunks"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.foldr"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "Word8" [])
-                   (ExportFun (ExportVar "a") (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.foldr1"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" []))
-    )
-  , ( "Data.ByteString.Lazy.foldrChunks"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "ByteString" [])
-                   (ExportFun (ExportVar "a") (ExportVar "a"))
-        )
-        (ExportFun (ExportVar "a")
-                   (ExportFun (ExportCons "ByteString" []) (ExportVar "a"))
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.fromChunks"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.fromStrict"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.getContents"
-    , ExportCons "IO" [ExportCons "ByteString" []]
-    )
-  , ( "Data.ByteString.Lazy.group"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.groupBy"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      )
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.hGet"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Int" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.hGetContents"
-    , ExportFun (ExportCons "Handle" [])
-                (ExportCons "IO" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.hGetNonBlocking"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "Int" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.hPut"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.hPutNonBlocking"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.hPutStr"
-    , ExportFun
-      (ExportCons "Handle" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.head"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
-    )
-  , ( "Data.ByteString.Lazy.index"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportFun (ExportCons "Int64" []) (ExportCons "Word8" []))
-    )
-  , ( "Data.ByteString.Lazy.init"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.inits"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.interact"
-    , ExportFun
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-      (ExportCons "IO" [ExportCons "Unit" []])
-    )
-  , ( "Data.ByteString.Lazy.intercalate"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                 (ExportCons "ByteString" [])
-      )
-    )
-  , ( "Data.ByteString.Lazy.intersperse"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.isPrefixOf"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.isSuffixOf"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.iterate"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.last"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
-    )
-  , ( "Data.ByteString.Lazy.length"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Int64" [])
-    )
-  , ( "Data.ByteString.Lazy.map"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.mapAccumL"
-    , ExportForall
-      "acc"
-      (ExportFun
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "Word8" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "Word8" []])
-          )
-        )
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "ByteString" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "ByteString" []])
-          )
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.mapAccumR"
-    , ExportForall
-      "acc"
-      (ExportFun
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "Word8" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "Word8" []])
-          )
-        )
-        (ExportFun
-          (ExportVar "acc")
-          (ExportFun
-            (ExportCons "ByteString" [])
-            (ExportCons "Pair" [ExportVar "acc", ExportCons "ByteString" []])
-          )
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.maximum"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
-    )
-  , ( "Data.ByteString.Lazy.minimum"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Word8" [])
-    )
-  , ( "Data.ByteString.Lazy.notElem"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" []))
-    )
-  , ( "Data.ByteString.Lazy.null"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "Bool" [])
-    )
-  , ( "Data.ByteString.Lazy.pack"
-    , ExportFun (ExportCons "List" [ExportCons "Word8" []])
-                (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.partition"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.putStr"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "IO" [ExportCons "Unit" []])
-    )
-  , ( "Data.ByteString.Lazy.putStrLn"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "IO" [ExportCons "Unit" []])
-    )
-  , ( "Data.ByteString.Lazy.readFile"
-    , ExportFun (ExportCons "List" [ExportCons "Char" []])
-                (ExportCons "IO" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.repeat"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.replicate"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.reverse"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.scanl"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" [])
-                 (ExportFun (ExportCons "Word8" []) (ExportCons "Word8" []))
-      )
-      (ExportFun
-        (ExportCons "Word8" [])
-        (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-      )
-    )
-  , ( "Data.ByteString.Lazy.singleton"
-    , ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.snoc"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "Word8" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.span"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.split"
-    , ExportFun
-      (ExportCons "Word8" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.splitAt"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons "Pair"
-                    [ExportCons "ByteString" [], ExportCons "ByteString" []]
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.splitWith"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "List" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.stripPrefix"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.stripSuffix"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "Maybe" [ExportCons "ByteString" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.tail"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.tails"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.take"
-    , ExportFun
-      (ExportCons "Int64" [])
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.takeWhile"
-    , ExportFun
-      (ExportFun (ExportCons "Word8" []) (ExportCons "Bool" []))
-      (ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" []))
-    )
-  , ( "Data.ByteString.Lazy.toChunks"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.toStrict"
-    , ExportFun (ExportCons "ByteString" []) (ExportCons "ByteString" [])
-    )
-  , ( "Data.ByteString.Lazy.transpose"
-    , ExportFun (ExportCons "List" [ExportCons "ByteString" []])
-                (ExportCons "List" [ExportCons "ByteString" []])
-    )
-  , ( "Data.ByteString.Lazy.uncons"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportCons
-        "Maybe"
-        [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "ByteString" []]]
-      )
-    )
-  , ( "Data.ByteString.Lazy.unfoldr"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun
-          (ExportVar "a")
-          (ExportCons
-            "Maybe"
-            [ExportCons "Pair" [ExportCons "Word8" [], ExportVar "a"]]
-          )
-        )
-        (ExportFun (ExportVar "a") (ExportCons "ByteString" []))
-      )
-    )
-  , ( "Data.ByteString.Lazy.unpack"
-    , ExportFun (ExportCons "ByteString" [])
-                (ExportCons "List" [ExportCons "Word8" []])
-    )
-  , ( "Data.ByteString.Lazy.unsnoc"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportCons
-        "Maybe"
-        [ExportCons "Pair" [ExportCons "ByteString" [], ExportCons "Word8" []]]
-      )
-    )
-  , ( "Data.ByteString.Lazy.unzip"
-    , ExportFun
-      (ExportCons
-        "List"
-        [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "Word8" []]]
-      )
-      (ExportCons "Pair"
-                  [ExportCons "ByteString" [], ExportCons "ByteString" []]
-      )
-    )
-  , ( "Data.ByteString.Lazy.writeFile"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "ByteString" [])
-                 (ExportCons "IO" [ExportCons "Unit" []])
-      )
-    )
-  , ( "Data.ByteString.Lazy.zip"
-    , ExportFun
-      (ExportCons "ByteString" [])
-      (ExportFun
-        (ExportCons "ByteString" [])
-        (ExportCons
-          "List"
-          [ExportCons "Pair" [ExportCons "Word8" [], ExportCons "Word8" []]]
-        )
-      )
-    )
-  , ( "Data.ByteString.Lazy.zipWith"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportCons "Word8" [])
-                   (ExportFun (ExportCons "Word8" []) (ExportVar "a"))
-        )
-        (ExportFun
-          (ExportCons "ByteString" [])
-          (ExportFun (ExportCons "ByteString" [])
-                     (ExportCons "List" [ExportVar "a"])
-          )
-        )
-      )
-    )
-  , ( "Data.Either.Left"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportVar "a")
-                   (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-        )
-      )
-    )
-  , ( "Data.Either.Right"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportVar "b")
-                   (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-        )
-      )
-    )
-  , ( "Data.Either.either"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a") (ExportVar "c"))
-            (ExportFun
-              (ExportFun (ExportVar "b") (ExportVar "c"))
-              (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                         (ExportVar "c")
-              )
-            )
-          )
-        )
-      )
-    )
-  , ( "Data.Either.fromLeft"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                     (ExportVar "a")
-          )
-        )
-      )
-    )
-  , ( "Data.Either.fromRight"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "b")
-          (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                     (ExportVar "b")
-          )
-        )
-      )
-    )
-  , ( "Data.Either.isLeft"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Bool" [])
-        )
-      )
-    )
-  , ( "Data.Either.isRight"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Either" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Bool" [])
-        )
-      )
-    )
-  , ( "Data.Either.lefts"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "Data.Either.partitionEithers"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "b"]
-            ]
-          )
-        )
-      )
-    )
-  , ( "Data.Either.rights"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List"
-                      [ExportCons "Either" [ExportVar "a", ExportVar "b"]]
-          )
-          (ExportCons "List" [ExportVar "b"])
-        )
-      )
-    )
-  , ( "Data.List.group"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportCons "List" [ExportVar "a"]])
-        )
-      )
-    )
-  , ( "Data.Maybe.Just"
-    , ExportForall
-      "a"
-      (ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "a"]))
-    )
-  , ( "Data.Maybe.Nothing"
-    , ExportForall "a" (ExportCons "Maybe" [ExportVar "a"])
-    )
-  , ( "Data.Maybe.catMaybes"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportCons "Maybe" [ExportVar "a"]])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "Data.Maybe.fromJust"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "a"))
-    )
-  , ( "Data.Maybe.fromMaybe"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportVar "a")
-        (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "Data.Maybe.isJust"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
-  , ( "Data.Maybe.isNothing"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
-  , ( "Data.Maybe.listToMaybe"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "Maybe" [ExportVar "a"])
-      )
-    )
-  , ( "Data.Maybe.mapMaybe"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportCons "Maybe" [ExportVar "b"]))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
-    )
-  , ( "Data.Maybe.maybe"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "b")
-          (ExportFun
-            (ExportFun (ExportVar "a") (ExportVar "b"))
-            (ExportFun (ExportCons "Maybe" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
-    )
-  , ( "Data.Maybe.maybeToList"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "Maybe" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "Data.Tuple.curry"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                       (ExportVar "c")
-            )
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-          )
-        )
-      )
-    )
-  , ( "Data.Tuple.fst"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportVar "a")
-        )
-      )
-    )
-  , ( "Data.Tuple.snd"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportVar "b")
-        )
-      )
-    )
-  , ( "Data.Tuple.swap"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                   (ExportCons "Pair" [ExportVar "b", ExportVar "a"])
-        )
-      )
-    )
-  , ( "Data.Tuple.uncurry"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-            (ExportFun (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-                       (ExportVar "c")
-            )
-          )
-        )
-      )
-    )
-  , ("GHC.Char.chr", ExportFun (ExportCons "Int" []) (ExportCons "Char" []))
-  , ( "GHC.Char.eqChar"
-    , ExportFun (ExportCons "Char" [])
-                (ExportFun (ExportCons "Char" []) (ExportCons "Bool" []))
-    )
-  , ( "GHC.Char.neChar"
-    , ExportFun (ExportCons "Char" [])
-                (ExportFun (ExportCons "Char" []) (ExportCons "Bool" []))
-    )
-  , ( "GHC.List.all"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-      )
-    )
-  , ( "GHC.List.and"
-    , ExportFun (ExportCons "List" [ExportCons "Bool" []])
-                (ExportCons "Bool" [])
-    )
-  , ( "GHC.List.any"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-      )
-    )
-  , ( "GHC.List.break"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
-      )
-    )
-  , ( "GHC.List.concat"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportCons "List" [ExportVar "a"]])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "GHC.List.concatMap"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "b"]))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
-    )
-  , ( "GHC.List.cycle"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "GHC.List.drop"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.dropWhile"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.elem"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "GHC.List.filter"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.foldl"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
-    )
-  , ( "GHC.List.foldl'"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
-    )
-  , ( "GHC.List.foldl1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.foldl1'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.foldr"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "b"))
-          )
-        )
-      )
-    )
-  , ( "GHC.List.foldr1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.head"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-    )
-  , ( "GHC.List.init"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "GHC.List.iterate"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportVar "a"))
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
-    )
-  , ( "GHC.List.iterate'"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportVar "a"))
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
-    )
-  , ( "GHC.List.last"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-    )
-  , ( "GHC.List.length"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Int" []))
-    )
-  , ( "GHC.List.lookup"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-          (ExportFun
-            (ExportVar "a")
-            (ExportFun
-              (ExportCons "List"
-                          [ExportCons "Pair" [ExportVar "a", ExportVar "b"]]
-              )
-              (ExportCons "Maybe" [ExportVar "b"])
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.map"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportVar "b"))
-          (ExportFun (ExportCons "List" [ExportVar "a"])
-                     (ExportCons "List" [ExportVar "b"])
-          )
-        )
-      )
-    )
-  , ( "GHC.List.maximum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.minimum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Ord" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.notElem"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Eq" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-        )
-      )
-    )
-  , ( "GHC.List.null"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "Bool" []))
-    )
-  , ( "GHC.List.or"
-    , ExportFun (ExportCons "List" [ExportCons "Bool" []])
-                (ExportCons "Bool" [])
-    )
-  , ( "GHC.List.product"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Num" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.repeat"
-    , ExportForall
-      "a"
-      (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-    )
-  , ( "GHC.List.replicate"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportVar "a"]))
-      )
-    )
-  , ( "GHC.List.reverse"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "GHC.List.scanl"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.scanl'"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.scanl1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.scanr"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "b"))
-          )
-          (ExportFun
-            (ExportVar "b")
-            (ExportFun (ExportCons "List" [ExportVar "a"])
-                       (ExportCons "List" [ExportVar "b"])
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.scanr1"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "a")))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.span"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
-      )
-    )
-  , ( "GHC.List.splitAt"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "a"]
-            ]
-          )
-        )
-      )
-    )
-  , ( "GHC.List.sum"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Num" [ExportVar "a"])
-        (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportVar "a"))
-      )
-    )
-  , ( "GHC.List.tail"
-    , ExportForall
-      "a"
-      (ExportFun (ExportCons "List" [ExportVar "a"])
-                 (ExportCons "List" [ExportVar "a"])
-      )
-    )
-  , ( "GHC.List.take"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "Int" [])
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.takeWhile"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun (ExportVar "a") (ExportCons "Bool" []))
-        (ExportFun (ExportCons "List" [ExportVar "a"])
-                   (ExportCons "List" [ExportVar "a"])
-        )
-      )
-    )
-  , ( "GHC.List.uncons"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "List" [ExportVar "a"])
-        (ExportCons
-          "Maybe"
-          [ExportCons "Pair" [ExportVar "a", ExportCons "List" [ExportVar "a"]]]
-        )
-      )
-    )
-  , ( "GHC.List.unzip"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List" [ExportCons "Pair" [ExportVar "a", ExportVar "b"]])
-          (ExportCons
-            "Pair"
-            [ ExportCons "List" [ExportVar "a"]
-            , ExportCons "List" [ExportVar "b"]
-            ]
-          )
-        )
-      )
-    )
-  , ( "GHC.List.unzip3"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportCons
-              "List"
-              [ ExportCons
-                  "Pair"
-                  [ ExportCons "Pair" [ExportVar "a", ExportVar "b"]
-                  , ExportVar "c"
-                  ]
-              ]
-            )
-            (ExportCons
-              "Pair"
-              [ ExportCons
-                "Pair"
-                [ ExportCons "List" [ExportVar "a"]
-                , ExportCons "List" [ExportVar "b"]
-                ]
-              , ExportCons "List" [ExportVar "c"]
-              ]
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.zip"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun
-            (ExportCons "List" [ExportVar "b"])
-            (ExportCons "List"
-                        [ExportCons "Pair" [ExportVar "a", ExportVar "b"]]
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.zip3"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportCons "List" [ExportVar "a"])
-            (ExportFun
-              (ExportCons "List" [ExportVar "b"])
-              (ExportFun
-                (ExportCons "List" [ExportVar "c"])
-                (ExportCons
-                  "List"
-                  [ ExportCons
-                      "Pair"
-                      [ ExportCons "Pair" [ExportVar "a", ExportVar "b"]
-                      , ExportVar "c"
-                      ]
-                  ]
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.zipWith"
-    , ExportForall
-      "c"
-      (ExportForall
-        "b"
-        (ExportForall
-          "a"
-          (ExportFun
-            (ExportFun (ExportVar "a")
-                       (ExportFun (ExportVar "b") (ExportVar "c"))
-            )
-            (ExportFun
-              (ExportCons "List" [ExportVar "a"])
-              (ExportFun (ExportCons "List" [ExportVar "b"])
-                         (ExportCons "List" [ExportVar "c"])
-              )
-            )
-          )
-        )
-      )
-    )
-  , ( "GHC.List.zipWith3"
-    , ExportForall
-      "d"
-      (ExportForall
-        "c"
-        (ExportForall
-          "b"
-          (ExportForall
-            "a"
-            (ExportFun
-              (ExportFun
-                (ExportVar "a")
-                (ExportFun (ExportVar "b")
-                           (ExportFun (ExportVar "c") (ExportVar "d"))
-                )
-              )
-              (ExportFun
-                (ExportCons "List" [ExportVar "a"])
-                (ExportFun
-                  (ExportCons "List" [ExportVar "b"])
-                  (ExportFun (ExportCons "List" [ExportVar "c"])
-                             (ExportCons "List" [ExportVar "d"])
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  , ("Nil", ExportForall "a" (ExportCons "List" [ExportVar "a"]))
-  , ( "Pair"
-    , ExportForall
-      "b"
-      (ExportForall
-        "a"
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportVar "b")
-                     (ExportCons "Pair" [ExportVar "a", ExportVar "b"])
-          )
-        )
-      )
-    )
-  , ( "Text.Show.show"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun (ExportVar "a") (ExportCons "List" [ExportCons "Char" []]))
-      )
-    )
-  , ( "Text.Show.showChar"
-    , ExportFun
-      (ExportCons "Char" [])
-      (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                 (ExportCons "List" [ExportCons "Char" []])
-      )
-    )
-  , ( "Text.Show.showList"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
-      )
-    )
-  , ( "Text.Show.showListWith"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
-        (ExportFun
-          (ExportCons "List" [ExportVar "a"])
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
-      )
-    )
-  , ( "Text.Show.showParen"
-    , ExportFun
-      (ExportCons "Bool" [])
-      (ExportFun
-        (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                   (ExportCons "List" [ExportCons "Char" []])
-        )
-        (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                   (ExportCons "List" [ExportCons "Char" []])
-        )
-      )
-    )
-  , ( "Text.Show.showString"
-    , ExportFun
-      (ExportCons "List" [ExportCons "Char" []])
-      (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                 (ExportCons "List" [ExportCons "Char" []])
-      )
-    )
-  , ( "Text.Show.shows"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportVar "a")
-          (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                     (ExportCons "List" [ExportCons "Char" []])
-          )
-        )
-      )
-    )
-  , ( "Text.Show.showsPrec"
-    , ExportForall
-      "a"
-      (ExportFun
-        (ExportCons "@@hplusTC@@Show" [ExportVar "a"])
-        (ExportFun
-          (ExportCons "Int" [])
-          (ExportFun
-            (ExportVar "a")
-            (ExportFun (ExportCons "List" [ExportCons "Char" []])
-                       (ExportCons "List" [ExportCons "Char" []])
-            )
-          )
-        )
-      )
-    )
-  , ("(Data.Function..)",ExportForall "c" (ExportForall "b" (ExportForall "a" (ExportFun (ExportFun (ExportVar "b") (ExportVar "c")) (ExportFun (ExportFun (ExportVar "a") (ExportVar "b")) (ExportFun (ExportVar "a") (ExportVar "c")))))))
-  , ("(Data.Ord.<)",ExportForall "a" (ExportFun (ExportCons "@@hplusTC@@Ord" [ExportVar "a"]) (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportCons "Bool" [])))))
-  , ("Data.Ord.compare",ExportForall "a" (ExportFun (ExportCons "@@hplusTC@@Ord" [ExportVar "a"]) (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportCons "Ordering" [])))))
-  , ("Data.Function.on",ExportForall "c" (ExportForall "b" (ExportForall "a" (ExportFun (ExportFun (ExportVar "b") (ExportFun (ExportVar "b") (ExportVar "c"))) (ExportFun (ExportFun (ExportVar "a") (ExportVar "b")) (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportVar "c"))))))))
-  , ("Data.List.groupBy",ExportForall "a" (ExportFun (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportCons "Bool" []))) (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "List" [ExportCons "List" [ExportVar "a"]]))))
-  , ("Data.List.sortBy",ExportForall "a" (ExportFun (ExportFun (ExportVar "a") (ExportFun (ExportVar "a") (ExportCons "Ordering" []))) (ExportFun (ExportCons "List" [ExportVar "a"]) (ExportCons "List" [ExportVar "a"]))))
-  , ("Data.Function.flip",ExportForall "c" (ExportForall "b" (ExportForall "a" (ExportFun (ExportFun (ExportVar "a") (ExportFun (ExportVar "b") (ExportVar "c"))) (ExportFun (ExportVar "b") (ExportFun (ExportVar "a") (ExportVar "c")))))))
   ]
 
-mkGroups :: [(Text, ExportType)] -> (Map ExportType Text, Map Text Text)
-mkGroups [] = (Map.empty, Map.empty)
-mkGroups ((name, typ):comps) = let (groups, nameToRepresentative) = mkGroups comps
-                                   freshName = Text.pack ("f" <> show (Map.size groups))
-                                in if typ `Map.member` groups 
-                                  then (groups, Map.insert name (groups Map.! typ) nameToRepresentative)
-                                  else (Map.insert typ freshName groups, Map.insert name freshName nameToRepresentative)
-
-rawHKTVExport :: [(Text, ExportType)]
-rawHKTVExport = []
-
-hoogleComponents :: Map ExportType Text
-hoogleComponents = fst (mkGroups rawHooglePlusExport)
--- hoogleComponents = fst (mkGroups augumentedComponents)
+hoogleComponents :: Map TypeSkeleton Text
+hoogleComponents = fst (mkGroups hooglePlusComponents)
 
 groupMapping :: Map Text Text
-groupMapping = snd (mkGroups rawHooglePlusExport)
--- groupMapping = snd (mkGroups augumentedComponents)
+groupMapping = snd (mkGroups hooglePlusComponents)
+
+-- switch to this when you run experiments on stackoverflow benchmarks
+-- hoogleComponents :: Map TypeSkeleton Text
+-- hoogleComponents = fst (mkGroups $ hooglePlusComponents ++ augumentedComponents)
+-- 
+-- groupMapping :: Map Text Text
+-- groupMapping = snd (mkGroups $ hooglePlusComponents ++ augumentedComponents)

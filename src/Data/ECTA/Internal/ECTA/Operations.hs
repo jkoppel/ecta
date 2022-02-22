@@ -53,22 +53,14 @@ import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
-import Data.List.Extra ( nubOrd )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 
 import Control.Lens ( (&), ix, (^?), (%~) )
 import Data.List.Index ( imap )
-import Language.Dot.Pretty
-import Debug.Trace
-import Data.Aeson (encode)
-import System.IO.Unsafe (unsafePerformIO)
-import qualified Data.ByteString.Lazy as BS
 
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
@@ -156,17 +148,20 @@ nodeEdges n@(Mu _)  = nodeEdges (unfoldOuterRec n)
 nodeEdges _         = []
 
 refold :: Node -> Node
-refold = memo (NameTag "refold") $ \n -> 
-  let muNodeMap = crush (\x -> case x of
-                                Mu _ -> HashMap.singleton (unfoldOuterRec x) x
-                                _    -> HashMap.empty)
-                      n
-      tryUnfold x = case HashMap.lookup x muNodeMap of
-                      Just y  -> y
-                      Nothing -> x
-  in if HashMap.null muNodeMap 
-        then n
-        else fixUnbounded (mapNodes tryUnfold) n
+refold = memo (NameTag "refold") go
+  where
+    go :: Node -> Node
+    go n = if HashMap.null muNodeMap 
+             then n
+             else fixUnbounded (mapNodes tryUnfold) n
+      where
+        muNodeMap = crush (\case x@(Mu _) -> HashMap.singleton (unfoldOuterRec x) x
+                                 _        -> HashMap.empty)
+                          n
+
+        tryUnfold x = case HashMap.lookup x muNodeMap of
+                        Just y  -> y
+                        Nothing -> x
 
 unfoldBounded :: Int -> Node -> Node
 unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
@@ -221,8 +216,10 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") (\n1 n2 -> let n = refold (nodeDropRedundantEdges (doIntersect n1 n2))
-                                                    in n)
+intersect = memo2 (NameTag "intersect") go
+  where
+    go :: Node -> Node -> Node
+    go n1 n2 = refold (nodeDropRedundantEdges (doIntersect n1 n2))
 {-# NOINLINE intersect #-}
 
 
@@ -251,7 +248,7 @@ doIntersect n1 n2 = error $ "doIntersect: Unexpected " <> show n1 <> " " <> show
 
 nodeDropRedundantEdges :: Node -> Node
 nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
-nodeDropRedundantEdges n = n
+nodeDropRedundantEdges n         = n
 
 data RuleOutRes = Keep | RuledOutBy Edge
 
@@ -386,85 +383,55 @@ withoutRedundantEdges n = mapNodes dropReds n
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
 
--- | check whether the intersection result equals to any ancestors
-occursCheck :: [Node] -> Node -> [Path] -> Bool
-occursCheck oldNodes newNode ps = any hasOverlap (nodeGroups (getPrefixNodes ps))
-  where
-    -- | inits excluding empty and itself
-    pathStrictInits :: Path -> [Path]
-    pathStrictInits (Path ps) = map Path (init (tail (inits ps)))
-
-    getPrefixPaths :: [Path] -> [Path]
-    getPrefixPaths = nubOrd . concatMap pathStrictInits
-
-    getPrefixNodes :: [Path] -> [(Path, Node)]
-    getPrefixNodes ps = map (\p -> (p, getPath p oldNodes)) (getPrefixPaths ps)
-
-    -- only do this for nodes that is not a Mu
-    nodeGroups :: [(Path, Node)] -> [[(Path, Node)]]
-    nodeGroups ns = let res = clusterByHash (hash . snd) ns
-                     in res
-
-    hasOverlap :: [(Path, Node)] -> Bool
-    hasOverlap ng = newNode `elem` (map snd ng)
-
 ---------------
 --- Reducing Equality Constraints
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = memo (NameTag "reducePartially") (reducePartially' [])
-{-# NOINLINE reducePartially #-}
+reducePartially = reducePartially' EmptyConstraints
 
-reducePartially' :: [[Path]] -> Node -> Node
+reducePartially' :: EqConstraints -> Node -> Node
 reducePartially' = memo2 (NameTag "reducePartially'") go
   where
-    go :: [[Path]] -> Node -> Node
+    go :: EqConstraints -> Node -> Node
     go _ EmptyNode  = EmptyNode
     go _ (Mu n)     = Mu n
-    go ecs n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createConstraints ecs e) (edgeChildren e)})
+    go ecs n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createPathTries ecs e) (edgeChildren e)})
                                           $ map (reduceEdgeIntersection ecs) es
     go _ (Rec _)    = error "reducePartially: unexpected Rec"
 
-    createConstraints :: [[Path]] -> Edge -> [[Path]]
-    createConstraints ecs e = ecsGetPaths (edgeEcs e) ++ ecs
+    createPathTries :: EqConstraints -> Edge -> [PathTrie]
+    createPathTries ecs e = map toPathTrie (ecsGetPaths (edgeEcs e) ++ ecsGetPaths ecs)
 
-    reduceChildrenAt :: IntMap [[Path]] -> Int -> Node -> Node
-    reduceChildrenAt pMap i n = reducePartially' (IntMap.findWithDefault [] i pMap) n
+    createChildConstraints :: [PathTrie] -> Int -> EqConstraints
+    createChildConstraints tries i = mkEqConstraints $ map (fromPathTrie . (`pathTrieDescend` i)) tries
 
-    reduceChildren :: [[Path]] -> [Node] -> [Node]
-    reduceChildren eclasses children = zipWith (reduceChildrenAt (propagateConstraint eclasses)) [0..] children
+    reduceChildrenAt :: [PathTrie] -> Int -> Node -> Node
+    reduceChildrenAt tries i n = reducePartially' (createChildConstraints tries i) n
 
-    addPathToIntMap :: Path -> IntMap [Path] -> IntMap [Path]
-    addPathToIntMap EmptyPath m = m
-    addPathToIntMap (ConsPath _ EmptyPath) m = m
-    addPathToIntMap (ConsPath p ps) m = IntMap.insertWith (++) p [ps] m
+    reduceChildren :: [PathTrie] -> [Node] -> [Node]
+    reduceChildren eclasses children = zipWith (reduceChildrenAt eclasses) [0..] children
 
-    toIntMap :: [Path] -> IntMap [Path]
-    toIntMap = foldr addPathToIntMap IntMap.empty
-
-    propagateConstraint :: [[Path]] -> IntMap [[Path]]
-    propagateConstraint pss = foldr (IntMap.mergeWithKey (\_ a b -> Just (a:b)) (IntMap.map (:[])) id . toIntMap) IntMap.empty pss
 {-# NOINLINE reducePartially' #-}
 
-reduceEdgeIntersection :: [[Path]] -> Edge -> Edge
+reduceEdgeIntersection :: EqConstraints -> Edge -> Edge
 reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
   where
-   go :: [[Path]] -> Edge -> Edge
+   go :: EqConstraints -> Edge -> Edge
    go ecs e = mkEdge (edgeSymbol e)
                      (reduceEqConstraints (edgeEcs e) ecs (edgeChildren e))
                      (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
-reduceEqConstraints :: EqConstraints -> [[Path]] -> [Node] -> [Node]
+reduceEqConstraints :: EqConstraints -> EqConstraints -> [Node] -> [Node]
 reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
-    go :: EqConstraints -> [[Path]] -> [Node] -> [Node]
+    go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
     go ecs extraEcs origNs 
-      | constraintsAreContradictory (mkEqConstraints (ecsGetPaths ecs ++ extraEcs)) = map (const EmptyNode) origNs
+      | constraintsAreContradictory (ecs `combineEqConstraints` extraEcs) = map (const EmptyNode) origNs
       | otherwise = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs

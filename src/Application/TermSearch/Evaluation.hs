@@ -23,11 +23,11 @@ import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 runBenchmark :: Benchmark -> IO ()
-runBenchmark (Benchmark name depth sol (args, res)) = do
+runBenchmark (Benchmark name depth sol args res) = do
     start <- getCurrentTime
     putStrLn $ "Running benchmark " ++ Text.unpack name
-    let argNodes = map (Bi.bimap Symbol exportTypeToFta) args
-    let resNode  = exportTypeToFta res
+    let argNodes = map (Bi.bimap Symbol typeToFta) args
+    let resNode  = typeToFta res
     let anyArg   = Node (map (uncurry constArg) argNodes)
     let
         !filterNode = filterType
@@ -35,13 +35,9 @@ runBenchmark (Benchmark name depth sol (args, res)) = do
             resNode
 
     _ <- timeout (300 * 10 ^ (6 :: Int)) $ do
-    -- do
         reducedNode <- reduceFullyAndLog filterNode
         -- let reducedNode = reduceFully filterNode
         let foldedNode = refold reducedNode
-        -- print foldedNode
-        -- putStrLn $ renderDot $ toDot foldedNode
-        -- let foldedNode = reducedNode
         prettyPrintAllTerms (substTerm sol) foldedNode
 
     end <- getCurrentTime

@@ -4,8 +4,6 @@ module Utility.Fixpoint (
   , fixMaybe
   ) where
 
-import Debug.Trace
-
 --------------------------------------------------------------
 
 fix :: (Show a, Eq a) => Int -> (a -> a) -> a -> a
@@ -16,7 +14,7 @@ fix maxIters f x = let x' = f x in
                    else
                      fix (maxIters - 1) f x'
 
-fixUnbounded :: (Show a, Eq a) => (a -> a) -> a -> a
+fixUnbounded :: (Eq a) => (a -> a) -> a -> a
 fixUnbounded f x = let x' = f x in
                    if x' == x then
                      x

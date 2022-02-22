@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
@@ -9,18 +8,18 @@ import           Data.List                      ( (\\)
                                                 )
 import           Data.List.Extra                ( nubOrd )
 import qualified Data.Map                      as Map
+import           Data.Maybe                     ( fromMaybe )
 import           Data.Text                      ( Text )
+import           Data.Tuple                     ( swap )
 import           System.IO                      ( hFlush
                                                 , stdout
                                                 )
-import Data.Tuple ( swap )
-import Data.Maybe ( fromMaybe )
-
-import           Utility.Fixpoint
 
 import           Data.ECTA
 import           Data.ECTA.Paths
 import           Data.ECTA.Term
+import           Data.Text.Extended.Pretty
+import           Utility.Fixpoint
 
 import           Application.TermSearch.Dataset
 import           Application.TermSearch.Type
@@ -31,7 +30,7 @@ tau :: Node
 tau = createMu
   (\n -> union
     (  [arrowType n n, var1, var2, var3, var4]
-    ++ map (Node . (:[]) . constructorToEdge n) usedConstructors
+    ++ map (Node . (: []) . constructorToEdge n) usedConstructors
     )
   )
  where
@@ -59,15 +58,13 @@ tau = createMu
 
 allConstructors :: [(Text, Int)]
 allConstructors =
-  nubOrd (concatMap getConstructors (Map.keys hoogleComponents))
-    \\ [("Fun", 2)]
+  nubOrd (concatMap getConstructors (Map.keys hoogleComponents)) \\ [("Fun", 2)]
  where
-  getConstructors :: ExportType -> [(Text, Int)]
-  getConstructors (ExportVar _    ) = []
-  getConstructors (ExportFun t1 t2) = getConstructors t1 ++ getConstructors t2
-  getConstructors (ExportCons nm ts) =
+  getConstructors :: TypeSkeleton -> [(Text, Int)]
+  getConstructors (TVar _    ) = []
+  getConstructors (TFun t1 t2) = getConstructors t1 ++ getConstructors t2
+  getConstructors (TCons nm ts) =
     (nm, length ts) : concatMap getConstructors ts
-  getConstructors (ExportForall _ t) = getConstructors t
 
 generalize :: Node -> Node
 generalize n@(Node [_]) = Node
@@ -87,12 +84,7 @@ app :: Node -> Node -> Node
 app n1 n2 = Node
   [ mkEdge
       "app"
-      [ {- getPath (path [0, 2]) n1 -}
-        tau
-      , theArrowNode
-      , n1
-      , n2
-      ]
+      [tau, theArrowNode, n1, n2]
       (mkEqConstraints
         [ [path [1], path [2, 0, 0]]
         , [path [3, 0], path [2, 0, 1]]
@@ -101,131 +93,37 @@ app n1 n2 = Node
       )
   ]
 
--- f1, f2, f3, f4, f5, f6, f7, f8, f9, f10 :: Edge
--- f1 = constFunc "Nothing" (maybeType tau)
--- f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
--- f3 = constFunc
---   "fromMaybe"
---   (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
--- f4 = constFunc "listToMaybe"
---                (generalize $ arrowType (listType var1) (maybeType var1))
--- f5 = constFunc "maybeToList"
---                (generalize $ arrowType (maybeType var1) (listType var1))
--- f6 = constFunc
---   "catMaybes"
---   (generalize $ arrowType (listType (maybeType var1)) (listType var1))
--- f7 = constFunc
---   "mapMaybe"
---   (generalize $ arrowType (arrowType var1 (maybeType var2))
---                           (arrowType (listType var1) (listType var2))
---   )
--- f8 = constFunc "id" (generalize $ arrowType var1 var1)
--- f9 = constFunc
---   "replicate"
---   (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
--- f10 = constFunc
---   "foldr"
---   (generalize $ arrowType (arrowType var1 (arrowType var2 var2))
---                           (arrowType var2 (arrowType (listType var1) var2))
---   )
--- f11 = constFunc
---   "iterate"
---   (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1))
---   )
--- f12 = constFunc
---   "(!!)"
---   (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
--- f13 = constFunc
---   "either"
---   (generalize $ arrowType
---     (arrowType var1 var3)
---     (arrowType (arrowType var2 var3)
---                (arrowType (constrType2 "Either" var1 var2) var3)
---     )
---   )
--- f14 = constFunc
---   "Left"
---   (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
--- f15 = constFunc "id" (generalize $ arrowType var1 var1)
--- f16 = constFunc
---   "(,)"
---   (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
--- f17 =
---   constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
--- f18 =
---   constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
--- f19 = constFunc
---   "foldl"
---   (generalize $ arrowType (arrowType var2 (arrowType var1 var2))
---                           (arrowType var2 (arrowType (listType var1) var2))
---   )
--- f20 = constFunc
---   "swap"
---   ( generalize
---   $ arrowType (constrType2 "Pair" var1 var2) (constrType2 "Pair" var2 var1)
---   )
--- f21 = constFunc
---   "curry"
---   (generalize $ arrowType (arrowType (constrType2 "Pair" var1 var2) var3)
---                           (arrowType var1 (arrowType var2 var3))
---   )
--- f22 = constFunc
---   "uncurry"
---   (generalize $ arrowType (arrowType var1 (arrowType var2 var3))
---                           (arrowType (constrType2 "Pair" var1 var2) var3)
---   )
--- f23 = constFunc "head" (generalize $ arrowType (listType var1) var1)
--- f24 = constFunc "last" (generalize $ arrowType (listType var1) var1)
--- f25 = constFunc
---   "Data.ByteString.foldr"
---   (generalize $ arrowType
---     (arrowType (constrType0 "Word8") (arrowType var2 var2))
---     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
---   )
--- f26 = constFunc
---   "unfoldr"
---   (generalize $ arrowType
---     (arrowType var1 (maybeType (constrType2 "Pair" (constrType0 "Word8") var1)))
---     (arrowType var1 (constrType0 "ByteString"))
---   )
--- f27 = constFunc
---   "Data.ByteString.foldrChunks"
---   (generalize $ arrowType
---     (arrowType (constrType0 "ByteString") (arrowType var2 var2))
---     (arrowType var2 (arrowType (constrType0 "ByteString") var2))
---   )
-
-f28 :: Edge
-f28 = constFunc
-  "bool"
-  (generalize $ arrowType 
-    var1 (arrowType var1 (arrowType (constrType0 "Bool") var1))
-  )
-
-f29 :: Edge
-f29 = constFunc
-  "lookup"
-  (generalize $ arrowType
-    (constrType1 "@@hplusTC@@Eq" var1)
-    (arrowType var1 (arrowType (constrType2 "Pair" var1 var2) (maybeType var2)))
-  )
-
-f30 :: Edge
-f30 = constFunc "nil" (generalize $ listType var1) 
+--------------------------------------------------------------------------------
+------------------------------- Relevancy Encoding -----------------------------
+--------------------------------------------------------------------------------
 
 applyOperator :: Node
-applyOperator = Node [ constFunc
+applyOperator = Node
+  [ constFunc
     "$"
     (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
   , constFunc "id" (generalize $ arrowType var1 var1)
   ]
+
+hoogleComps :: [Edge]
+hoogleComps =
+  filter
+      (\e ->
+        edgeSymbol e
+          `notElem` map (Symbol . toMappedName) speciallyTreatedFunctions
+      )
+    $ map (uncurry parseHoogleComponent . swap)
+    $ Map.toList hoogleComponents
+
+anyFunc :: Node
+anyFunc = Node hoogleComps
 
 filterType :: Node -> Node -> Node
 filterType n t =
   Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
 termsK :: Node -> Bool -> Int -> [Node]
-termsK _ _     0 = []
+termsK _      _     0 = []
 termsK anyArg False 1 = [anyArg, anyFunc]
 termsK anyArg True  1 = [anyArg, anyFunc, applyOperator]
 termsK anyArg _ 2 =
@@ -239,7 +137,7 @@ termsK anyArg _ k = map constructApp [1 .. (k - 1)]
   constructApp i =
     app (union (termsK anyArg False i)) (union (termsK anyArg True (k - i)))
 
-relevantTermK :: Node -> Bool -> Int -> [ArgType] -> [Node]
+relevantTermK :: Node -> Bool -> Int -> [Argument] -> [Node]
 relevantTermK anyArg includeApplyOp k []       = termsK anyArg includeApplyOp k
 relevantTermK _      _              1 [(x, t)] = [Node [constArg x t]]
 relevantTermK anyArg _ k argNames
@@ -248,18 +146,18 @@ relevantTermK anyArg _ k argNames
  where
   allSplits = map (`splitAt` argNames) [0 .. (length argNames)]
 
-  constructApp :: Int -> ([ArgType], [ArgType]) -> Node
+  constructApp :: Int -> ([Argument], [Argument]) -> Node
   constructApp i (xs, ys) =
     let f = union (relevantTermK anyArg False i xs)
         x = union (relevantTermK anyArg True (k - i) ys)
     in  app f x
 
-relevantTermsUptoK :: Node -> [ArgType] -> Int -> Node
+relevantTermsUptoK :: Node -> [Argument] -> Int -> Node
 relevantTermsUptoK anyArg args k = union
   (map (union . relevantTermsForArgs) [1 .. k])
  where
-  relevantTermsForArgs k =
-    concatMap (relevantTermK anyArg True k) (permutations args)
+  relevantTermsForArgs i =
+    concatMap (relevantTermK anyArg True i) (permutations args)
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term
@@ -281,59 +179,58 @@ dropTypes n = n
 getText :: Symbol -> Text
 getText (Symbol s) = s
 
-hoogleComps :: [Edge]
-hoogleComps =
-  filter (\e -> edgeSymbol e `notElem` (map (Symbol . toMappedName) speciallyTreatedFunctions))
-    $ map (uncurry parseHoogleComponent . swap)
-    $ Map.toList hoogleComponents
-
-anyFunc :: Node
-anyFunc = Node hoogleComps
--- anyFunc = Node [f23, f30]
--- anyFunc = Node [f16, f23, f24, f10, f19, f17, f18, f20, f25, f26, f1, f2, f3, f4, f5, f6, f7, f8, f9, f11, f12, f13, f14, f15, f21, f22, f28]
+--------------------------
+-------- Remove uninteresting terms
+--------------------------
 
 fromJustFunc :: Node
-fromJustFunc = Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) hoogleComps
+fromJustFunc =
+  Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) hoogleComps
 
 maybeFunctions :: [Symbol]
-maybeFunctions = ["Data.Maybe.fromJust"
-                  , "Data.Maybe.maybeToList"
-                  , "Data.Maybe.isJust"
-                  , "Data.Maybe.isNothing"
-                  ]
+maybeFunctions =
+  [ "Data.Maybe.fromJust"
+  , "Data.Maybe.maybeToList"
+  , "Data.Maybe.isJust"
+  , "Data.Maybe.isNothing"
+  ]
 
 listReps :: [Text]
-listReps = map toMappedName [ "Data.Maybe.listToMaybe"
-                            , "Data.Either.lefts"
-                            , "Data.Either.rights"
-                            , "Data.Either.partitionEithers"
-                            , "Data.Maybe.catMaybes"
-                            , "GHC.List.head"
-                            , "GHC.List.last"
-                            , "GHC.List.tail"
-                            , "GHC.List.init"
-                            , "GHC.List.null"
-                            , "GHC.List.length"
-                            , "GHC.List.reverse"
-                            , "GHC.List.concat"
-                            , "GHC.List.concatMap"
-                            , "GHC.List.sum"
-                            , "GHC.List.product"
-                            , "GHC.List.maximum"
-                            , "GHC.List.minimum"
-                            , "(GHC.List.!!)"
-                            , "(GHC.List.++)"
-                            ]
+listReps = map
+  toMappedName
+  [ "Data.Maybe.listToMaybe"
+  , "Data.Either.lefts"
+  , "Data.Either.rights"
+  , "Data.Either.partitionEithers"
+  , "Data.Maybe.catMaybes"
+  , "GHC.List.head"
+  , "GHC.List.last"
+  , "GHC.List.tail"
+  , "GHC.List.init"
+  , "GHC.List.null"
+  , "GHC.List.length"
+  , "GHC.List.reverse"
+  , "GHC.List.concat"
+  , "GHC.List.concatMap"
+  , "GHC.List.sum"
+  , "GHC.List.product"
+  , "GHC.List.maximum"
+  , "GHC.List.minimum"
+  , "(GHC.List.!!)"
+  , "(GHC.List.++)"
+  ]
 
 isListFunction :: Symbol -> Bool
 isListFunction (Symbol sym) = sym `elem` listReps
 
 maybeReps :: [Text]
-maybeReps = map toMappedName [ "Data.Maybe.maybeToList"
-                              , "Data.Maybe.isJust"
-                              , "Data.Maybe.isNothing"
-                              , "Data.Maybe.fromJust"
-                              ]
+maybeReps = map
+  toMappedName
+  [ "Data.Maybe.maybeToList"
+  , "Data.Maybe.isJust"
+  , "Data.Maybe.isNothing"
+  , "Data.Maybe.fromJust"
+  ]
 
 isMaybeFunction :: Symbol -> Bool
 isMaybeFunction (Symbol sym) = sym `elem` maybeReps
@@ -343,49 +240,34 @@ anyListFunc = Node $ filter (isListFunction . edgeSymbol) hoogleComps
 
 anyNonListFunc :: Node
 anyNonListFunc = Node $ filter
-  (\e ->
-    not (isListFunction (edgeSymbol e))
-      && not (isMaybeFunction (edgeSymbol e)))
+  (\e -> not (isListFunction (edgeSymbol e))
+    && not (isMaybeFunction (edgeSymbol e))
+  )
   hoogleComps
 
 anyNonNilFunc :: Node
-anyNonNilFunc = Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Nil")) hoogleComps
+anyNonNilFunc =
+  Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Nil")) hoogleComps
 
 anyNonNothingFunc :: Node
-anyNonNothingFunc =
-  Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Data.Maybe.Nothing")) hoogleComps
+anyNonNothingFunc = Node $ filter
+  (\e -> edgeSymbol e /= Symbol (toMappedName "Data.Maybe.Nothing"))
+  hoogleComps
 
-toMappedName :: Text -> Text
-toMappedName x = fromMaybe x (Map.lookup x groupMapping)
-
----------------------------------------------------------------------------------------
--------------------------- Importing components from Hoogle+ --------------------------
----------------------------------------------------------------------------------------
-parseHoogleComponent :: Text -> ExportType -> Edge
-parseHoogleComponent name t =
-  constFunc (Symbol name) (generalize $ exportTypeToFta t)
+--------------------------------------------------------------------------------
 
 reduceFully :: Node -> Node
 reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
 -- reduceFully = fixUnbounded (reducePartially)
 
-substTerm :: Term -> Term
-substTerm (Term (Symbol sym) ts) = Term (Symbol $ maybe sym id (Map.lookup sym groupMapping)) (map substTerm ts)
-
 checkSolution :: Term -> [Term] -> IO ()
 checkSolution _ [] = return ()
 checkSolution target (s : solutions)
-  | prettyTerm s == target = print (prettyTerm s)
+  | prettyTerm s == target = print $ pretty (prettyTerm s)
   | otherwise = do
-    -- print (prettyTerm s)
+    -- print $ pretty (prettyTerm s)
     -- print (s)
     checkSolution target solutions
-
-prettyPrintAllTerms :: Term -> Node -> IO ()
-prettyPrintAllTerms sol n = do
-  putStrLn $ "Expected: " ++ show sol
-  let ts = getAllTerms n
-  checkSolution sol ts
 
 reduceFullyAndLog :: Node -> IO Node
 reduceFullyAndLog = go 0
@@ -405,3 +287,192 @@ reduceFullyAndLog = go 0
     -- print n
     let n' = withoutRedundantEdges (reducePartially n)
     if n == n' || i >= 30 then return n else go (i + 1) n'
+
+--------------------------------------------------------------------------------
+--------------------------------- Test Functions -------------------------------
+--------------------------------------------------------------------------------
+
+f1 :: Edge
+f1 = constFunc "Nothing" (maybeType tau)
+
+f2 :: Edge
+f2 = constFunc "Just" (generalize $ arrowType var1 (maybeType var1))
+
+f3 :: Edge
+f3 = constFunc
+  "fromMaybe"
+  (generalize $ arrowType var1 (arrowType (maybeType var1) var1))
+
+f4 :: Edge
+f4 = constFunc "listToMaybe"
+               (generalize $ arrowType (listType var1) (maybeType var1))
+
+f5 :: Edge
+f5 = constFunc "maybeToList"
+               (generalize $ arrowType (maybeType var1) (listType var1))
+
+f6 :: Edge
+f6 = constFunc
+  "catMaybes"
+  (generalize $ arrowType (listType (maybeType var1)) (listType var1))
+
+f7 :: Edge
+f7 = constFunc
+  "mapMaybe"
+  (generalize $ arrowType (arrowType var1 (maybeType var2))
+                          (arrowType (listType var1) (listType var2))
+  )
+
+f8 :: Edge
+f8 = constFunc "id" (generalize $ arrowType var1 var1)
+
+f9 :: Edge
+f9 = constFunc
+  "replicate"
+  (generalize $ arrowType (constrType0 "Int") (arrowType var1 (listType var1)))
+
+f10 :: Edge
+f10 = constFunc
+  "foldr"
+  (generalize $ arrowType (arrowType var1 (arrowType var2 var2))
+                          (arrowType var2 (arrowType (listType var1) var2))
+  )
+
+f11 :: Edge
+f11 = constFunc
+  "iterate"
+  (generalize $ arrowType (arrowType var1 var1) (arrowType var1 (listType var1))
+  )
+
+f12 :: Edge
+f12 = constFunc
+  "(!!)"
+  (generalize $ arrowType (listType var1) (arrowType (constrType0 "Int") var1))
+
+f13 :: Edge
+f13 = constFunc
+  "either"
+  (generalize $ arrowType
+    (arrowType var1 var3)
+    (arrowType (arrowType var2 var3)
+               (arrowType (constrType2 "Either" var1 var2) var3)
+    )
+  )
+
+f14 :: Edge
+f14 = constFunc
+  "Left"
+  (generalize $ arrowType var1 (constrType2 "Either" var1 var2))
+
+f15 :: Edge
+f15 = constFunc "id" (generalize $ arrowType var1 var1)
+
+f16 :: Edge
+f16 = constFunc
+  "(,)"
+  (generalize $ arrowType var1 (arrowType var2 (constrType2 "Pair" var1 var2)))
+
+f17 :: Edge
+f17 =
+  constFunc "fst" (generalize $ arrowType (constrType2 "Pair" var1 var2) var1)
+
+f18 :: Edge
+f18 =
+  constFunc "snd" (generalize $ arrowType (constrType2 "Pair" var1 var2) var2)
+
+f19 :: Edge
+f19 = constFunc
+  "foldl"
+  (generalize $ arrowType (arrowType var2 (arrowType var1 var2))
+                          (arrowType var2 (arrowType (listType var1) var2))
+  )
+
+f20 :: Edge
+f20 = constFunc
+  "swap"
+  ( generalize
+  $ arrowType (constrType2 "Pair" var1 var2) (constrType2 "Pair" var2 var1)
+  )
+
+f21 :: Edge
+f21 = constFunc
+  "curry"
+  (generalize $ arrowType (arrowType (constrType2 "Pair" var1 var2) var3)
+                          (arrowType var1 (arrowType var2 var3))
+  )
+
+f22 :: Edge
+f22 = constFunc
+  "uncurry"
+  (generalize $ arrowType (arrowType var1 (arrowType var2 var3))
+                          (arrowType (constrType2 "Pair" var1 var2) var3)
+  )
+
+f23 :: Edge
+f23 = constFunc "head" (generalize $ arrowType (listType var1) var1)
+
+f24 :: Edge
+f24 = constFunc "last" (generalize $ arrowType (listType var1) var1)
+
+f25 :: Edge
+f25 = constFunc
+  "Data.ByteString.foldr"
+  (generalize $ arrowType
+    (arrowType (constrType0 "Word8") (arrowType var2 var2))
+    (arrowType var2 (arrowType (constrType0 "ByteString") var2))
+  )
+
+f26 :: Edge
+f26 = constFunc
+  "unfoldr"
+  (generalize $ arrowType
+    (arrowType var1 (maybeType (constrType2 "Pair" (constrType0 "Word8") var1)))
+    (arrowType var1 (constrType0 "ByteString"))
+  )
+
+f27 :: Edge
+f27 = constFunc
+  "Data.ByteString.foldrChunks"
+  (generalize $ arrowType
+    (arrowType (constrType0 "ByteString") (arrowType var2 var2))
+    (arrowType var2 (arrowType (constrType0 "ByteString") var2))
+  )
+
+f28 :: Edge
+f28 = constFunc
+  "bool"
+  ( generalize
+  $ arrowType var1 (arrowType var1 (arrowType (constrType0 "Bool") var1))
+  )
+
+f29 :: Edge
+f29 = constFunc
+  "lookup"
+  (generalize $ arrowType
+    (constrType1 "@@hplusTC@@Eq" var1)
+    (arrowType var1 (arrowType (constrType2 "Pair" var1 var2) (maybeType var2)))
+  )
+
+f30 :: Edge
+f30 = constFunc "nil" (generalize $ listType var1)
+
+--------------------------
+------ Util functions
+--------------------------
+
+toMappedName :: Text -> Text
+toMappedName x = fromMaybe x (Map.lookup x groupMapping)
+
+prettyPrintAllTerms :: Term -> Node -> IO ()
+prettyPrintAllTerms sol n = do
+  putStrLn $ "Expected: " ++ show (pretty sol)
+  let ts = getAllTerms n
+  checkSolution sol ts
+
+substTerm :: Term -> Term
+substTerm (Term (Symbol sym) ts) =
+  Term (Symbol $ fromMaybe sym (Map.lookup sym groupMapping)) (map substTerm ts)
+
+parseHoogleComponent :: Text -> TypeSkeleton -> Edge
+parseHoogleComponent name t =
+  constFunc (Symbol name) (generalize $ typeToFta t)

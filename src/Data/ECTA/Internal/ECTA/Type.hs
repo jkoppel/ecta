@@ -81,7 +81,6 @@ instance Hashable RecNodeId
 data Edge = InternedEdge { edgeId         :: !Id
                          , uninternedEdge :: !UninternedEdge
                          }
-                         deriving (Generic)
 
 instance Show Edge where
   show e | edgeEcs e == EmptyConstraints = "(Edge " ++ show (edgeSymbol e) ++ " " ++ show (edgeChildren e) ++ ")"
