@@ -71,6 +71,7 @@ import Data.ECTA.Internal.Term
 import Data.Interned.Extended.HashTableBased ( Id, intern )
 -- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 -- import Data.Interned.Extended.SingleThreaded ( intern )
+
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin

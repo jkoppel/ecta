@@ -364,6 +364,7 @@ enumerateFully = do
                                _    -> enumerateOutUVar uv >> enumerateFully
                             else
                              enumerateOutUVar uv >> enumerateFully
+
 ---------------------
 -------- Expanding an enumerated term fragment into a term
 ---------------------
