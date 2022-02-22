@@ -19,6 +19,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , UninternedNode(..)
   , nodeIdentity
   , numNestedMu
+  , freeVars
   , modifyNode
   , createMu
   ) where
@@ -26,6 +27,8 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 
 import GHC.Generics ( Generic )
 
@@ -143,7 +146,37 @@ data InternedNode = MkInternedNode {
 
       -- | Maximum Mu nesting depth in the term
     , internedNodeNumNestedMu :: !Int
+
+      -- | Free variables in the term
+    , internedNodeFree :: FreeVars
     }
+  deriving (Show)
+
+-- | Free variables in a term, if known
+data FreeVars =
+    -- | Free variables are known: we are dealing with a regular interned term
+    FreeVarsKnown (Set Id)
+
+    -- | Free variables are not yet known: we are constructing a node shape
+    --
+    -- If the free variables of a term are known, we can safely omit a 'Mu' constructor if the 'Id' of that 'Mu' is not
+    -- free in the body. We cannot however drop any 'Mu' constructors when we are computing the shape of the body.
+    -- Consider a term such as
+    --
+    -- > Mu $ \r -> Mu \r' -> Node [Edge "f" [Node [Edge "g" [r]]]]
+    --
+    -- The shape of the inner 'Mu' is
+    --
+    -- > Node [Edge "f" [Node [Edge "g" [Rec (RecUnint 1)]]]]
+    --
+    -- And the shape of the outer 'Mu'
+    --
+    -- > InternedMu <someId> $ Node [Edge "f" [Node [Edge "g" [Rec (RecUnint 1)]]]]
+    --
+    -- Note that we /cannot/ drop the 'Mu' constructor from the shape of the outer 'Mu': this would make the shape of
+    -- the inner 'Mu' and the shape of the outer 'Mu' identical, but that is very wrong: interning the inner 'Mu' and
+    -- interning the outer 'Mu' should definitely not result in the same term.
+  | FreeVarsUnknown
   deriving (Show)
 
 data Node = InternedNode {-# UNPACK #-} !InternedNode
@@ -200,6 +233,18 @@ numNestedMu EmptyNode           = 0
 numNestedMu (InternedNode node) = internedNodeNumNestedMu node
 numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
 numNestedMu (Rec _)             = 0
+
+-- | Free variables in the term
+--
+-- @O(1)@ provided that there are no unbounded Mu chains in the term.
+freeVars :: Node -> FreeVars
+freeVars EmptyNode           = FreeVarsKnown $ Set.empty
+freeVars (InternedNode node) = internedNodeFree node
+freeVars (InternedMu   mu)   = case freeVars (internedMuBody mu) of
+                                 FreeVarsKnown xs -> FreeVarsKnown $ Set.delete (internedMuId mu) xs
+                                 FreeVarsUnknown  -> FreeVarsUnknown
+freeVars (Rec (RecInt i))    = FreeVarsKnown $ Set.singleton i
+freeVars (Rec _)             = FreeVarsUnknown
 
 ----------------------
 ------ Getters and setters
@@ -260,7 +305,13 @@ instance Interned Node where
         internedNodeId          = i
       , internedNodeEdges       = es
       , internedNodeNumNestedMu = maximum (0 : concatMap (map numNestedMu . edgeChildren) es) -- depth is always >= 0
+      , internedNodeFree        = combineFreeVars Set.empty $ (concatMap (map freeVars . edgeChildren) es)
       }
+    where
+      combineFreeVars :: Set Id -> [FreeVars] -> FreeVars
+      combineFreeVars !acc  []                       = FreeVarsKnown acc
+      combineFreeVars !_acc (FreeVarsUnknown  : _)   = FreeVarsUnknown
+      combineFreeVars !acc  (FreeVarsKnown xs : xss) = combineFreeVars (Set.union acc xs) xss
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
         internedMuId    = i
