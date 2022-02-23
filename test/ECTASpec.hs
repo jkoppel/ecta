@@ -158,7 +158,6 @@ spec = do
     it "intersect (one step, one-step loop) with (one step, two-step loop)" $
       intersect intTest8 intTest10 `shouldBe` intTest10
 
-    -- This was the example that in the previous implementation of 'intersect' caused an infinite loop
     it "intersect (two-step loop) with (one step, two-step loop)" $
       (intersect intTest9 intTest10, intTest8) `shouldSatisfy` uncurry stronglyIsomorphic
 
