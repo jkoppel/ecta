@@ -238,6 +238,9 @@ initIntersectionEnv = IE {
     , ieRecInt = Map.empty
     }
 
+nullIntersectEnv :: IntersectionEnv -> Bool
+nullIntersectEnv env = Map.null (ieFree env) && Map.null (ieRecInt env)
+
 intersect :: Node -> Node -> Node
 intersect = \a b -> onNode a b initIntersectionEnv
   where
@@ -254,7 +257,8 @@ intersect = \a b -> onNode a b initIntersectionEnv
     onNode' _ EmptyNode !_env = EmptyNode
 
     -- Special case for self-intersection (equality check is cheap of course: just uses the interned 'Id')
-    onNode' l r !_env | l == r = l
+    -- This is only sound if the environment is non-empty, i.e., if the terms do not contain free variables!
+    onNode' l r !env | l == r, nullIntersectEnv env = l
 
     -- Always intersect nodes in the same order. This is important for two reasons:
     --
