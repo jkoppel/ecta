@@ -397,21 +397,23 @@ reducePartially' = memo2 (NameTag "reducePartially'") go
     go :: EqConstraints -> Node -> Node
     go _ EmptyNode  = EmptyNode
     go _ (Mu n)     = Mu n
-    go ecs n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) { uEdgeChildren = reduceChildren (createPathTries ecs e) (edgeChildren e)})
+    go ecs n@(Node _) = modifyNode n $ \es -> map (reduceChildren ecs)
                                           $ map (reduceEdgeIntersection ecs) es
     go _ (Rec _)    = error "reducePartially: unexpected Rec"
 
-    createPathTries :: EqConstraints -> Edge -> [PathTrie]
-    createPathTries ecs e = map toPathTrie (ecsGetPaths (edgeEcs e) ++ ecsGetPaths ecs)
+    reduceChildren :: EqConstraints -> Edge -> Edge
+    reduceChildren ecs e = intern $ (uninternedEdge e) {
+        uEdgeChildren = reduceWithInheritedEcs (ecs `combineEqConstraints` edgeEcs e) (edgeChildren e)
+      }
 
-    createChildConstraints :: [PathTrie] -> Int -> EqConstraints
-    createChildConstraints tries i = mkEqConstraints $ map (fromPathTrie . (`pathTrieDescend` i)) tries
-
-    reduceChildrenAt :: [PathTrie] -> Int -> Node -> Node
-    reduceChildrenAt tries i n = reducePartially' (createChildConstraints tries i) n
-
-    reduceChildren :: [PathTrie] -> [Node] -> [Node]
-    reduceChildren eclasses children = zipWith (reduceChildrenAt eclasses) [0..] children
+    -- | Reduce children with inherited constraints
+    --
+    -- This function is used to avoid infinite unfolding of recursive nodes,
+    -- and we do this by passing constraints from the current edge and ancestors to descendants.
+    -- For example, if the current edge has constraints 0.0=0.1=1, then the first child will get 0=1.
+    reduceWithInheritedEcs :: EqConstraints -> [Node] -> [Node]
+    reduceWithInheritedEcs EqContradiction children = map (const EmptyNode) children
+    reduceWithInheritedEcs ecs children = zipWith (\i -> reducePartially' (eqConstraintsDescend ecs i)) [0..] children
 
 {-# NOINLINE reducePartially' #-}
 

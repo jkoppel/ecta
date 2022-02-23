@@ -1129,6 +1129,6 @@ groupMapping = snd (mkGroups hooglePlusComponents)
 -- switch to this when you run experiments on stackoverflow benchmarks
 -- hoogleComponents :: Map TypeSkeleton Text
 -- hoogleComponents = fst (mkGroups $ hooglePlusComponents ++ augumentedComponents)
--- 
+
 -- groupMapping :: Map Text Text
 -- groupMapping = snd (mkGroups $ hooglePlusComponents ++ augumentedComponents)

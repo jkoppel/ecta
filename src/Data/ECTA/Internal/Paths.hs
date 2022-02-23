@@ -13,7 +13,6 @@ module Data.ECTA.Internal.Paths (
   , isSubpath
   , isStrictSubpath
   , substSubpath
-  , ecsGetPaths
 
   , smallestNonempty
   , largestNonempty
@@ -38,6 +37,7 @@ module Data.ECTA.Internal.Paths (
   , isContradicting
   , mkEqConstraints
   , combineEqConstraints
+  , eqConstraintsDescend
   , constraintsAreContradictory
   , constraintsImply
   , subsumptionOrderedEclasses
@@ -281,8 +281,12 @@ pathTrieDescend (PathTrieSingleChild j pt') i
 ---------- Path E-classes
 ---------------------------
 
+-- | Discussion on 02/22/2022:
+--   We will probably need to remove the strictness annotation
+--   from getOrigPaths in PathEClass,
+--   because a PathEClass may now be constructed from a PathTrie instead of a [Path]
 data PathEClass = PathEClass' { getPathTrie  :: !PathTrie
-                              , getOrigPaths :: ![Path]
+                              , getOrigPaths :: [Path]
                               }
   deriving ( Show, Generic )
 
@@ -305,6 +309,12 @@ instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
 
 instance Hashable PathEClass
+
+mkPathEClassFromPathTrie :: PathTrie -> PathEClass
+mkPathEClassFromPathTrie pt = PathEClass' pt (fromPathTrie pt)
+
+pathEClassDescend :: PathEClass -> Int -> PathEClass
+pathEClassDescend (PathEClass' pt _) i = mkPathEClassFromPathTrie $ pathTrieDescend pt i
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
 hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
@@ -434,6 +444,10 @@ combineEqConstraints = memo2 (NameTag "combineEqConstraints") go
     go _               EqContradiction = EqContradiction
     go ec1             ec2             = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
 {-# NOINLINE combineEqConstraints #-}
+
+eqConstraintsDescend :: EqConstraints -> Int -> EqConstraints
+eqConstraintsDescend EqContradiction _ = EqContradiction
+eqConstraintsDescend ecs             i = EqConstraints $ sort $ map (`pathEClassDescend` i) (getEclasses ecs)
 
 -- A faster implementation would be: Merge the eclasses of both, run mkEqConstraints (or at least do eclass completion),
 -- check result equal to ecs2
