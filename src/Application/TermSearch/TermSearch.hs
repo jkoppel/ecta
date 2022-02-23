@@ -448,10 +448,12 @@ f30 = constFunc "nil" (generalize $ listType var1)
 toMappedName :: Text -> Text
 toMappedName x = fromMaybe x (Map.lookup x groupMapping)
 
-prettyPrintAllTerms :: Term -> Node -> IO ()
-prettyPrintAllTerms sol n = do
+prettyPrintAllTerms :: AblationType -> Term -> Node -> IO ()
+prettyPrintAllTerms ablation sol n = do
   putStrLn $ "Expected: " ++ show (pretty sol)
-  let ts = getAllTerms n
+  let ts = case ablation of
+             NoEnumeration -> naiveDenotation n
+             _             -> getAllTerms n
   checkSolution sol ts
 
 substTerm :: Term -> Term

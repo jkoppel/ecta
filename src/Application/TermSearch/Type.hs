@@ -3,6 +3,7 @@ module Application.TermSearch.Type
   , Benchmark(..)
   , Argument
   , Mode(..)
+  , AblationType(..)
   ) where
 
 import           Data.Data                      ( Data )
@@ -35,4 +36,10 @@ data Mode
   = Normal
   | HKTV
   | Lambda
+  deriving (Eq, Ord, Show, Data, Generic)
+
+data AblationType
+  = Default
+  | NoReduction
+  | NoEnumeration
   deriving (Eq, Ord, Show, Data, Generic)
