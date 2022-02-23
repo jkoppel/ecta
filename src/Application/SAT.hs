@@ -157,17 +157,14 @@ _getLitPaths = foldAlg getLitPathsAlg
 ------------------------- ECTA conversion -------------------------
 -------------------------------------------------------------------
 
-aNode :: Node
-aNode = Node [Edge "a" []]
-
-bNode :: Node
-bNode = Node [Edge "b" []]
-
 falseNode :: Node
 falseNode = Node [Edge "0" []]
 
 trueNode :: Node
 trueNode = Node [Edge "1" []]
+
+trueOrFalseNode :: Node
+trueOrFalseNode = union [falseNode, trueNode]
 
 falseTerm :: Term
 falseTerm = head $ naiveDenotation falseNode
@@ -175,44 +172,33 @@ falseTerm = head $ naiveDenotation falseNode
 trueTerm :: Term
 trueTerm = head $ naiveDenotation trueNode
 
-_trueOrFalseNode :: Node
-_trueOrFalseNode = Node [Edge "0" [], Edge "1" []]
-
-posVarNode :: Node
-posVarNode = Node [Edge "" [falseNode, aNode], Edge "" [trueNode, bNode]]
-
-negVarNode :: Node
-negVarNode = Node [Edge "" [falseNode, bNode], Edge "" [trueNode, aNode]]
 
 
 
 -- | Encoding:
---   formula(assnNode, formulaNode)
+--   clauses(<list of clause nodes>)
 --
 -- assnNode:
---  * One edge, with one child per literal (2*numVars total)
---  * Each literal has two choices, true or false
---  * Use constraints to force each positive/negative pair of literals to match.
---     * E.g.: x1 node = choice of (0, a) or (1, b). ~x1 node = choice of (0, b) or (1, a)
---             If x1/~x1 have indices 0/1, then the constraint 0.1=1.1 constrains
---             x1/~x1 to be either true/false or false/true
+--  * One edge, with one child per variable
+--  * Each variable has two choices, true or false
 --
--- formulaNode:
---  * One edge, having one child per clause
 --
 -- Clause nodes:
 --  * One edge per literal in the clause, each corresponding to a choice of which variable
 --    makes the clause true.
---  * Each edge has 2*numVars children containing a copy of the assnNode, followed by
---    a single child containing "1"
---  * Constrain said final child to be equal to the truth value of the corresponding literal
---    in those 2*numVars children which copy the assnNode
+--  * First child of each edge is an assnNode (will be constrained to be the same as all other assnNode's)
+--  * Second child of each edge is trueNode or falseNode, depending on if that literal is positive or negative
+--  * Constrain said second child to be equal to the truth value of the corresponding variable
+--    in the assnNode
 --
 -- Top level constraints:
---  * Constrain the variable nodes in each clause node to be equal to the global variable assignments.
+--  * Constrain all assignment nodes in all the clauses to be the same
+--
+-- An optimization not taken: Put the constraints on individual variables across assignments,
+--                            not on the assignment node itself. Plays more nicely with enumeration.
 
 toEcta :: CNF -> Node
-toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstraints]
+toEcta formula = formulaNode
   where
     clauses :: [Clause]
     And clauses = formula
@@ -223,35 +209,33 @@ toEcta formula = Node [mkEdge "formula" [assnNode, formulaNode] litCopyingConstr
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula
 
-    numVars :: Int
-    numVars = length sortedVars
+    varToIndex :: Var -> Int
+    varToIndex v = fromJust (elemIndex v sortedVars)
 
     litToIndex :: Lit -> Int
-    litToIndex (PosLit v) = 2 * fromJust (elemIndex v sortedVars)
-    litToIndex (NegLit v) = 2 * fromJust (elemIndex v sortedVars) + 1
+    litToIndex (PosLit v) = varToIndex v
+    litToIndex (NegLit v) = varToIndex v
 
     assnNode :: Node
-    assnNode = Node [mkEdge "assignment" (concatMap (const [posVarNode, negVarNode]) sortedVars)
-                                         (mkEqConstraints $ map (\i -> [path [2*i, 1], path [2*i+1, 1]])
-                                                                [0..numVars - 1])
-                    ]
+    assnNode = Node [Edge "assignment" (map (const trueOrFalseNode) sortedVars)]
 
     formulaNode :: Node
-    formulaNode = Node [Edge "clauses" (map mkClauseNode clauses)]
+    formulaNode = Node [mkEdge "clauses" (map mkClauseNode clauses) assnCopyingConstraints]
 
     mkClauseNode :: Clause -> Node
     mkClauseNode (Or lits) = Node (map mkLitChoiceEdge lits)
       where
         mkLitChoiceEdge :: Lit -> Edge
         mkLitChoiceEdge lit = mkEdge (Symbol $ "choice[" <> pretty lit <> "]")
-                                      (concatMap (const [posVarNode, negVarNode]) sortedVars ++ [trueNode])
-                                      (mkEqConstraints [[path [litToIndex lit, 0],  path [2 * numVars]]])
+                                     [assnNode, mkLitNode lit]
+                                     (mkEqConstraints [[path [0, litToIndex lit],  path [1]]])
 
+    mkLitNode :: Lit -> Node
+    mkLitNode (PosLit _) = trueNode
+    mkLitNode (NegLit _) = falseNode
 
-    litCopyingConstraints :: EqConstraints
-    litCopyingConstraints = mkEqConstraints [path [0, i] : [path [1, c, i] | c <- [0..numClauses-1]]
-                                               | i <- [0..2*numVars - 1]
-                                            ]
+    assnCopyingConstraints :: EqConstraints
+    assnCopyingConstraints = mkEqConstraints [[path [i, 0] | i <- [0..numClauses - 1]]]
 
 
 allSolutions :: CNF -> HashSet (HashMap Var Bool)
@@ -260,15 +244,10 @@ allSolutions formula = foldMap (HashSet.singleton . termToAssignment) $ getAllTe
     sortedVars :: [Var]
     sortedVars = sort $ HashSet.toList $ getVars formula
 
-    evens :: [a] -> [a]
-    evens []       = []
-    evens [x]      = [x]
-    evens (x:_:l) = x : evens l
-
     termToAssignment :: Term -> HashMap Var Bool
-    termToAssignment (Term _ [Term _ litVals, _]) = foldMap (\(var, Term "" [val, _]) -> HashMap.singleton var (termToBool val))
-                                                            (zip sortedVars (evens litVals))
-    termToAssignment x    = error $ "Unexpected " <> show x
+    termToAssignment (Term _ (Term _ [(Term _ varVals), _] : _)) = foldMap (\(var, val) -> HashMap.singleton var (termToBool val))
+                                                                           (zip sortedVars varVals)
+    termToAssignment x                                           = error $ "Unexpected " <> show x
 
     termToBool :: Term -> Bool
     termToBool t | t == falseTerm = False
