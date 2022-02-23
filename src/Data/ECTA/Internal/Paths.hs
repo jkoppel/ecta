@@ -281,12 +281,9 @@ pathTrieDescend (PathTrieSingleChild j pt') i
 ---------- Path E-classes
 ---------------------------
 
--- | Discussion on 02/22/2022:
---   We remove the strictness annotation from getOrigPaths in PathEClass
---   because a PathEClass may now be constructed from a PathTrie instead of a [Path] by calling `mkPathEClassFromPathTrie`.
---   Then we want `fromPathTrie pt` to not actually run until it needs to.
 data PathEClass = PathEClass' { getPathTrie  :: !PathTrie
-                              , getOrigPaths :: [Path]
+                              , getOrigPaths ::  [Path]   -- Intentionally lazy because
+                                                          -- not available when calling `mkPathEClassFromPathTrie`
                               }
   deriving ( Show, Generic )
 
