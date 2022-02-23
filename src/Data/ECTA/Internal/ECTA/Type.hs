@@ -29,7 +29,6 @@ import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
 import           Data.Map.Strict ( Map )
 import qualified Data.Map.Strict as Map
-import Data.Maybe ( fromMaybe )
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -543,6 +542,10 @@ matchMu (InternedMu mu) = Just $ \n' ->
 
 matchMu _otherwise = Nothing
 
+-------------------
+------ Substitution
+-------------------
+
 -- | Substitution
 --
 -- @substFree i n@ will replace all occurrences of @Rec (RecNodeId i)@ by @n@. We appeal to the uniqueness of node IDs
@@ -553,30 +556,50 @@ matchMu _otherwise = Nothing
 --
 -- > substFree i (Rec (RecNodeId i)) == id
 substFree :: Id -> Node -> Node -> Node
-substFree old new n = substFree' n $ Map.singleton old new
+substFree old = substFree' . Map.singleton old
 
 -- | Generalization of 'substFree' to arbitrary number of substitutions
 --
 -- The somewhat unusual ordering the arguments is to facilitate memoization; see below.
-substFree' :: Node -> Map Id Node -> Node
-substFree' = onNode
+substFree' :: Map Id Node -> Node -> Node
+substFree' env n = let ~(Shape f) = extractShape n
+                   in f env
+
+------ Substitution internals
+
+-- | The shape of a something is that something with holes for as-yet unknown 'Id's
+newtype Shape a = Shape { shapeInEnv :: Map Id Node -> a }
+
+-- | Commute @[]@ and 'Shape'
+--
+-- Forces all elements in the list
+sequenceShape :: [Shape a] -> Shape [a]
+sequenceShape ss = Shape $ \env -> map (`shapeInEnv` env) ss
+
+-- | Extract the shape from a term
+--
+-- Somewhat serendipitously (or does this point to some deeper truth?) this also serves as a definition of substitution:
+-- any free variables in the original node will become " holes " in the 'Shape'.
+extractShape :: Node -> Shape Node
+{-# NOINLINE extractShape #-}
+extractShape = memo (NameTag "extractShape") onNode
   where
-    -- Substitution is defined entirely by the term. This means that we can memoize independent of the environment.
-    onNode :: Node -> Map Id Node -> Node
-    onNode = memo (NameTag "substFree'.onNode") onNode'
-    {-# NOINLINE onNode #-}
+    onNode :: Node -> Shape Node
+    onNode EmptyNode           = Shape $ \_ -> EmptyNode
+    onNode (InternedNode node) = let ~(Shape f) = sequenceShape $ map extractShapeEdge (internedNodeEdges node)
+                                 in Shape $ mkNode . f
+    onNode (InternedMu mu)     = let ~(Shape f) = onNode (internedMuBody mu)
+                                 in Shape $ \env -> createMu $ \recNode -> f (Map.insert (internedMuId mu) recNode env)
+    onNode (Rec (RecInt i))    = Shape $ \env -> case Map.lookup i env of
+                                                   Nothing -> error $ "extractShape: dangling " <> show (RecInt i)
+                                                   Just n  -> n
+    onNode (Rec recNodeId)     = Shape $ \_ -> Rec recNodeId
 
-    onNode' :: Node -> Map Id Node -> Node
-    onNode' EmptyNode            !_   = EmptyNode
-    onNode' (InternedNode node)  !env = mkNode $ map ((\e -> onEdge e env)) (internedNodeEdges node)
-    onNode' (InternedMu mu)      !env = createMu $ \r -> onNode (internedMuBody mu) (Map.insert (internedMuId mu) r env)
-    onNode' n@(Rec (RecInt nid)) !env = fromMaybe n (Map.lookup nid env)
-    onNode' (Rec recId)          !_   = Rec recId
-
-    onEdge :: Edge -> Map Id Node -> Edge
-    onEdge = memo (NameTag "substFree'.onEdge") onEdge'
-    {-# NOINLINE onEdge #-}
-
-    onEdge' :: Edge -> Map Id Node -> Edge
-    onEdge' e env = setChildren e $ map (\n -> onNode n env) (edgeChildren e)
-
+extractShapeEdge :: Edge -> Shape Edge
+{-# NOINLINE extractShapeEdge #-}
+extractShapeEdge = memo (NameTag "extractShapeEdge") onEdge
+  where
+    onEdge :: Edge -> Shape Edge
+    onEdge e =
+        let ~(Shape f) = sequenceShape (map extractShape (edgeChildren e))
+        in Shape $ setChildren e . f
