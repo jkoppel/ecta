@@ -68,7 +68,7 @@ import Data.ECTA.Internal.Term
 
 --   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased ( Id, intern )
+import Data.Interned.Extended.HashTableBased ( Id )
 -- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
 -- import Data.Interned.Extended.SingleThreaded ( intern )
 
@@ -395,25 +395,40 @@ reducePartially' :: EqConstraints -> Node -> Node
 reducePartially' = memo2 (NameTag "reducePartially'") go
   where
     go :: EqConstraints -> Node -> Node
-    go _ EmptyNode  = EmptyNode
-    go _ (Mu n)     = Mu n
-    go ecs n@(Node _) = modifyNode n $ \es -> map (reduceChildren ecs)
-                                          $ map (reduceEdgeIntersection ecs) es
-    go _ (Rec _)    = error "reducePartially: unexpected Rec"
+    go _            EmptyNode  = EmptyNode
+    go _            (Mu n)     = Mu n
+    go inheritedEcs n@(Node _) = modifyNode n $ \es -> map (reduceChildren inheritedEcs)
+                                                       $ map (reduceEdgeIntersection inheritedEcs) es
+    go _            (Rec _)    = error "reducePartially: unexpected Rec"
 
     reduceChildren :: EqConstraints -> Edge -> Edge
-    reduceChildren ecs e = intern $ (uninternedEdge e) {
-        uEdgeChildren = reduceWithInheritedEcs (ecs `combineEqConstraints` edgeEcs e) (edgeChildren e)
-      }
+    reduceChildren inheritedEcs e = setChildren e $ reduceWithInheritedEcs (inheritedEcs `combineEqConstraints` edgeEcs e) (edgeChildren e)
 
     -- | Reduce children with inherited constraints
     --
     -- This function is used to avoid infinite unfolding of recursive nodes,
     -- and we do this by passing constraints from the current edge and ancestors to descendants.
-    -- For example, if the current edge has constraints 0.0=0.1=1, then the first child will get 0=1.
+    -- For example, let `tau` be "any" node, and we define
+    --
+    -- > let n1 = Node [ mkEdge "Pair" [tau, tau] (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])]
+    -- > let n2 = Node [ Edge "Pair" [tau, tau] ]
+    -- > let n  = Node [ mkEdge "Pair" [n1, n2]   (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])]
+    --
+    -- We notice that, if we call `reducePartially n` without propagating constraints down to its children `n1` or `n2`,
+    -- the `tau` can be infinitely expanded between rounds of reduction.
+    --
+    -- To break such cycles, we actively pass constraints down to children.
+    -- In this example, we first call `reducePartially' EmptyConstraints n` at the top level, where the inherited constraint is empty,
+    -- so we only need to consider the constraints from the current edge.
+    -- Then, we pass the constraints `0.0=0.1=1` down to its children, and `n1` receives `0=1` and `n2` receives nothing.
+    -- Next, we reduce the children of `n` by calling `reducePartially' (mkEqConstraints [[path [0], path [1]]]) n1`.
+    -- At this node, we will have to combine the inherited constraints `0=1` and the local constraints `0.0=0.1=1`.
+    -- Now, we can see that these two constraints contain a contradiction that requires `0=0.0=0.1`, so we can drop the edge.
+    --
+    -- TODO: this approach does not solve all cases of cycles. See the test case `loop2` in `src/Application/TermSearch/Utils.hs`.
     reduceWithInheritedEcs :: EqConstraints -> [Node] -> [Node]
     reduceWithInheritedEcs EqContradiction children = map (const EmptyNode) children
-    reduceWithInheritedEcs ecs             children = zipWith (\i -> reducePartially' (eqConstraintsDescend ecs i)) [0..] children
+    reduceWithInheritedEcs inheritedEcs    children = zipWith (\i -> reducePartially' (eqConstraintsDescend inheritedEcs i)) [0..] children
 
 {-# NOINLINE reducePartially' #-}
 
@@ -433,9 +448,9 @@ reduceEqConstraints = go
     propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
     go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
-    go ecs extraEcs origNs 
-      | constraintsAreContradictory (ecs `combineEqConstraints` extraEcs) = map (const EmptyNode) origNs
-      | otherwise                                                         = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
+    go ecs inheritedEcs origNs
+      | constraintsAreContradictory (ecs `combineEqConstraints` inheritedEcs) = map (const EmptyNode) origNs
+      | otherwise                                                             = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
