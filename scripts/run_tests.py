@@ -175,8 +175,8 @@ def to_time(str):
         return None
 
 
-def run_benchmark(bench):
-    p = Popen(RUN_CMD + [str(bench)], stdin=PIPE, stdout=PIPE)
+def run_benchmark(bench, ablation):
+    p = Popen(RUN_CMD + [str(bench), "--ablation", ablation], stdin=PIPE, stdout=PIPE)
     prev_line = None
     syn_prog = None
     syn_time = None
@@ -198,11 +198,12 @@ def run_benchmark(bench):
 
 
 def build_argparser():
-    argparser = argparse.ArgumentParser(description='Run benchmarks')
+    argparser = argparse.ArgumentParser(description="Run benchmarks")
     argparser.add_argument(
-        '--suites', choices=['hplus', 'stackoverflow', 'all'], default='all', help='which suites to run')
+        '--suites', choices=['hplus', 'stackoverflow', 'all'], default='all', help="which suites to run")
     argparser.add_argument('--benchmarks', nargs='+',
-                           help='which benchmarks to run')
+                           help="which benchmarks to run")
+    argparser.add_argument('--ablation', choices=['default', 'noReduction', 'noEnumeration'], default='default', help="which ablation to run")
     return argparser
 
 
@@ -231,10 +232,11 @@ if __name__ == "__main__":
         for bench in suite_benches:
             print("---------------------------------------------------------------")
             print("Running benchmark: " + bench.name)
-            run_benchmark(bench)
+            run_benchmark(bench, args.ablation)
 
     # write results to csv
-    with open("results.csv", "w") as f:
+    csv_file = "results" + "_" + args.ablation + ".csv"
+    with open(csv_file, "w") as f:
         f.write("name,sol,time\n")
         for result in syn_results:
             f.write("{}\t{}\t{}\n".format(
