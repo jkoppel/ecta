@@ -273,8 +273,10 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           (_, EmptyNode) -> IS $ \_ -> EmptyNode
 
           -- Special case for self-intersection (equality check is cheap of course: just uses the interned 'Id')
-          -- This is only sound if the environment is non-empty, i.e., if the terms do not contain free variables!
-          _ | l == r, Map.null (idFree dom) -> IS $ \_ -> l
+          _ | l == r, Set.null (freeVars l) -> IS $ \_ -> l
+
+          -- For closed terms, improve memoization performance by using the empty environment
+          _ | Set.null (freeVars l), Set.null (freeVars r), not (Map.null (idFree dom)) -> IS $ \_ -> intersect l r
 
           -- Always intersect nodes in the same order. This is important for two reasons:
           --

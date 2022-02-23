@@ -21,6 +21,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , numNestedMu
   , modifyNode
   , createMu
+  , freeVars
   , stronglyIsomorphic
   ) where
 
@@ -148,6 +149,9 @@ data InternedNode = MkInternedNode {
 
       -- | Maximum Mu nesting depth in the term
     , internedNodeNumNestedMu :: !Int
+
+      -- | Free variables in the node
+    , internedNodeFree :: !(Set Id)
     }
   deriving (Show)
 
@@ -205,6 +209,16 @@ numNestedMu EmptyNode           = 0
 numNestedMu (InternedNode node) = internedNodeNumNestedMu node
 numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
 numNestedMu (Rec _)             = 0
+
+-- | All free (regular) variables inside the node
+--
+-- @O(1) provided that there are no unbounded Mu chains in the term.
+freeVars :: Node -> Set Id
+freeVars EmptyNode           = Set.empty
+freeVars (InternedNode node) = internedNodeFree node
+freeVars (InternedMu   mu)   = Set.delete (internedMuId mu) (freeVars (internedMuBody mu))
+freeVars (Rec (RecInt i))    = Set.singleton i
+freeVars (Rec _)             = Set.empty
 
 -- | Check if two nodes are strongly isomorphic
 --
@@ -301,6 +315,7 @@ instance Interned Node where
         internedNodeId          = i
       , internedNodeEdges       = es
       , internedNodeNumNestedMu = maximum (0 : concatMap (map numNestedMu . edgeChildren) es) -- depth is always >= 0
+      , internedNodeFree        = Set.unions $ concatMap (map freeVars . edgeChildren) es
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
