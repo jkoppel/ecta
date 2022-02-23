@@ -413,7 +413,7 @@ reducePartially' = memo2 (NameTag "reducePartially'") go
     -- For example, if the current edge has constraints 0.0=0.1=1, then the first child will get 0=1.
     reduceWithInheritedEcs :: EqConstraints -> [Node] -> [Node]
     reduceWithInheritedEcs EqContradiction children = map (const EmptyNode) children
-    reduceWithInheritedEcs ecs children = zipWith (\i -> reducePartially' (eqConstraintsDescend ecs i)) [0..] children
+    reduceWithInheritedEcs ecs             children = zipWith (\i -> reducePartially' (eqConstraintsDescend ecs i)) [0..] children
 
 {-# NOINLINE reducePartially' #-}
 
@@ -435,7 +435,7 @@ reduceEqConstraints = go
     go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
     go ecs extraEcs origNs 
       | constraintsAreContradictory (ecs `combineEqConstraints` extraEcs) = map (const EmptyNode) origNs
-      | otherwise = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
+      | otherwise                                                         = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
