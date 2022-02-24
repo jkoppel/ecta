@@ -296,15 +296,15 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           -- We make sure here to force the recursive call before constructing the final function so that the shape is
           -- fully computed.
           (InternedMu l', InternedMu r') ->
-            let !dom'   = extendEnv [l', r']
+            let !dom'   = extendEnv [(i, l), (j, r)]
                 ~(IS f) = intersectDom (dom', internedMuBody l', internedMuBody r')
             in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
           (InternedMu l', _) ->
-            let !dom'   = extendEnv [l']
+            let !dom'   = extendEnv [(i, l)]
                 ~(IS f) = intersectDom (dom', internedMuBody l', r)
             in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
           (_, InternedMu r') ->
-            let !dom'   = extendEnv [r']
+            let !dom'   = extendEnv [(j, r)]
                 ~(IS f) = intersectDom (dom', l, internedMuBody r')
             in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
 
@@ -328,14 +328,11 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
 
         -- Extend domain when we encounter a 'Mu'
         -- We might see one or two 'Mu's (if we happen to see a 'Mu' on both sides at once)
-        extendEnv :: [InternedMu] -> IntersectionDom
-        extendEnv mus = ID {
-              idFree   = Map.union (Map.fromList $ map aux mus) (idFree dom)
+        extendEnv :: [(Id, Node)] -> IntersectionDom
+        extendEnv bindings = ID {
+              idFree   = Map.union (Map.fromList bindings) (idFree dom)
             , idRecInt = Set.insert (i, j) (idRecInt dom)
             }
-          where
-            aux :: InternedMu -> (Id, Node)
-            aux mu = (internedMuId mu, internedMuBody mu)
 
         findFreeVar :: RecNodeId -> Node
         findFreeVar (RecInt intId) | Just n <- Map.lookup intId (idFree dom) = n

@@ -147,7 +147,7 @@ spec = do
       (intersect intTest7 intTest8, intTest8) `shouldSatisfy` uncurry stronglyIsomorphic
 
     it "intersect (one-step loop) with (two-step loop)" $
-      intersect intTest7 intTest9 `shouldBe` intTest9
+      (intersect intTest7 intTest9, intTest9) `shouldSatisfy` uncurry stronglyIsomorphic
 
     it "intersect (one-step loop) with (one step, two-step loop)" $
       (intersect intTest7 intTest10, intTest10) `shouldSatisfy` uncurry stronglyIsomorphic
@@ -156,7 +156,7 @@ spec = do
       (intersect intTest8 intTest9, intTest10) `shouldSatisfy` uncurry stronglyIsomorphic
 
     it "intersect (one step, one-step loop) with (one step, two-step loop)" $
-      intersect intTest8 intTest10 `shouldBe` intTest10
+      (intersect intTest8 intTest10, intTest10) `shouldSatisfy` uncurry stronglyIsomorphic
 
     it "intersect (two-step loop) with (one step, two-step loop)" $
       (intersect intTest9 intTest10, intTest8) `shouldSatisfy` uncurry stronglyIsomorphic
