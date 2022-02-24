@@ -287,8 +287,8 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           (EmptyNode, _) -> IS $ \_ -> EmptyNode
           (_, EmptyNode) -> IS $ \_ -> EmptyNode
 
-          -- For closed terms, improve memoization performance by using the empty environment
-          _ | Set.null (freeVars l), Set.null (freeVars r), not (Map.null (idFree dom)) -> IS $ \_ -> intersect l r
+          -- -- For closed terms, improve memoization performance by using the empty environment
+          -- _ | Set.null (freeVars l), Set.null (freeVars r), not (Map.null (idFree dom)) -> IS $ \_ -> intersect l r
 
           -- Special case for self-intersection (equality check is cheap of course: just uses the interned 'Id')
           _ | l == r, Set.null (freeVars l) -> IS $ \_ -> l
@@ -307,15 +307,18 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           -- 1. Entry in 'idRecInt': if we see the exact same intersection problem again, we can refer back to the Mu
           --    node we create here.
           -- 2. Entry in 'idFree'': we need to know the value of the free variable if we need to unroll
-          (InternedMu l', InternedMu r') ->
-            IS $ case intersectDom (extendEnv [(i, l), (j, r)], internedMuBody l', internedMuBody r') of
-                  IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
-          (InternedMu l', _) ->
-            IS $ case intersectDom (extendEnv [(i, l)], internedMuBody l', r) of
-                   IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
-          (_, InternedMu r') ->
-            IS $ case intersectDom (extendEnv [(j, r)], l, internedMuBody r') of
-                   IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (InternedMu _, InternedMu _) ->
+            IS $ \_ -> l
+--            IS $ case intersectDom (extendEnv [(i, l), (j, r)], internedMuBody l', internedMuBody r') of
+--                  IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (InternedMu _, _) ->
+            IS $ \_ -> intersectTop (unfoldOuterRec l, r)
+            -- IS $ case intersectDom (extendEnv [(i, l)], internedMuBody l', r) of
+            --        IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (_, InternedMu _) ->
+            IS $ \_ -> intersectTop (l, unfoldOuterRec r)
+            -- IS $ case intersectDom (extendEnv [(j, r)], l, internedMuBody r') of
+            --        IS !f -> \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
 
            -- When encountering a free variable, look up the corresponding value in the environment.
           (Rec l', _) -> intersectDom (dom, findFreeVar l', r)
