@@ -285,7 +285,7 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           _ | l > r -> intersectDom (dom, r, l)
 
           -- If we have seen this exact problem before, refer to enclosing Mu
-          _ | Set.member (i, j) (idRecInt dom) -> IS $ \env -> env Map.! (i, j)
+          -- _ | Set.member (i, j) (idRecInt dom) -> IS $ \env -> env Map.! (i, j)
 
           -- When encountering a 'Mu', extend the domain in two ways:
           --
@@ -296,17 +296,20 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
           -- We make sure here to force the recursive call before constructing the final function so that the shape is
           -- fully computed.
           (InternedMu l', InternedMu r') ->
-            let !dom'   = extendEnv [(i, l), (j, r)]
-                ~(IS f) = intersectDom (dom', internedMuBody l', internedMuBody r')
-            in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            -- let !dom'   = extendEnv [(i, l), (j, r)]
+            --     ~(IS f) = intersectDom (dom', internedMuBody l', internedMuBody r')
+            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            IS $ \_ -> l
           (InternedMu l', _) ->
-            let !dom'   = extendEnv [(i, l)]
-                ~(IS f) = intersectDom (dom', internedMuBody l', r)
-            in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            let -- !dom'   = extendEnv [(i, l)]
+                ~(IS f) = intersectDom (dom, unfoldOuterRec l, r)
+            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            in IS $ \env -> f env
           (_, InternedMu r') ->
-            let !dom'   = extendEnv [(j, r)]
-                ~(IS f) = intersectDom (dom', l, internedMuBody r')
-            in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            let -- !dom'   = extendEnv [(j, r)]
+                ~(IS f) = intersectDom (dom, l, unfoldOuterRec r) -- internedMuBody r')
+            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+            in IS $ \env -> f env
 
            -- When encountering a free variable, look up the corresponding value in the environment.
           (Rec l', _) -> intersectDom (dom, findFreeVar l', r)
@@ -331,7 +334,7 @@ intersectDom = memo (NameTag "IntersectionDom") (\(dom, l, r) -> onNode dom l r)
         extendEnv :: [(Id, Node)] -> IntersectionDom
         extendEnv bindings = ID {
               idFree   = Map.union (Map.fromList bindings) (idFree dom)
-            , idRecInt = Set.insert (i, j) (idRecInt dom)
+            , idRecInt = Set.empty -- Set.insert (i, j) (idRecInt dom)
             }
 
         findFreeVar :: RecNodeId -> Node
