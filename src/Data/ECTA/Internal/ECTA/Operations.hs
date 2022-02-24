@@ -57,8 +57,6 @@ import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
-import           Data.Map ( Map )
-import qualified Data.Map as Map
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -248,38 +246,21 @@ intersectDom = memo (NameTag "IntersectionDom") (\(l, r) -> onNode l r)
     onNode :: Node -> Node -> IntersectionShape Node
     onNode l r =
         case (l, r) of
-          -- Rule out empty cases first
-          -- This justifies the use of nodeIdentity (@i@, @j@) for the other cases
           (EmptyNode, _) -> IS $ constEmpty
           (_, EmptyNode) -> IS $ constEmpty
 
-          -- When encountering a 'Mu', extend the domain in two ways:
-          --
-          -- 1. Entry in 'idRecInt': if we see the exact same intersection problem again, we can refer back to the Mu
-          --    node we create here.
-          -- 2. Entry in 'idFree'': we need to know the value of the free variable if we need to unroll
-          --
-          -- We make sure here to force the recursive call before constructing the final function so that the shape is
-          -- fully computed.
-          (InternedMu l', InternedMu r') ->
-            -- let !dom'   = extendEnv [(i, l), (j, r)]
-            --     ~(IS f) = intersectDom (dom', internedMuBody l', internedMuBody r')
-            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (InternedMu _, InternedMu _) ->
             IS $ \_ -> l
-          (InternedMu l', _) ->
-            let -- !dom'   = extendEnv [(i, l)]
-                ~(IS f) = intersectDom (unfoldOuterRec l, r)
-            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (InternedMu _, _) ->
+            let ~(IS f) = intersectDom (unfoldOuterRec l, r)
             in IS $ f
-          (_, InternedMu r') ->
-            let -- !dom'   = extendEnv [(j, r)]
-                ~(IS f) = intersectDom (l, unfoldOuterRec r) -- internedMuBody r')
-            -- in IS $ \env -> Mu $ \recNode -> f (Map.insert (i, j) recNode env)
+          (_, InternedMu _) ->
+            let ~(IS f) = intersectDom (l, unfoldOuterRec r)
             in IS $ f
 
            -- When encountering a free variable, look up the corresponding value in the environment.
-          (Rec l', _) -> error "uhoh"
-          (_, Rec r') -> error "uhoh"
+          (Rec _, _) -> error "uhoh"
+          (_, Rec _) -> error "uhoh"
 
           -- Finally, the real intersection work happens here
           (InternedNode l', InternedNode r') ->
