@@ -227,7 +227,7 @@ intersect a b =
 -- | Once we have computed the intersection, we just need to know the 'Id's assigned to the resulting shape
 --
 -- We separate these two things out, because the shape can be memoized independent of the 'Id's.
-newtype IntersectionShape a = IS { isInEnv :: () -> a }
+data IntersectionShape a = IS { isInEnv :: () -> a }
 
 -- | Commute @[]@ and 'IntersectionShape'
 sequenceIntersectionShape :: [IntersectionShape a] -> IntersectionShape [a]
@@ -252,11 +252,11 @@ intersectDom = memo (NameTag "IntersectionDom") (\(l, r) -> onNode l r)
           (InternedMu _, InternedMu _) ->
             IS $ \_ -> l
           (InternedMu _, _) ->
-            let ~(IS f) = intersectDom (unfoldOuterRec l, r)
-            in IS $ f
+            IS $ case intersectDom (unfoldOuterRec l, r) of
+                   IS f -> f
           (_, InternedMu _) ->
-            let ~(IS f) = intersectDom (l, unfoldOuterRec r)
-            in IS $ f
+            IS $ case intersectDom (l, unfoldOuterRec r) of
+                   IS f -> f
 
            -- When encountering a free variable, look up the corresponding value in the environment.
           (Rec _, _) -> error "uhoh"
@@ -264,11 +264,11 @@ intersectDom = memo (NameTag "IntersectionDom") (\(l, r) -> onNode l r)
 
           -- Finally, the real intersection work happens here
           (InternedNode l', InternedNode r') ->
-             let ~(IS f) = sequenceIntersectionShape $ hashJoin (hash . edgeSymbol)
+             IS $ case sequenceIntersectionShape $ hashJoin (hash . edgeSymbol)
                                                                 (\e e' -> intersectDomEdge (e, e'))
                                                                 (internedNodeEdges l')
-                                                                (internedNodeEdges r')
-             in IS $ Node . f
+                                                                (internedNodeEdges r') of
+                    IS f -> \env -> Node (f env)
 
 intersectDomEdge :: (Edge, Edge) -> IntersectionShape Edge
 {-# NOINLINE intersectDomEdge #-}
@@ -276,8 +276,8 @@ intersectDomEdge = memo (NameTag "IntersectionDomEdge") (\(l, r) -> onEdge l r)
   where
     onEdge :: Edge -> Edge -> IntersectionShape Edge
     onEdge l r =
-        let ~(IS f) = sequenceIntersectionShape $ zipWith (\a b -> intersectDom (a, b)) (edgeChildren l) (edgeChildren r)
-        in IS $ \env -> mkEdge (edgeSymbol l)
+        IS $ case sequenceIntersectionShape $ zipWith (\a b -> intersectDom (a, b)) (edgeChildren l) (edgeChildren r) of
+               IS f -> \env -> mkEdge (edgeSymbol l)
                                (f env)
                                (edgeEcs l `combineEqConstraints` edgeEcs r)
 
