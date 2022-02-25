@@ -45,8 +45,9 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
 
 --------------------------------------------------------------------------------
 
-data HPPArgs = HPPArgs { benchmark :: String
-                       , ablation  :: AblationType
+data HPPArgs = HPPArgs { benchmark    :: String
+                       , ablation     :: AblationType
+                       , timeoutLimit :: Int
                        }
   deriving (Data, Typeable)
 
@@ -54,10 +55,11 @@ hppArgs :: HPPArgs
 hppArgs = HPPArgs {
     benchmark = "" &= argPos 0
   , ablation  = Default &= help "Ablation type. choices: [default, no-reduction, no-enumeration]"
+  , timeoutLimit = 300 &= help "Timeout limit in seconds"
   } &= auto
 
 
 main :: IO ()
 main = do
     query <- cmdArgs hppArgs
-    runBenchmark (read $ benchmark query) (ablation query)
+    runBenchmark (read $ benchmark query) (ablation query) (timeoutLimit query)

@@ -42,4 +42,5 @@ data AblationType
   = Default
   | NoReduction
   | NoEnumeration
+  | NoOptimize
   deriving (Eq, Ord, Show, Data, Generic)
