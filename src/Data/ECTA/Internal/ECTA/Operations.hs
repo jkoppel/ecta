@@ -50,12 +50,14 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
-import Data.Hashable ( hash )
+import Data.Hashable ( hash, Hashable(..) )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
 import Data.Monoid ( Sum(..), First(..) )
 import Data.Semigroup ( Max(..) )
+import           Data.Map.Strict ( Map )
+import qualified Data.Map.Strict as Map
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -152,7 +154,7 @@ refold :: Node -> Node
 refold = memo (NameTag "refold") go
   where
     go :: Node -> Node
-    go n = if HashMap.null muNodeMap 
+    go n = if HashMap.null muNodeMap
              then n
              else fixUnbounded (mapNodes tryUnfold) n
       where
@@ -216,8 +218,8 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------ Intersect
 ------------
 
-intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") go
+_oldIntersect :: Node -> Node -> Node
+_oldIntersect = memo2 (NameTag "intersect") go
   where
     go :: Node -> Node -> Node
     go n1 n2 = refold (nodeDropRedundantEdges (doIntersect n1 n2))
@@ -299,6 +301,120 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
                (zipWith intersect (edgeChildren e1) (edgeChildren e2))
                (edgeEcs e1 `combineEqConstraints` edgeEcs e2)
 {-# NOINLINE intersectEdgeSameSymbol #-}
+
+------------
+------ New intersection
+------------
+
+intersect :: Node -> Node -> Node
+intersect l r = intersectOpen (emptyIntersectionDom, l, r)
+
+------ Intersection internals
+
+-- | Intersection domain
+--
+-- Information required to compute the intersection of open terms.
+data IntersectionDom = ID {
+      -- | Value of all free variables inside the term (so that we can unfold when necessary)
+      idFree :: Map Id Node
+
+      -- | Intersection problems we encountered previously (to avoid infinite unrolling)
+    , idRecInt :: Set IntersectId
+    }
+  deriving (Show, Eq)
+
+instance Hashable IntersectionDom where
+  -- Implementation notes:
+  --
+  -- - Both `Map.toList` and `Set.toList` return elements in key-order, which is a suitable canonical form for hashing.
+  -- - The cost of the hashing is linear in the size of the domain. If this becomes a concern, we could cache the hash.
+  hashWithSalt s (ID free recInt) = hashWithSalt s (Map.toList free, Set.toList recInt)
+
+emptyIntersectionDom :: IntersectionDom
+emptyIntersectionDom = ID Map.empty Set.empty
+
+intersectOpen :: (IntersectionDom, Node, Node) -> Node
+{-# NOINLINE intersectOpen #-}
+intersectOpen = memo (NameTag "intersectOpen") (\(dom, l, r) -> onNode dom l r)
+  where
+    onNode :: IntersectionDom -> Node -> Node -> Node
+    onNode !dom l r =
+        case (l, r) of
+          -- Rule out empty cases first
+          -- This justifies the use of nodeIdentity (@i@, @j@) for the other cases
+          (EmptyNode, _) -> EmptyNode
+          (_, EmptyNode) -> EmptyNode
+
+          -- For closed terms, improve memoization performance by using the empty environment
+          _ | Set.null (freeVars l), Set.null (freeVars r), not (Map.null (idFree dom)) -> intersect l r
+
+          -- Special case for self-intersection (equality check is cheap of course: just uses the interned 'Id')
+          _ | l == r, Set.null (freeVars l) -> l
+
+          -- Always intersect nodes in the same order. This is important for two reasons:
+          --
+          -- 1. It will increase the probability of a cache hit (i.e., improve memoization)
+          -- 2. It will increase the probability of being able to use 'ieRecInt'
+          _ | l > r -> intersectOpen (dom, r, l)
+
+          -- If we have seen this exact problem before, refer to enclosing Mu.
+          _ | Set.member (IntersectId i j) (idRecInt dom) -> Rec (RecIntersect (IntersectId i j))
+
+          -- When encountering a 'Mu', extend the domain appropriately.
+          (InternedMu l' , InternedMu r') -> maybeMu $ intersectOpen (extendEnv [(i, l), (j, r)] , internedMuBody l' , internedMuBody r')
+          (InternedMu l' , _            ) -> maybeMu $ intersectOpen (extendEnv [(i, l)        ] , internedMuBody l' ,                r )
+          (_             , InternedMu r') -> maybeMu $ intersectOpen (extendEnv [        (j, r)] ,                l  , internedMuBody r')
+
+           -- When encountering a free variable, look up the corresponding value in the environment.
+           -- (Recall that the case for already-seen intersection problems is are handled above.)
+          (Rec l' , _     ) -> intersectOpen (dom , findFreeVar l' ,             r )
+          (_      , Rec r') -> intersectOpen (dom ,             l  , findFreeVar r')
+
+          -- Finally, the real intersection work happens here
+          (InternedNode l', InternedNode r') ->
+            Node $ hashJoin (hash . edgeSymbol)
+                            (\e e' -> intersectOpenEdge (dom, e, e'))
+                            (internedNodeEdges l')
+                            (internedNodeEdges r')
+      where
+        -- Node identities (should only be used (forced) if previously established the nodes are not empty)
+        i, j :: Id
+        i = nodeIdentity l
+        j = nodeIdentity r
+
+        -- Extend domain when we encounter a 'Mu'
+        -- We might see one or two 'Mu's (if we happen to see a 'Mu' on both sides at once)
+        extendEnv :: [(Id, Node)] -> IntersectionDom
+        extendEnv bindings = ID {
+              idFree   = Map.union (Map.fromList bindings) (idFree dom)
+            , idRecInt = Set.insert (IntersectId i j) (idRecInt dom)
+            }
+
+        -- Find value of free variables in the terms
+        -- Since we assume the input terms are fully interned, we only deal with 'RecInt'.
+        findFreeVar :: RecNodeId -> Node
+        findFreeVar (RecInt intId) | Just n <- Map.lookup intId (idFree dom) = n
+        findFreeVar recId = error $ "findFreeVar: unexpected " <> show recId
+
+        -- We only insert a 'Mu' node when necessary.
+        maybeMu :: Node -> Node
+        maybeMu n
+          | RecIntersect (IntersectId i j) `Set.member` freeVars n
+          = Mu $ \recNode -> substFree (RecIntersect (IntersectId i j)) recNode n
+
+          | otherwise
+          = n
+
+-- | Auxiliary to 'intersectOpen'.
+intersectOpenEdge :: (IntersectionDom, Edge, Edge) -> Edge
+{-# NOINLINE intersectOpenEdge #-}
+intersectOpenEdge = memo (NameTag "intersectOpenEdge") (\(dom, l, r) -> onEdge dom l r)
+  where
+    onEdge :: IntersectionDom -> Edge -> Edge -> Edge
+    onEdge !dom l r =
+         mkEdge (edgeSymbol l)
+                (zipWith (\a b -> intersectOpen (dom, a, b)) (edgeChildren l) (edgeChildren r))
+                (edgeEcs l `combineEqConstraints` edgeEcs r)
 
 ------------
 ------ Union
