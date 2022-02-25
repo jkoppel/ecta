@@ -124,6 +124,43 @@ spec = do
     it "intersect is idempotent" $
       property $ \n1 -> intersect n1 n1 == n1
 
+  describe "intersection examples" $ do
+
+    -- Intersection examples without Mu nodes
+    --
+    -- Note: Intersection between 1 and 3 is not well-defined: must be same-sorted.
+
+    it "remove leaf choice" $
+      intersect intTest1 intTest2 `shouldBe` intTest1
+
+    it "remove non-leaf choice" $
+      intersect intTest3 intTest4 `shouldBe` intTest3
+
+    -- This test is a bit indirect: the intersection results in a term with what I /think/ is an inaccessible branch.
+    -- Not sure if there is a clean-up pass we can do.
+    it "add constraints" $
+      naiveDenotation (intersect intTest5 intTest6) `shouldBe` [Term "g" [Term "a" [],Term "b" []]]
+
+    -- Intersection examples with Mu nodes
+
+    it "intersect (one-step loop) with (its own unfolding: step, one-step)" $
+      intersect intTest7 intTest8 `shouldBe` intTest8
+
+    it "intersect (one-step loop) with (two-step loop)" $
+      intersect intTest7 intTest9 `shouldBe` intTest9
+
+    it "intersect (one-step loop) with (one step, two-step loop)" $
+      intersect intTest7 intTest10 `shouldBe` intTest10
+
+    it "intersect (one step, one-step loop) with (two-step loop)" $
+      intersect intTest8 intTest9 `shouldBe` intTest10
+
+    it "intersect (one step, one-step loop) with (one step, two-step loop)" $
+      intersect intTest8 intTest10 `shouldBe` intTest10
+
+    it "intersect (two-step loop) with (one step, two-step loop)" $
+      intersect intTest9 intTest10 `shouldBe` intTest8
+
   describe "reduction" $ do
     it "reduction preserves naiveDenotation" $
       property $ mapSize (min 3) $ \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (naiveDenotation $ reducePartially n)
@@ -232,3 +269,68 @@ spec = do
 
        Set.intersection (collectAllIds n) (collectAllIds m) `shouldBe` Set.empty
 
+-------------------------------------
+--- Example inputs for the intersection tests
+-------------------------------------
+
+-- | Single zero-argument term
+intTest1 :: Node
+intTest1 = Node [Edge "f" []]
+
+-- | Two zero-argument terms
+intTest2 :: Node
+intTest2 = Node [Edge "f" [], Edge "g" []]
+
+-- | Single one-argument term, two possible arguments
+intTest3 :: Node
+intTest3 = Node [Edge "f" [Node [Edge "a" [], Edge "b" []]]]
+
+-- | Two one-argument terms, each two possible arguments (chosen from the same set)
+intTest4 :: Node
+intTest4 = Node [Edge "f" args, Edge "g" args]
+  where
+    args :: [Node]
+    args = [arg]
+
+    arg :: Node
+    arg = Node [Edge "a" [], Edge "b" []]
+
+-- | Two two-argument terms, no choice for arguments
+intTest5 :: Node
+intTest5 = Node [Edge "f" args, Edge "g" args]
+  where
+    args :: [Node]
+    args = [argA, argB]
+
+    argA, argB :: Node
+    argA = Node [Edge "a" []]
+    argB = Node [Edge "b" []]
+
+-- | Two two-argument terms, same choice for arguments, but constrain the two arguments to be the same if choosing f
+intTest6 :: Node
+intTest6 = Node [mkEdge "f" args cs, Edge "g" args]
+  where
+    args :: [Node]
+    args = [arg, arg]
+
+    arg :: Node
+    arg = Node [Edge "a" [], Edge "b" []]
+
+    cs :: EqConstraints
+    cs = mkEqConstraints [[path [0], path [1]]]
+
+-- | f (f (f (... a)))
+intTest7 :: Node
+intTest7 = createMu $ \r -> Node [Edge "f" [r], Edge "a" []]
+
+-- | intTest7, once unrolled
+intTest8 :: Node
+intTest8 = unfoldOuterRec intTest7
+
+-- | Like intTest7, but with an 'inner' unrolling: two f edges before recursing
+intTest9 :: Node
+intTest9 = createMu $ \r -> Node [Edge "f" [Node [Edge "f" [r], Edge "a" []]], Edge "a" []]
+
+-- | Like intTest9, but with a single additional node on top (not an unrolling: this would result in /two/ additional nodes)
+intTest10 :: Node
+intTest10 = Node [Edge "f" [intTest9], Edge "a" []]
