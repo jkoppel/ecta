@@ -17,6 +17,8 @@ module Data.ECTA.Internal.ECTA.Type (
   , InternedNode(..)
   , InternedMu(..)
   , UninternedNode(..)
+  , IntersectId -- opaque
+  , pattern IntersectId
   , nodeIdentity
   , numNestedMu
   , freeVars
@@ -74,9 +76,48 @@ data RecNodeId =
     -- does not depend on the exact choice of variable, justifies subtituting any other variable for 'RecDepth' in terms
     -- containing 'RecDepth' in all contexts.
   | RecDepth
+
+    -- | Refer to Mu-node-to-be-constructed during intersection
+    --
+    -- TODO: It is obviously not very elegant to have a constructor here specifically for one algorithm. Ideally, we
+    -- would parameterize 'Node' with the type of the identifiers in it. This might be useful also to rule out many
+    -- other cases (specifically, most of the time we are dealing with fully interned nodes, and so the only
+    -- constructor we expect is 'RecInt').
+  | RecIntersect IntersectId
   deriving ( Eq, Ord, Show, Generic )
 
+-- | Context-free references to a 'Mu' node introduced by 'intersect'
+--
+-- Background: This is a generalization of the idea to be able to refer to the "immediately enclosing binder", and then
+-- only deal with graphs with the property that we never need to refer past that enclosing binder. This too would allow
+-- us to refer to a 'Mu' node without knowing its 'Id', at the cost of requiring a substitution when we discover that
+-- 'Id' to return this into a 'RecInt'. The generalization is that all we need to /some/ way to refer to that 'Mu' node
+-- concretely, without 'Id', but we can: intersection introduces 'Mu' whenever it encounters a 'Mu' on the left or the
+-- right, /and will then not introduce another 'Mu' for that same intersection problem (at least, not in the same
+-- scope). This means that the 'Id' of the left and right operand will indeed uniquely identify the 'Mu' node to be
+-- constructed by 'intersect'.
+--
+-- Furthermore, since we cache the free variables in a term, we have a cheap check to see if we need the 'Mu' node at
+-- all. This means that /if/ the input graphs satisfy the property that there are references past 'Mu' nodes, the output
+-- should too: we will not introduce redundant 'Mu' nodes.
+--
+-- NOTE: Although intersect has three cases in which it introduces 'Mu' nodes ('Mu' in both operands, 'Mu' in the left,
+-- or 'Mu' in the right), we don't need that distinction here: we just need to know the 'Id' of the two operands, so
+-- that if we see a call to intersect again /with those same two operands/ (no matter what kind of nodes they are), we
+-- can refer to the newly constructed 'Mu' node.
+data IntersectId =
+     -- Invariant: the two 'Id's should be ordered (guaranteed by the pattern synonym constructor)
+     UnsafeIntersectId !Id !Id
+  deriving ( Eq, Ord, Show, Generic )
+
+pattern IntersectId :: Id -> Id -> IntersectId
+pattern IntersectId i j <- (UnsafeIntersectId i j)
+  where
+    IntersectId i j | i <= j    = UnsafeIntersectId i j
+                    | otherwise = UnsafeIntersectId j i
+
 instance Hashable RecNodeId
+instance Hashable IntersectId
 
 -----------------------------------------------------------------
 ----------------------------- Edges -----------------------------
