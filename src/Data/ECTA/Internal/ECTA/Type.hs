@@ -21,6 +21,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , pattern IntersectId
   , nodeIdentity
   , numNestedMu
+  , substFree
   , freeVars
   , modifyNode
   , createMu
@@ -29,6 +30,9 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+import Data.Maybe ( fromMaybe )
+import           Data.Map.Strict ( Map )
+import qualified Data.Map.Strict as Map
 import           Data.Set ( Set )
 import qualified Data.Set as Set
 
@@ -465,7 +469,10 @@ mkEdge s ns ecs
 
 pattern Node :: [Edge] -> Node
 pattern Node es <- (InternedNode (internedNodeEdges -> es)) where
-  Node es = case removeEmptyEdges es of
+  Node = mkNode
+
+mkNode :: [Edge] -> Node
+mkNode es = case removeEmptyEdges es of
               []  -> EmptyNode
               es' -> intern $ UninternedNode $ nubSort es'
 
@@ -552,7 +559,7 @@ matchMu (InternedMu mu) = Just $ \n' ->
           -- > == numNestedMu internedMuShape
           internedMuShape mu
        | otherwise  ->
-          substFree (internedMuId mu) n' (internedMuBody mu)
+          substFree (RecInt (internedMuId mu)) n' (internedMuBody mu)
 
 matchMu _otherwise = Nothing
 
@@ -565,21 +572,71 @@ matchMu _otherwise = Nothing
 -- Postcondition:
 --
 -- > substFree i (Rec (RecNodeId i)) == id
-substFree :: Id -> Node -> Node -> Node
-substFree old new = go
+substFree :: RecNodeId -> Node -> Node -> Node
+substFree old new = substFree' (Map.singleton old new)
+
+-- | Generalization of 'substFree' to multiple binders.
+substFree' :: Map RecNodeId Node -> Node -> Node
+substFree' env node = case template node of
+                        Template f -> f env
+
+------ Substitution internals
+
+-- | The template of a something is that something with holes for as-yet unknown 'Id's
+--
+-- This datatype should satisfy two properties for 'template' to work correctly:
+--
+-- 1. Forcing the 'Template' to WHNF should not result in any recursive calls
+--    (so that the recursion isn't totally unrolled before memoization can happen).
+-- 2. But forcing the /function inside/ the 'Template' to WHNF /should/ result in all recursive calls to happen,
+--    (/before/ the function is executed: executing the function should /not/ cause further calls to 'template').
+--
+-- The idea here is that a function returning a 'Template', the application of that 'Template' should not result in
+-- further recursive calls to that function, so that any expensive computation done by that function is not repeated,
+-- but is done independently of the environment (the 'Map') that we provide to the 'Template'. Put another way: the
+-- function can be memoized independently of that environment. For substitution this may not matter very much, but for
+-- other functions it could. Note however that the resulting 'Template' does build the graph on each invocation; this
+-- may still be prohibitively expensive. See 'intersect' for an example of how we can avoid an environment altogether.
+-- (This is not an option for substitution of course, where the environment is part of the API of the function.)
+data Template a = Template (Map RecNodeId Node -> a)
+
+-- | Commute @[]@ and 'Template'
+--
+-- Forces all elements in the list
+sequenceTemplate :: [Template a] -> Template [a]
+sequenceTemplate = Template . go []
   where
-    go :: Node -> Node
-    go = memo (NameTag "substFree") go'
-    {-# NOINLINE go #-}
+    go :: [Map RecNodeId Node -> a] -> [Template a] -> Map RecNodeId Node -> [a]
+    go acc []               = \env -> reverse (map ($ env) acc)
+    go acc (Template !f:fs) = go (f:acc) fs
 
-    go' :: Node -> Node
-    go' EmptyNode           = EmptyNode
-    go' (InternedNode node) = intern $ UninternedNode (nubSort $ map goEdge (internedNodeEdges node))
-    go' (InternedMu mu)     = intern $ UninternedMu $ \nid -> go (substFree (internedMuId mu) (Rec nid) (internedMuBody mu))
-    go' n@(Rec recId)       = if recId == RecInt old
-                                then new
-                                else n
+-- | Extract the shape from a term
+--
+-- Somewhat serendipitously (or does this point to some deeper truth?) this also serves as a definition of substitution:
+-- any free variables in the original node will become " holes " in the 'Template'.
+--
+-- We do not use the pattern synonyms here, because 'template' is used (through 'substFree') to /define/ those
+-- pattern synonyms.
+template :: Node -> Template Node
+{-# NOINLINE template #-}
+template = memo (NameTag "template") onNode
+  where
+    onNode :: Node -> Template Node
+    onNode n = Template $
+        case n of
+          EmptyNode         -> \_ -> EmptyNode
+          InternedNode node -> case sequenceTemplate $ map templateEdge (internedNodeEdges node) of
+                                      Template !f -> \env -> mkNode (f env)
+          InternedMu mu     -> case onNode (internedMuBody mu) of
+                                      Template !f -> \env -> createMu $ \r -> f (Map.insert (RecInt (internedMuId mu)) r env)
+          Rec i             -> \env -> fromMaybe n (Map.lookup i env)
 
-    goEdge :: Edge -> Edge
-    goEdge e = setChildren e $ map go (edgeChildren e)
-
+-- | Internal auxiliary to 'template'
+templateEdge :: Edge -> Template Edge
+{-# NOINLINE templateEdge #-}
+templateEdge = memo (NameTag "templateEdge") onEdge
+  where
+    onEdge :: Edge -> Template Edge
+    onEdge e =
+        Template $ case sequenceTemplate (map template (edgeChildren e)) of
+                  Template !f -> setChildren e . f
