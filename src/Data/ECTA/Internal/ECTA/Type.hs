@@ -212,7 +212,7 @@ instance Eq Node where
 instance Show Node where
   show (InternedNode node) = "(Node " <> show (internedNodeEdges node) <> ")"
   show EmptyNode           = "EmptyNode"
-  show (InternedMu mu)     = "(Mu " <> show (internedMuBody mu) <> ")"
+  show (InternedMu mu)     = "(Mu " <> show (internedMuId mu) <> " " <> show (internedMuBody mu) <> ")"
   show (Rec n)             = "(Rec " <> show n <> ")"
 
 instance Ord Node where
