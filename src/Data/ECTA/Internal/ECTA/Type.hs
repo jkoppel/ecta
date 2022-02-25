@@ -19,6 +19,7 @@ module Data.ECTA.Internal.ECTA.Type (
   , UninternedNode(..)
   , nodeIdentity
   , numNestedMu
+  , freeVars
   , modifyNode
   , createMu
   ) where
@@ -26,6 +27,8 @@ module Data.ECTA.Internal.ECTA.Type (
 import Data.Function ( on )
 import Data.Hashable ( Hashable(..) )
 import Data.List ( sort )
+import           Data.Set ( Set )
+import qualified Data.Set as Set
 
 import GHC.Generics ( Generic )
 
@@ -143,6 +146,9 @@ data InternedNode = MkInternedNode {
 
       -- | Maximum Mu nesting depth in the term
     , internedNodeNumNestedMu :: !Int
+
+      -- | Free variables in the term
+    , internedNodeFree :: !(Set RecNodeId)
     }
   deriving (Show)
 
@@ -200,6 +206,17 @@ numNestedMu EmptyNode           = 0
 numNestedMu (InternedNode node) = internedNodeNumNestedMu node
 numNestedMu (InternedMu   mu)   = 1 + numNestedMu (internedMuBody mu)
 numNestedMu (Rec _)             = 0
+
+-- | Free variables in the term
+--
+-- @O(1) in the size of the graph, provided that there are no unbounded Mu chains in the term.
+-- @O(log n)@ in the number of free variables in the graph, which we expect to be orders of magnitude smaller than the
+-- size of the graph (indeed, we don't expect more than a handful).
+freeVars :: Node -> Set RecNodeId
+freeVars EmptyNode           = Set.empty
+freeVars (InternedNode node) = internedNodeFree node
+freeVars (InternedMu   mu)   = Set.delete (RecInt (internedMuId mu)) (freeVars (internedMuBody mu))
+freeVars (Rec i)             = Set.singleton i
 
 ----------------------
 ------ Getters and setters
@@ -260,6 +277,7 @@ instance Interned Node where
         internedNodeId          = i
       , internedNodeEdges       = es
       , internedNodeNumNestedMu = maximum (0 : concatMap (map numNestedMu . edgeChildren) es) -- depth is always >= 0
+      , internedNodeFree        = Set.unions (concatMap (map freeVars . edgeChildren) es)
       }
   identify _ UninternedEmptyNode = EmptyNode
   identify i (UninternedMu n)    = InternedMu $ MkInternedMu {
