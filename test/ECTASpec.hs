@@ -161,6 +161,9 @@ spec = do
     it "intersect (two-step loop) with (one step, two-step loop)" $
       intersect intTest9 intTest10 `shouldBe` intTest8
 
+    it "intersect with nested Mus" $
+      intersect intTest11 intTest12 `shouldBe` (Node [Edge "f" [createMu $ \r -> Node [Edge "f" [r]]]])
+
   describe "reduction" $ do
     it "reduction preserves naiveDenotation" $
       property $ mapSize (min 3) $ \n -> HashSet.fromList (naiveDenotation n) `shouldBe` HashSet.fromList (naiveDenotation $ reducePartially n)
@@ -334,3 +337,11 @@ intTest9 = createMu $ \r -> Node [Edge "f" [Node [Edge "f" [r], Edge "a" []]], E
 -- | Like intTest9, but with a single additional node on top (not an unrolling: this would result in /two/ additional nodes)
 intTest10 :: Node
 intTest10 = Node [Edge "f" [intTest9], Edge "a" []]
+
+-- | Example with nested Mu: refer to outer Mu
+intTest11 :: Node
+intTest11 = createMu $ \r -> createMu $ \_r' -> Node [Edge "f" [r]]
+
+-- | Example with nested Mu: refer to inner Mu
+intTest12 :: Node
+intTest12 = createMu $ \_r -> createMu $ \r' -> Node [Edge "f" [r']]
