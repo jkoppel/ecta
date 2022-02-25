@@ -114,14 +114,14 @@ hplus_benchmarks = [
               '[("vs",TCons "List" [TCons "Int" []]),("edge",TCons "Pair" [TCons "Int" [],TCons "Int" []])]', 'TCons "Bool" []'),
 ]
 
-stackoverflow_benchmarks = {
+stackoverflow_benchmarks = [
     Benchmark("extractEitherValues", 5, '(Term "app" [Term "app" [Term "GHC.List.map" [], Term "app" [Term "app" [Term "Data.Either.either" [], Term "id" []], Term "id" []]], Term "es" []])',
               '[("es",TCons "List" [TCons "Either" [TVar "b",TVar "b"]])]', 'TCons "List" [TVar "b"]'),
     Benchmark("filterMultiple", 6, '(Term "app" [Term "app" [Term "GHC.List.filter" [], Term "app" [Term "app" [Term "Data.Function.flip" [], Term "app" [Term "GHC.List.elem" [], Term "tcarg0" []]], Term "xs" []]], Term "ys" []])',
               '[("tcarg0",TCons "@@hplusTC@@Eq" [TVar "a"]),("xs",TCons "List" [TVar "a"]),("ys",TCons "List" [TVar "a"])]', 'TCons "List" [TVar "a"]'),
     Benchmark("filterNot", 5, '(Term "app" [Term "app" [Term "GHC.List.filter" [], Term "app" [Term "app" [Term "(Data.Function..)" [], Term "Data.Bool.not" []], Term "p" []]], Term "xs" []])',
               '[("p",TFun (TVar "a") (TCons "Bool" [])),("xs",TCons "List" [TVar "a"])]', 'TCons "List" [TVar "a"]'),
-    Benchmark("isSortedBy", 7, '(Term "app" [Term "GHC.List.and" [], Term "app" [Term "app" [Term "app" [Term "GHC.List.zipWith" [], Term "cmp" []], Term "app" [Term "GHC.List.init" [], Term "xs" []]], Term "app" [Term "GHC.List.tail" [], Term "xs" []]]])',
+    Benchmark("isSortedBy", 6, '(Term "app" [Term "GHC.List.and" [], Term "app" [Term "app" [Term "app" [Term "GHC.List.zipWith" [], Term "cmp" []], Term "xs" []], Term "app" [Term "GHC.List.tail" [], Term "xs" []]]])',
               '[("cmp", TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" []))),("xs",TCons "List" [TVar "a"])]', 'TCons "Bool" []'),
     Benchmark("multipleNth", 4, '(Term "app" [Term "app" [Term "GHC.List.map" [], Term "app" [Term "(GHC.List.!!)" [], Term "xs" []]], Term "indices" []])',
               '[("xs",TCons "List" [TVar "a"]),("indices",TCons "List" [TCons "Int" []])]', 'TCons "List" [TVar "a"]'),
@@ -147,13 +147,13 @@ stackoverflow_benchmarks = {
               '[("f",TFun (TVar "a") (TVar "a")),("xs",TCons "List" [TVar "a"])]', 'TCons "List" [TVar "a"]'),
     Benchmark("removeMax", 7, '(Term "app" [Term "app" [Term "GHC.List.filter" [], Term "app" [Term "app" [Term "(Data.Eq./=)_Ord" [], Term "tcarg0" []], Term "app" [Term "app" [Term "GHC.List.maximum" [], Term "tcarg0" []], Term "xs" []]]], Term "xs" []])',
               '[("tcarg0",TCons "@@hplusTC@@Ord" [TVar "a"]),("xs",TCons "List" [TVar "a"])]', 'TCons "List" [TVar "a"]'),
-    Benchmark("allSameLength", 7, '(Term "app" [Term "app" [Term "GHC.List.all" [], Term "app" [Term "app" [Term "app" [Term "Data.Function.on" [], Term "app" [Term "(Data.Eq.==)" [], Term "@@hplusTCInstance@@0EqInt" []]], Term "GHC.List.length" []], Term "xs" []]], Term "xss" []])',
-              '[("xs",TCons "List" [TVar "a"]),("xss",TCons "List" [TCons "List" [TVar "a"]])]', 'TCons "Bool" []'),
-    Benchmark("mostFrequent", 7, '(Term "app" [Term "app" [Term "Data.List.maximumBy" [], Term "app" [Term "app" [Term "Data.Function.on" [], Term "app" [Term "Data.Ord.compare" [], Term "@@hplusTCInstance@@0OrdInt" []]], Term "Data.Tuple.snd" []]], Term "app" [Term "occur" [], Term "xs" []]])',
-              '[("xs",TCons "List" [TVar "a"]), ("occur", TFun (TCons "List" [TVar "a"]) (TCons "List" [TCons "Pair" [TVar "a", TCons "Int" []]]))]', 'TCons "Pair" [TVar "a", TCons "Int" []]'),
+    Benchmark("allSameBy", 7, '(Term "app" [Term "app" [Term "GHC.List.all" [], Term "app" [Term "app" [Term "app" [Term "Data.Function.on" [], Term "app" [Term "(Data.Eq.==)" [], Term "tcarg0" []]], Term "cmp" []], Term "xs" []]], Term "xss" []])',
+              '[("tcarg0", TCons "@@hplusTC@@Eq" [TVar "b"]), ("cmp", TFun (TVar "a") (TVar "b")), ("xs", TVar "a"),("xss",TCons "List" [TVar "a"])]', 'TCons "Bool" []'),
+    Benchmark("mostFrequent", 7, '(Term "app" [Term "app" [Term "Data.List.maximumBy" [], Term "app" [Term "app" [Term "Data.Function.on" [], Term "app" [Term "Data.Ord.compare" [], Term "tcarg0" []]], Term "Data.Tuple.snd" []]], Term "app" [Term "occur" [], Term "xs" []]])',
+              '[("tcarg0", TCons "@@hplusTC@@Ord" [TVar "b"]), ("xs",TCons "List" [TVar "a"]), ("occur", TFun (TCons "List" [TVar "a"]) (TCons "List" [TCons "Pair" [TVar "a", TVar "b"]]))]', 'TCons "Pair" [TVar "a", TVar "b"]'),
     Benchmark("splitOn", 7, '(Term "app" [Term "app" [Term "Data.List.groupBy" [], Term "app" [Term "app" [Term "Data.Function.on" [], Term "(Data.Bool.&&)" []], Term "app" [Term "app" [Term "(Data.Eq./=)" [], Term "tcarg0" []], Term "x" []]]], Term "xs" []])',
               '[("tcarg0", TCons "@@hplusTC@@Eq" [TVar "a"]), ("x", TVar "a"), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TCons "List" [TVar "a"]]'),
-}
+]
 
 
 class BenchmarkResult:
@@ -168,23 +168,23 @@ def get_time(s):
     return match_result.group(1)
 
 
-def to_time(str):
-    if str:
-        return float(str)
+def to_time(s):
+    if s:
+        return float(s)
     else:
         return None
 
 
-def run_benchmark(bench, ablation):
-    p = Popen(RUN_CMD + [str(bench), "--ablation", ablation], stdin=PIPE, stdout=PIPE)
+def run_benchmark(bench, ablation, limit):
+    p = Popen(RUN_CMD + [str(bench), "--ablation", ablation, "--timeoutlimit", str(limit)], stdin=PIPE, stdout=PIPE)
     prev_line = None
     syn_prog = None
     syn_time = None
     for line in iter(p.stdout.readline, b''):
         print(line.decode(), end='')
         syn_prog = prev_line
-        if line.decode().startswith("Time:"):
-            syn_time = get_time(line)
+        if "Time:" in line.decode():
+            syn_time = get_time(line.decode())
             print("Success", syn_time)
         else:
             prev_line = line.decode()
@@ -203,7 +203,8 @@ def build_argparser():
         '--suites', choices=['hplus', 'stackoverflow', 'all'], default='all', help="which suites to run")
     argparser.add_argument('--benchmarks', nargs='+',
                            help="which benchmarks to run")
-    argparser.add_argument('--ablation', choices=['default', 'noReduction', 'noEnumeration'], default='default', help="which ablation to run")
+    argparser.add_argument('--ablation', choices=['default', 'noReduction', 'noEnumeration', 'noOptimize'], default='default', help="which ablation to run")
+    argparser.add_argument('--timeout', type=int, default=300, help="timeout for each benchmark")
     return argparser
 
 
@@ -225,19 +226,20 @@ if __name__ == "__main__":
         else:
             benchmarks['stackoverflow'] = stackoverflow_benchmarks
 
-    syn_results = []
-    for suite, suite_benches in benchmarks.items():
-        print("===============================================================")
-        print("Running suite", suite)
-        for bench in suite_benches:
-            print("---------------------------------------------------------------")
-            print("Running benchmark: " + bench.name)
-            run_benchmark(bench, args.ablation)
+    for i in range(3):
+        syn_results = []
+        for suite, suite_benches in benchmarks.items():
+            print("===============================================================")
+            print("Running suite", suite)
+            for bench in suite_benches:
+                print("---------------------------------------------------------------")
+                print("Running benchmark: " + bench.name)
+                run_benchmark(bench, args.ablation, args.timeout)
 
-    # write results to csv
-    csv_file = "results" + "_" + args.ablation + ".csv"
-    with open(csv_file, "w") as f:
-        f.write("name,sol,time\n")
-        for result in syn_results:
-            f.write("{}\t{}\t{}\n".format(
-                result.name, result.sol, result.time))
+        # write results to csv
+        csv_file = "results" + "_" + args.suites + "_" + args.ablation + "_" + str(i) + ".csv"
+        with open(csv_file, "w") as f:
+            f.write("name,sol,time\n")
+            for result in syn_results:
+                f.write("{}\t{}\t{}\n".format(
+                    result.name, result.sol, result.time))

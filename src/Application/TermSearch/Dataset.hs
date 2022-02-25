@@ -1086,17 +1086,10 @@ hooglePlusComponents =
 
 augumentedComponents :: [(Text, TypeSkeleton)]
 augumentedComponents =
-  [ ( "(Data.Function..)"
+  [ 
+    ( "(Data.Function..)"
     , TFun (TFun (TVar "b") (TVar "c"))
            (TFun (TFun (TVar "a") (TVar "b")) (TFun (TVar "a") (TVar "c")))
-    )
-  , ( "(Data.Ord.<)"
-    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
-           (TFun (TVar "a") (TFun (TVar "a") (TCons "Bool" [])))
-    )
-  , ( "Data.Ord.compare"
-    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
-           (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
     )
   , ( "Data.Function.on"
     , TFun
@@ -1104,6 +1097,10 @@ augumentedComponents =
       (TFun (TFun (TVar "a") (TVar "b"))
             (TFun (TVar "a") (TFun (TVar "a") (TVar "c")))
       )
+    )
+  , ( "Data.Function.flip"
+    , TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
+           (TFun (TVar "b") (TFun (TVar "a") (TVar "c")))
     )
   , ( "Data.List.groupBy"
     , TFun
@@ -1114,21 +1111,25 @@ augumentedComponents =
     , TFun (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
            (TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "a"]))
     )
-  , ( "Data.Function.flip"
-    , TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c")))
-           (TFun (TVar "b") (TFun (TVar "a") (TVar "c")))
+  , ( "Data.List.maximumBy"
+    , TFun (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
+           (TFun (TCons "List" [TVar "a"]) (TVar "a"))
+    )
+  , ( "Data.Ord.compare"
+    , TFun (TCons "@@hplusTC@@Ord" [TVar "a"])
+           (TFun (TVar "a") (TFun (TVar "a") (TCons "Ordering" [])))
     )
   ]
 
-hoogleComponents :: Map TypeSkeleton Text
-hoogleComponents = fst (mkGroups hooglePlusComponents)
-
-groupMapping :: Map Text Text
-groupMapping = snd (mkGroups hooglePlusComponents)
-
--- switch to this when you run experiments on stackoverflow benchmarks
 -- hoogleComponents :: Map TypeSkeleton Text
--- hoogleComponents = fst (mkGroups $ hooglePlusComponents ++ augumentedComponents)
+-- hoogleComponents = fst (mkGroups hooglePlusComponents)
 
 -- groupMapping :: Map Text Text
--- groupMapping = snd (mkGroups $ hooglePlusComponents ++ augumentedComponents)
+-- groupMapping = snd (mkGroups hooglePlusComponents)
+
+-- switch to this when you run experiments on stackoverflow benchmarks
+hoogleComponents :: Map TypeSkeleton Text
+hoogleComponents = fst (mkGroups $ hooglePlusComponents ++ augumentedComponents)
+
+groupMapping :: Map Text Text
+groupMapping = snd (mkGroups $ hooglePlusComponents ++ augumentedComponents)

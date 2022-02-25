@@ -22,8 +22,8 @@ import           Application.TermSearch.TermSearch
 import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
-runBenchmark :: Benchmark -> AblationType -> IO ()
-runBenchmark (Benchmark name depth sol args res) ablation = do
+runBenchmark :: Benchmark -> AblationType -> Int -> IO ()
+runBenchmark (Benchmark name depth sol args res) ablation limit = do
     start <- getCurrentTime
     putStrLn $ "Running benchmark " ++ Text.unpack name
     let argNodes = map (Bi.bimap Symbol typeToFta) args
@@ -34,9 +34,11 @@ runBenchmark (Benchmark name depth sol args res) ablation = do
             (relevantTermsUptoK anyArg argNodes depth)
             resNode
 
-    _ <- timeout (300 * 10 ^ (6 :: Int)) $ do
+    _ <- timeout (limit * 10 ^ (6 :: Int)) $ do
         case ablation of
             NoReduction -> do
+                prettyPrintAllTerms ablation (substTerm sol) filterNode
+            NoOptimize  -> do
                 prettyPrintAllTerms ablation (substTerm sol) filterNode
             _           -> do
                 reducedNode <- reduceFullyAndLog filterNode

@@ -453,6 +453,7 @@ prettyPrintAllTerms ablation sol n = do
   putStrLn $ "Expected: " ++ show (pretty sol)
   let ts = case ablation of
              NoEnumeration -> naiveDenotation n
+             NoOptimize    -> naiveDenotation n
              _             -> getAllTerms n
   checkSolution sol ts
 
