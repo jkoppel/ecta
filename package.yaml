@@ -26,6 +26,7 @@ dependencies:
 - hashable
 - language-dot
 - mtl
+- pipes
 - pretty-simple
 - text
 - time

@@ -102,6 +102,7 @@ library
     , language-dot
     , lens
     , mtl
+    , pipes
     , pretty-simple
     , raw-strings-qq
     , text
@@ -156,6 +157,7 @@ executable compact-coupled-terms-exe
     , hashable
     , language-dot
     , mtl
+    , pipes
     , pretty-simple
     , text
     , time
@@ -219,6 +221,7 @@ test-suite unit-tests
     , hspec
     , language-dot
     , mtl
+    , pipes
     , pretty-simple
     , text
     , time
@@ -276,6 +279,7 @@ benchmark mainbench
     , hashable
     , language-dot
     , mtl
+    , pipes
     , pretty-simple
     , text
     , time
