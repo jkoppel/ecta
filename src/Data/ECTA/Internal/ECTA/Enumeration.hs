@@ -41,18 +41,20 @@ module Data.ECTA.Internal.ECTA.Enumeration (
   , naiveDenotation
   ) where
 
-import Control.Monad ( mzero, forM_, guard, void )
+import Control.Monad ( forM_, guard )
 import Control.Monad.State.Strict ( StateT(..) )
-import Control.Monad.Trans ( lift )
 import qualified Data.IntMap as IntMap
 import Data.Maybe ( fromMaybe, isJust )
 import Data.Monoid ( Any(..) )
 import Data.Semigroup ( Max(..) )
-import Data.Sequence ( Seq((:<|), (:|>)) )
+import           Data.Sequence ( Seq((:<|), (:|>)) )
 import qualified Data.Sequence as Sequence
+import Control.Monad.Identity ( Identity )
 
 import Control.Lens ( use, ix, (%=), (.=) )
 import Control.Lens.TH ( makeLenses )
+import           Pipes
+import qualified Pipes.Prelude as Pipes
 
 import Data.List.Index ( imapM )
 
@@ -429,24 +431,24 @@ getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
 --
 -- where it always unfolds the /second/ argument to @h@, never the first.
 naiveDenotation :: Node -> [Term]
-naiveDenotation = go
+naiveDenotation node = Pipes.toList $ every (go 1 node)
   where
     -- | Note that this code uses the decision that f(a,a) does not satisfy the constraint 0.0=1.0 because those paths are empty.
     --   It would be equally valid to say that it does.
     ecsSatisfied :: Term -> EqConstraints -> Bool
-    ecsSatisfied t ecs = all (\ps -> all (\p' -> isJust (getPath (head ps) t) && getPath (head ps) t == getPath p' t) ps)
+    ecsSatisfied t ecs = all (\ps -> isJust (getPath (head ps) t) && all (\p' -> getPath (head ps) t == getPath p' t) ps)
                              (map unPathEClass $ unsafeGetEclasses ecs)
 
-    go :: Node -> [Term]
-    go n = case n of
-             EmptyNode -> []
-             Mu  _     -> go (unfoldOuterRec n)
-             Rec _     -> error "naiveDenotation: unexpected Rec"
-             Node es   -> do
-               e <- es
+    go :: Int -> Node -> ListT Identity Term
+    go depth n = case n of
+                  EmptyNode -> mzero
+                  Mu  _     -> if depth <= 0 then mzero else go (depth - 1) (unfoldOuterRec n)
+                  Rec _     -> error "naiveDenotation: unexpected Rec"
+                  Node es   -> do
+                    e <- Select $ each es
 
-               children <- sequence $ map go (edgeChildren e)
+                    children <- mapM (go depth) (edgeChildren e)
 
-               let res = Term (edgeSymbol e) children
-               guard $ ecsSatisfied res (edgeEcs e)
-               return res
+                    let res = Term (edgeSymbol e) children
+                    guard $ ecsSatisfied res (edgeEcs e)
+                    return res
