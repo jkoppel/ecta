@@ -13,8 +13,8 @@ import Data.Maybe ( maybeToList )
 import Data.String (IsString(..) )
 import Data.Text ( Text )
 import qualified Data.Text as Text
-
 import GHC.Generics ( Generic )
+import Text.Read ( Read(..) )
 
 import Data.Interned.Text ( InternedText, internedTextId )
 
@@ -49,19 +49,21 @@ instance Hashable Symbol where
 instance IsString Symbol where
   fromString = Symbol . fromString
 
+instance Read Symbol where
+  readPrec = Symbol <$> readPrec
 
 ---------------------------------------------------------------
 ---------------------------- Terms ----------------------------
 ---------------------------------------------------------------
 
 data Term = Term !Symbol ![Term]
-  deriving ( Eq, Ord, Show, Generic )
+  deriving ( Eq, Ord, Read, Show, Generic )
 
 instance Hashable Term
 
 instance Pretty Term where
   pretty (Term s [])            = pretty s
-  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate "," $ map pretty ts) <> ")"
+  pretty (Term s ts)            = pretty s <> "(" <> (Text.intercalate ", " $ map pretty ts) <> ")"
 
 ---------------------
 ------ Term ops

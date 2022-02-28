@@ -51,7 +51,6 @@ module Data.ECTA.Internal.ECTA.Operations (
 
 import Control.Monad.State.Strict ( evalState, State, MonadState(..), modify' )
 import Data.Hashable ( hash )
-import           Data.HashMap.Strict ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
 import Data.List ( inits, tails )
 import Data.Maybe ( catMaybes )
@@ -69,9 +68,9 @@ import Data.ECTA.Internal.Term
 
 --   Switch the comments on these lines to switch to ekmett's original `intern` library
 --   instead of our single-threaded hashtable-based reimplementation.
-import Data.Interned.Extended.HashTableBased ( Id, intern )
---import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
---import Data.Interned.Extended.SingleThreaded ( intern )
+import Data.Interned.Extended.HashTableBased ( Id )
+-- import Data.Interned ( Interned(..), unintern, Id, Cache, mkCache )
+-- import Data.Interned.Extended.SingleThreaded ( intern )
 
 import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
@@ -150,20 +149,20 @@ nodeEdges n@(Mu _)  = nodeEdges (unfoldOuterRec n)
 nodeEdges _         = []
 
 refold :: Node -> Node
-refold n = if HashMap.null muNodeMap then
-             n
-           else
-             fixUnbounded tryUnfold n
+refold = memo (NameTag "refold") go
   where
-    muNodeMap :: HashMap Node Node
-    muNodeMap = crush (\case x@(Mu _) -> HashMap.singleton (unfoldOuterRec x) x
-                             _        -> HashMap.empty)
-                      n
+    go :: Node -> Node
+    go n = if HashMap.null muNodeMap 
+             then n
+             else fixUnbounded (mapNodes tryUnfold) n
+      where
+        muNodeMap = crush (\case x@(Mu _) -> HashMap.singleton (unfoldOuterRec x) x
+                                 _        -> HashMap.empty)
+                          n
 
-    tryUnfold :: Node -> Node
-    tryUnfold x = case HashMap.lookup x muNodeMap of
-                    Just y  -> y
-                    Nothing -> x
+        tryUnfold x = case HashMap.lookup x muNodeMap of
+                        Just y  -> y
+                        Nothing -> x
 
 unfoldBounded :: Int -> Node -> Node
 unfoldBounded 0 = mapNodes (\case Mu _ -> EmptyNode
@@ -218,7 +217,10 @@ edgeRepresents e = \t@(Term s ts) -> s == edgeSymbol e
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") doIntersect
+intersect = memo2 (NameTag "intersect") go
+  where
+    go :: Node -> Node -> Node
+    go n1 n2 = refold (nodeDropRedundantEdges (doIntersect n1 n2))
 {-# NOINLINE intersect #-}
 
 
@@ -245,9 +247,9 @@ doIntersect n1@(Node es1) n2@(Node es2)
 doIntersect n1 n2 = error $ "doIntersect: Unexpected " <> show n1 <> " " <> show n2
 
 
-_nodeDropRedundantEdges :: Node -> Node
-_nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
-_nodeDropRedundantEdges node      = error $ "nodeDropRedundantEdges: unexpected node " <> show node
+nodeDropRedundantEdges :: Node -> Node
+nodeDropRedundantEdges (Node es) = Node $ dropRedundantEdges es
+nodeDropRedundantEdges n         = n
 
 data RuleOutRes = Keep | RuledOutBy Edge
 
@@ -328,8 +330,8 @@ instance Pathable Node Node where
   type Emptyable Node = Node
 
   getPath _                EmptyNode = EmptyNode
-  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath EmptyPath        n         = n
+  getPath p                n@(Mu _)  = getPath p (unfoldOuterRec n)
   getPath (ConsPath p ps) (Node es)  = union $ map (getPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -337,8 +339,8 @@ instance Pathable Node Node where
   getPath p                n         = error $ "getPath: unexpected path " <> show p <> " for node " <> show n
 
   getAllAtPath _               EmptyNode = []
-  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath EmptyPath       n         = [n]
+  getAllAtPath p               n@(Mu _)  = getAllAtPath p (unfoldOuterRec n)
   getAllAtPath (ConsPath p ps) (Node es) = concatMap (getAllAtPath ps) (catMaybes (map goEdge es))
     where
       goEdge :: Edge -> Maybe Node
@@ -382,39 +384,73 @@ withoutRedundantEdges n = mapNodes dropReds n
     dropReds (Node es) = Node (dropRedundantEdges es)
     dropReds x         = x
 
-
 ---------------
 --- Reducing Equality Constraints
 ---------------
 
 reducePartially :: Node -> Node
-reducePartially = memo (NameTag "reducePartially") go
-  where
-    go :: Node -> Node
-    go EmptyNode  = EmptyNode
-    go n@(Mu _)   = n
-    go n@(Node _) = modifyNode n $ \es -> map (\e -> intern $ (uninternedEdge e) {uEdgeChildren = map reducePartially (edgeChildren e)})
-                                          $ map reduceEdgeIntersection es
-    go (Rec _)    = error "reducePartially: unexpected Rec"
-{-# NOINLINE reducePartially #-}
+reducePartially = reducePartially' EmptyConstraints
 
-reduceEdgeIntersection :: Edge -> Edge
-reduceEdgeIntersection = memo (NameTag "reduceEdgeIntersection") go
+reducePartially' :: EqConstraints -> Node -> Node
+reducePartially' = memo2 (NameTag "reducePartially'") go
   where
-   go :: Edge -> Edge
-   go e = mkEdge (edgeSymbol e)
-                 (reduceEqConstraints (edgeEcs e) (edgeChildren e))
-                 (edgeEcs e)
+    go :: EqConstraints -> Node -> Node
+    go _            EmptyNode  = EmptyNode
+    go _            (Mu n)     = Mu n
+    go inheritedEcs n@(Node _) = modifyNode n $ \es -> map (reduceChildren inheritedEcs)
+                                                       $ map (reduceEdgeIntersection inheritedEcs) es
+    go _            (Rec _)    = error "reducePartially: unexpected Rec"
+
+    reduceChildren :: EqConstraints -> Edge -> Edge
+    reduceChildren inheritedEcs e = setChildren e $ reduceWithInheritedEcs (inheritedEcs `combineEqConstraints` edgeEcs e) (edgeChildren e)
+
+    -- | Reduce children with inherited constraints
+    --
+    -- This function is used to avoid infinite unfolding of recursive nodes,
+    -- and we do this by passing constraints from the current edge and ancestors to descendants.
+    -- For example, let `tau` be "any" node, and we define
+    --
+    -- > let n1 = Node [ mkEdge "Pair" [tau, tau] (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])]
+    -- > let n2 = Node [ Edge "Pair" [tau, tau] ]
+    -- > let n  = Node [ mkEdge "Pair" [n1, n2]   (mkEqConstraints [[path [0, 0], path [0, 1], path [1]]])]
+    --
+    -- We notice that, if we call `reducePartially n` without propagating constraints down to its children `n1` or `n2`,
+    -- the `tau` can be infinitely expanded between rounds of reduction.
+    --
+    -- To break such cycles, we actively pass constraints down to children.
+    -- In this example, we first call `reducePartially' EmptyConstraints n` at the top level, where the inherited constraint is empty,
+    -- so we only need to consider the constraints from the current edge.
+    -- Then, we pass the constraints `0.0=0.1=1` down to its children, and `n1` receives `0=1` and `n2` receives nothing.
+    -- Next, we reduce the children of `n` by calling `reducePartially' (mkEqConstraints [[path [0], path [1]]]) n1`.
+    -- At this node, we will have to combine the inherited constraints `0=1` and the local constraints `0.0=0.1=1`.
+    -- Now, we can see that these two constraints contain a contradiction that requires `0=0.0=0.1`, so we can drop the edge.
+    --
+    -- TODO: this approach does not solve all cases of cycles. See the test case `loop2` in `src/Application/TermSearch/Utils.hs`.
+    reduceWithInheritedEcs :: EqConstraints -> [Node] -> [Node]
+    reduceWithInheritedEcs EqContradiction children = map (const EmptyNode) children
+    reduceWithInheritedEcs inheritedEcs    children = zipWith (\i -> reducePartially' (eqConstraintsDescend inheritedEcs i)) [0..] children
+
+{-# NOINLINE reducePartially' #-}
+
+reduceEdgeIntersection :: EqConstraints -> Edge -> Edge
+reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
+  where
+   go :: EqConstraints -> Edge -> Edge
+   go ecs e = mkEdge (edgeSymbol e)
+                     (reduceEqConstraints (edgeEcs e) ecs (edgeChildren e))
+                     (edgeEcs e)
 {-# NOINLINE reduceEdgeIntersection #-}
 
-reduceEqConstraints :: EqConstraints -> [Node] -> [Node]
+reduceEqConstraints :: EqConstraints -> EqConstraints -> [Node] -> [Node]
 reduceEqConstraints = go
   where
     propagateEmptyNodes :: [Node] -> [Node]
-    propagateEmptyNodes ns = if any (==EmptyNode) ns then map (const EmptyNode) ns else ns
+    propagateEmptyNodes ns = if EmptyNode `elem` ns then map (const EmptyNode) ns else ns
 
-    go :: EqConstraints -> [Node] -> [Node]
-    go ecs origNs = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
+    go :: EqConstraints -> EqConstraints -> [Node] -> [Node]
+    go ecs inheritedEcs origNs
+      | constraintsAreContradictory (ecs `combineEqConstraints` inheritedEcs) = map (const EmptyNode) origNs
+      | otherwise                                                             = propagateEmptyNodes $ foldr reduceEClass withNeededChildren eclasses
       where
         eclasses = unsafeSubsumptionOrderedEclasses ecs
 
@@ -438,7 +474,7 @@ reduceEqConstraints = go
         --toIntersect ns ps = replicate (length ps) $ intersectList $ map (nodeDropRedundantEdges . flip getPath ns) ps
         --toIntersect ns ps = map intersectList $ dropOnes $ map (nodeDropRedundantEdges . flip getPath ns) ps
         --toIntersect ns ps = replicate (length ps) $ intersectList $ map (flip getPath ns) ps
-        toIntersect ns ps = map intersectList $ dropOnes $ map (flip getPath ns) ps
+        toIntersect ns ps = map intersectList $ dropOnes $ map (`getPath` ns) ps
 
         -- | dropOnes [1,2,3,4] = [[2,3,4], [1,3,4], [1,2,4], [1,2,3]]
         dropOnes :: [a] -> [[a]]

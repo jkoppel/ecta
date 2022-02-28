@@ -5,7 +5,7 @@
 --  Also a constructive proof of the NP-hardness of finding
 --  a term represented by an ECTA
 
-module SAT (
+module Application.SAT (
   -- * Data types
     Var
   , mkVar
