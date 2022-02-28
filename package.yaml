@@ -21,11 +21,14 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base
+- cmdargs
 - containers
 - hashable
 - language-dot
 - mtl
+- pretty-simple
 - text
+- time
 - unordered-containers
 - vector
 default-extensions:
@@ -91,7 +94,6 @@ executables:
     - -Wall
     dependencies:
     - compact-coupled-terms
-    - pretty-simple
 
 tests:
   unit-tests:

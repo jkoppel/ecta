@@ -26,6 +26,7 @@ module Data.ECTA.Paths (
   , unsafeGetEclasses
   , mkEqConstraints
   , combineEqConstraints
+  , eqConstraintsDescend
   , constraintsAreContradictory
   , constraintsImply
   , subsumptionOrderedEclasses

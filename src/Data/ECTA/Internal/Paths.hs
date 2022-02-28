@@ -37,6 +37,7 @@ module Data.ECTA.Internal.Paths (
   , isContradicting
   , mkEqConstraints
   , combineEqConstraints
+  , eqConstraintsDescend
   , constraintsAreContradictory
   , constraintsImply
   , subsumptionOrderedEclasses
@@ -46,19 +47,18 @@ module Data.ECTA.Internal.Paths (
 import Prelude hiding ( round )
 
 import Data.Function ( on )
+import Data.Hashable ( Hashable )
 import Data.List ( isSubsequenceOf, nub, sort, sortBy )
 import Data.Monoid ( Any(..) )
-import Data.Hashable ( Hashable )
 import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
-import Data.Vector ( Vector )
+import           Data.Vector ( Vector )
 import qualified Data.Vector as Vector
 import Data.Vector.Instances ()
-
-import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
-
 import GHC.Exts ( inline )
 import GHC.Generics ( Generic )
+
+import Data.Equivalence.Monad ( runEquivM, equate, desc, classes )
 
 import Data.Memoization ( MemoCacheTag(..), memo2 )
 import Data.Text.Extended.Pretty
@@ -87,13 +87,6 @@ unPath :: Path -> [Int]
 unPath (Path p) = p
 
 instance Hashable Path
-
-{-
-instance Show Path where
-  showsPrec d (Path ps) =   showString "Path ["
-                          . (appEndo $ mconcat $ map Endo $ intersperse (showString ".") $ map (showsPrec (d+1)) ps)
-                          . showString "]"
--}
 
 path :: [Int] -> Path
 path = Path
@@ -289,7 +282,8 @@ pathTrieDescend (PathTrieSingleChild j pt') i
 ---------------------------
 
 data PathEClass = PathEClass' { getPathTrie  :: !PathTrie
-                              , getOrigPaths :: ![Path]
+                              , getOrigPaths ::  [Path]   -- Intentionally lazy because
+                                                          -- not available when calling `mkPathEClassFromPathTrie`
                               }
   deriving ( Show, Generic )
 
@@ -312,6 +306,12 @@ instance Pretty PathEClass where
   pretty pec = "{" <> (Text.intercalate "=" $ map pretty $ unPathEClass pec) <> "}"
 
 instance Hashable PathEClass
+
+mkPathEClassFromPathTrie :: PathTrie -> PathEClass
+mkPathEClassFromPathTrie pt = PathEClass' pt (fromPathTrie pt)
+
+pathEClassDescend :: PathEClass -> Int -> PathEClass
+pathEClassDescend (PathEClass' pt _) i = mkPathEClassFromPathTrie $ pathTrieDescend pt i
 
 hasSubsumingMember :: PathEClass -> PathEClass -> Bool
 hasSubsumingMember pec1 pec2 = go (getPathTrie pec1) (getPathTrie pec2)
@@ -441,6 +441,10 @@ combineEqConstraints = memo2 (NameTag "combineEqConstraints") go
     go _               EqContradiction = EqContradiction
     go ec1             ec2             = mkEqConstraints $ ecsGetPaths ec1 ++ ecsGetPaths ec2
 {-# NOINLINE combineEqConstraints #-}
+
+eqConstraintsDescend :: EqConstraints -> Int -> EqConstraints
+eqConstraintsDescend EqContradiction _ = EqContradiction
+eqConstraintsDescend ecs             i = EqConstraints $ sort $ map (`pathEClassDescend` i) (getEclasses ecs)
 
 -- A faster implementation would be: Merge the eclasses of both, run mkEqConstraints (or at least do eclass completion),
 -- check result equal to ecs2

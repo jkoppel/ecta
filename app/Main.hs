@@ -8,23 +8,18 @@ import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 import System.IO ( hFlush, stdout )
 
-import Text.Pretty.Simple
+import System.Console.CmdArgs ( Data, Typeable, cmdArgs, argPos, auto, (&=) )
 
 import Data.ECTA
 import Data.ECTA.Internal.ECTA.Enumeration
 import Data.ECTA.Term
 import Data.Persistent.UnionFind
-import Data.Text.Extended.Pretty
-import TermSearch
-import Utility.Fixpoint
+import Application.TermSearch.Evaluation
 
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()
 printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map edgeSymbol es) n
-
-reduceFully :: Node -> Node
-reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
 
 printCacheStatsForReduction :: Node -> IO ()
 printCacheStatsForReduction n = do
@@ -47,16 +42,19 @@ getTermsNoOccursCheck n = map (termFragToTruncatedTerm . fst) $
                             _ <- enumerateOutUVar (intToUVar 0)
                             getTermFragForUVar    (intToUVar 0)
 
-prettyPrintAllTerms :: Node -> IO ()
-prettyPrintAllTerms n = let ts = map pretty $ map prettyTerm $ getAllTerms n
-                        in do pPrint ts
-                              print (length ts)
-#ifdef PROFILE_CACHES
-                              Memoization.printAllCacheMetrics
-                              Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
-                              Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
-                              Text.putStrLn ""
-#endif
+--------------------------------------------------------------------------------
+
+data HPPArgs = HPPArgs { benchmark :: String
+                       }
+  deriving (Data, Typeable)
+
+hppArgs :: HPPArgs
+hppArgs = HPPArgs {
+    benchmark = "" &= argPos 0
+  } &= auto
+
 
 main :: IO ()
-main = prettyPrintAllTerms $ refold $ reduceFully $ filterType uptoSize6 baseType
+main = do
+    query <- cmdArgs hppArgs
+    runBenchmark (read $ benchmark query)

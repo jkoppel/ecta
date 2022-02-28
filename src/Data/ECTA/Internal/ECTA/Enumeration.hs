@@ -101,7 +101,6 @@ descendScs i scs = Sequence.filter (not . isEmptyPathTrie . scGetPathTrie)
                    $ fmap (\(SuspendedConstraint pt uv) -> SuspendedConstraint (pathTrieDescend pt i) uv)
                           scs
 
-
 -----------------------
 ------- UVarValue
 -----------------------
@@ -109,7 +108,7 @@ descendScs i scs = Sequence.filter (not . isEmptyPathTrie . scGetPathTrie)
 data UVarValue = UVarUnenumerated { contents    :: !(Maybe Node)
                                   , constraints :: !(Seq SuspendedConstraint)
                                   }
-               | UVarEnumerated { termFragment :: !TermFragment }
+               | UVarEnumerated   { termFragment :: !TermFragment }
                | UVarEliminated
   deriving ( Eq, Ord, Show )
 
@@ -207,8 +206,8 @@ pecToSuspendedConstraint pec = do uv <- addUVarValue Nothing
 -------- Merging UVar's / nodes
 ---------------------
 
-assimilateUvarVal :: UVar -> SuspendedConstraint -> EnumerateM ()
-assimilateUvarVal uvTarg (SuspendedConstraint _pt uvSrc)
+assimilateUvarVal :: UVar -> UVar -> EnumerateM ()
+assimilateUvarVal uvTarg uvSrc
                                 | uvTarg == uvSrc      = return ()
                                 | otherwise            = do
   values <- use uvarValues
@@ -268,15 +267,15 @@ enumerateNode scs n         =
   in case hereConstraints of
        Sequence.Empty -> case n of
                            Mu _    -> TermFragmentUVar <$> addUVarValue (Just n)
-
                            Node es -> enumerateEdge scs =<< lift es
                            _       -> error $ "enumerateNode: unexpected node " <> show n
 
-       (x :<| xs)     -> do forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
+       (x :<| xs)     -> do reps <- mapM (getUVarRepresentative . scGetUVar) hereConstraints
+                            forM_ xs $ \sc -> uvarRepresentative %= UnionFind.union (scGetUVar x) (scGetUVar sc)
                             uv <- getUVarRepresentative (scGetUVar x)
-                            mapM_ (assimilateUvarVal uv) hereConstraints
-                            mergeNodeIntoUVarVal uv n descendantConstraints
+                            mapM_ (assimilateUvarVal uv) reps
 
+                            mergeNodeIntoUVarVal uv n descendantConstraints
                             return $ TermFragmentUVar uv
 
 enumerateEdge :: Seq SuspendedConstraint -> Edge -> EnumerateM TermFragment
@@ -299,12 +298,16 @@ data ExpandableUVarResult = ExpansionStuck | ExpansionDone | ExpansionNext !UVar
 firstExpandableUVar :: EnumerateM ExpandableUVarResult
 firstExpandableUVar = do
     values <- use uvarValues
-    let candidates = Sequence.foldMapWithIndex
-                      (\i -> \case (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> IntMap.empty
-                                   (UVarUnenumerated (Just (Mu _)) _             ) -> IntMap.singleton i (Any False)
-                                   (UVarUnenumerated (Just _)      _)              -> IntMap.singleton i (Any False)
-                                   _                                               -> IntMap.empty)
-                      values
+    -- check representative uvars because only representatives are updated
+    candidateMaps <- mapM (\i -> do rep <- getUVarRepresentative (intToUVar i)
+                                    v <- getUVarValue rep
+                                    case v of
+                                        (UVarUnenumerated (Just (Mu _)) Sequence.Empty) -> return IntMap.empty
+                                        (UVarUnenumerated (Just (Mu _)) _             ) -> return $ IntMap.singleton (uvarToInt rep) (Any False)
+                                        (UVarUnenumerated (Just _)      _)              -> return $ IntMap.singleton (uvarToInt rep) (Any False)
+                                        _                                               -> return IntMap.empty)
+                              [0..(Sequence.length values - 1)]
+    let candidates = IntMap.unions candidateMaps
 
     if IntMap.null candidates then
       return ExpansionDone
