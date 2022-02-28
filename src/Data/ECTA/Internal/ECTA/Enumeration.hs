@@ -441,14 +441,14 @@ naiveDenotation node = Pipes.toList $ every (go 1 node)
 
     go :: Int -> Node -> ListT Identity Term
     go depth n = case n of
-                  EmptyNode -> mzero
-                  Mu  _     -> if depth <= 0 then mzero else go (depth - 1) (unfoldOuterRec n)
-                  Rec _     -> error "naiveDenotation: unexpected Rec"
-                  Node es   -> do
-                    e <- Select $ each es
+                   EmptyNode -> mzero
+                   Mu  _     -> if depth <= 0 then mzero else go (depth - 1) (unfoldOuterRec n)
+                   Rec _     -> error "naiveDenotation: unexpected Rec"
+                   Node es   -> do
+                     e <- Select $ each es
 
-                    children <- mapM (go depth) (edgeChildren e)
+                     children <- mapM (go depth) (edgeChildren e)
 
-                    let res = Term (edgeSymbol e) children
-                    guard $ ecsSatisfied res (edgeEcs e)
-                    return res
+                     let res = Term (edgeSymbol e) children
+                     guard $ ecsSatisfied res (edgeEcs e)
+                     return res
