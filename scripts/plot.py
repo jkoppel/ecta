@@ -56,7 +56,7 @@ def aggregate_results(results_by_file):
 
     return results_by_exp
 
-def plot_cactus(files):
+def plot_cactus(files, output='ablation.pdf'):
     assert len(files) % 3 == 0, 'Number of files must be a multiple of 3.'
 
     results_by_file = []
@@ -65,12 +65,13 @@ def plot_cactus(files):
         results_by_file.append(results)
 
     results_by_exp = aggregate_results(results_by_file)
-    marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
+    marker = itertools.cycle(('v', '^', '+', 'x', 'o'))
     for exp_result in results_by_exp:
         real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
         y = range(1, len(real_results)+1)
         x = sorted(real_results)
         plt.plot(x, y, marker='^')
+        plt.plot([], [], label='_nolegend_')
 
     plt.hlines(45, 0, 300, linestyles='dashed', color='gray', label="Total # of benchmarks")
     plt.xlim(-3, 300)
@@ -85,7 +86,79 @@ def plot_cactus(files):
     plt.rc('pdf',fonttype = 42)
     plt.rc('ps',fonttype = 42)
     
-    plt.savefig('ablation.pdf')
+    plt.savefig(output)
+    plt.close()
+
+def plot_cactus_stackoverflow(files, output='ablation.pdf'):
+    assert len(files) % 3 == 0, 'Number of files must be a multiple of 3.'
+
+    results_by_file = []
+    for file in files[:3]:
+        results = parse_csv(file)
+        results_by_file.append(results)
+
+    for file in files[3:]:
+        results = parse_tsv(file)
+        results_by_file.append(results)
+
+    results_by_exp = aggregate_results(results_by_file)
+    marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
+    for exp_result in results_by_exp:
+        real_results = [result.time for result in exp_result if result.time is not None and result.time < 600]
+        y = range(1, len(real_results)+1)
+        x = sorted(real_results)
+        plt.plot(x, y, marker='^')
+
+    plt.hlines(19, 0, 600, linestyles='dashed', color='gray', label="Total # of benchmarks")
+    plt.xlim(-3, 600)
+    plt.ylim(0, 20)
+    plt.yticks([0, 5, 10, 15, 19])
+    plt.legend(["Hectare", "HplusAll", "Total # of benchmarks"], loc="lower right")
+    plt.xlabel("Time (s)")
+    plt.ylabel("# Benchmarks Solved")
+
+
+    #If fonttype = 1 doesn't work with LaTeX, try fonttype 42.
+    plt.rc('pdf',fonttype = 42)
+    plt.rc('ps',fonttype = 42)
+    
+    plt.savefig(output)
+    plt.close()
+
+def plot_cactus_hplus(files, output='eval_hplus.pdf'):
+    assert len(files) % 3 == 0, 'Number of files must be a multiple of 3.'
+
+    results_by_file = []
+    for file in files[:3]:
+        results = parse_csv(file)
+        results_by_file.append(results)
+
+    for file in files[3:]:
+        results = parse_tsv(file)
+        results_by_file.append(results)
+
+    results_by_exp = aggregate_results(results_by_file)
+    marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
+    for exp_result in results_by_exp:
+        real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
+        y = range(1, len(real_results)+1)
+        x = sorted(real_results)
+        plt.plot(x, y, marker='^')
+
+    plt.hlines(45, 0, 300, linestyles='dashed', color='gray', label="Total # of benchmarks")
+    plt.xlim(-3, 300)
+    plt.ylim(0, 46)
+    plt.yticks(range(0, 46, 5))
+    plt.legend(["Hectare", "Hoogle+", "Total # of benchmarks"], loc="lower right")
+    plt.xlabel("Time (s)")
+    plt.ylabel("# Benchmarks Solved")
+
+
+    #If fonttype = 1 doesn't work with LaTeX, try fonttype 42.
+    plt.rc('pdf',fonttype = 42)
+    plt.rc('ps',fonttype = 42)
+    
+    plt.savefig(output)
     plt.close()
 
 def process_scatter_data(files):
@@ -110,7 +183,7 @@ def process_scatter_data(files):
     y = regularize(results_by_exp[1])
     return x, y
 
-def plot_scatter(files):
+def plot_scatter(files, output='scatter.pdf'):
     x, y = process_scatter_data(files)
 
     # plt.figure(figsize=(4,5))
@@ -126,10 +199,10 @@ def plot_scatter(files):
     plt.rc('pdf',fonttype = 42)
     plt.rc('ps',fonttype = 42)
     
-    plt.savefig('baseline.pdf')
+    plt.savefig(output)
     plt.close()
 
-def plot_scatter_broken(files):
+def plot_scatter_broken(files, output='baseline_broken.pdf'):
     x, y = process_scatter_data(files)
 
     # plot core data
@@ -163,10 +236,10 @@ def plot_scatter_broken(files):
     plt.rc('pdf',fonttype = 42)
     plt.rc('ps',fonttype = 42)
     
-    plt.savefig('baseline_broken.pdf')
+    plt.savefig(output)
     plt.close()
 
-def plot_scatter_zoomin(files):
+def plot_scatter_zoomin(files, output='baseline_zoomin.pdf'):
     x, y = process_scatter_data(files)
 
     # plot core data
@@ -203,27 +276,30 @@ def plot_scatter_zoomin(files):
     plt.rc('pdf',fonttype = 42)
     plt.rc('ps',fonttype = 42)
     
-    plt.savefig('baseline_zoomin.pdf')
+    plt.savefig(output)
     plt.close()
 
 def run():
     parser = argparse.ArgumentParser(description='Plot the results of a simulation.')
     parser.add_argument('--files', nargs='+', help='The CSV file to plot.')
     parser.add_argument('--type', help='The type of plot to produce.', 
-        choices=['ablation', 'baseline', 'baseline-broken', 'baseline-zoomin', 'stackoverflow'])
+        choices=['ablation', 'baseline', 'baseline-broken', 'baseline-zoomin', 'stackoverflow', 'hplus-cactus'])
+    parser.add_argument('--output', help='The output file to write.')
     
     args = parser.parse_args()
 
     if args.type == 'ablation':
-        plot_cactus(args.files)
+        plot_cactus(args.files, args.output)
     elif args.type == 'baseline':
-        plot_scatter(args.files)
+        plot_scatter(args.files, args.output)
     elif args.type == 'baseline-broken':
-        plot_scatter_broken(args.files)
+        plot_scatter_broken(args.files, args.output)
     elif args.type == 'baseline-zoomin':
-        plot_scatter_zoomin(args.files)
+        plot_scatter_zoomin(args.files, args.output)
     elif args.type == 'stackoverflow':
-        raise Exception("Not implemented.")
+        plot_cactus_stackoverflow(args.files, args.output)
+    elif args.type == 'hplus-cactus':
+        plot_cactus_hplus(args.files, args.output)
 
 if __name__ == "__main__":
     run()
