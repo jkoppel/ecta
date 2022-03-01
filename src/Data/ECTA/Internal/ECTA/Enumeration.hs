@@ -39,6 +39,7 @@ module Data.ECTA.Internal.ECTA.Enumeration (
   , getAllTruncatedTerms
   , getAllTerms
   , naiveDenotation
+  , naiveDenotationBounded
   ) where
 
 import Control.Monad ( forM_, guard )
