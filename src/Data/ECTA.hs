@@ -37,7 +37,7 @@ module Data.ECTA (
   , getAllTerms
   , getAllTruncatedTerms
   , naiveDenotation
-
+  , naiveDenotationBounded
 
   -- * Visualization / debugging
   , toDot
