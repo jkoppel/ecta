@@ -137,12 +137,11 @@ relevantTermK anyArg _ k argNames
         x = union (relevantTermK anyArg True (k - i) ys)
     in  app f x
 
+relevantTermsOfSize :: Node -> [Argument] -> Int -> Node
+relevantTermsOfSize anyArg args k = union $ concatMap (relevantTermK anyArg True k) (permutations args)
+
 relevantTermsUptoK :: Node -> [Argument] -> Int -> Node
-relevantTermsUptoK anyArg args k = union
-  (map (union . relevantTermsForArgs) [1 .. k])
- where
-  relevantTermsForArgs i =
-    concatMap (relevantTermK anyArg True i) (permutations args)
+relevantTermsUptoK anyArg args k = union (map (relevantTermsOfSize anyArg args) [1 .. k])
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term
