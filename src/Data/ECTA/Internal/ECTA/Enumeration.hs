@@ -431,7 +431,13 @@ getAllTerms n = map fst $ flip runEnumerateM (initEnumerationState n) $ do
 --
 -- where it always unfolds the /second/ argument to @h@, never the first.
 naiveDenotation :: Node -> [Term]
-naiveDenotation node = Pipes.toList $ every (go 1 node)
+naiveDenotation = naiveDenotationBounded Nothing
+
+-- | set a boundary on the depth of Mu node unfolding
+-- if the boundary is set to @Just n@, then @n@ levels of Mu node unfolding will be performed
+-- if the boundary is set to @Nothing@, then no boundary is set and the Mu nodes will be always unfolded
+naiveDenotationBounded :: Maybe Int -> Node -> [Term]
+naiveDenotationBounded maxDepth node = Pipes.toList $ every (go maxDepth node)
   where
     -- | Note that this code uses the decision that f(a,a) does not satisfy the constraint 0.0=1.0 because those paths are empty.
     --   It would be equally valid to say that it does.
@@ -439,16 +445,18 @@ naiveDenotation node = Pipes.toList $ every (go 1 node)
     ecsSatisfied t ecs = all (\ps -> isJust (getPath (head ps) t) && all (\p' -> getPath (head ps) t == getPath p' t) ps)
                              (map unPathEClass $ unsafeGetEclasses ecs)
 
-    go :: Int -> Node -> ListT Identity Term
-    go depth n = case n of
-                   EmptyNode -> mzero
-                   Mu  _     -> if depth <= 0 then mzero else go (depth - 1) (unfoldOuterRec n)
-                   Rec _     -> error "naiveDenotation: unexpected Rec"
-                   Node es   -> do
-                     e <- Select $ each es
+    go :: Maybe Int -> Node -> ListT Identity Term
+    go _       EmptyNode = mzero
+    go mbDepth n@(Mu _)  = case mbDepth of
+                             Nothing            -> go Nothing (unfoldOuterRec n)
+                             Just d | d <= 0    -> mzero
+                                    | otherwise -> go (Just $ d - 1) (unfoldOuterRec n)
+    go _       (Rec _)   = error "naiveDenotation: unexpected Rec"
+    go mbDepth (Node es) = do
+      e <- Select $ each es
 
-                     children <- mapM (go depth) (edgeChildren e)
+      children <- mapM (go mbDepth) (edgeChildren e)
 
-                     let res = Term (edgeSymbol e) children
-                     guard $ ecsSatisfied res (edgeEcs e)
-                     return res
+      let res = Term (edgeSymbol e) children
+      guard $ ecsSatisfied res (edgeEcs e)
+      return res
