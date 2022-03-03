@@ -40,14 +40,21 @@ def parse_tsv(file_name):
 
     return results
 
-def aggregate_results(results_by_file):
+def avg_if_not_timeout(xs, threshold):
+    xs = [x for x in xs if x < threshold]
+    if len(xs):
+        return sum(xs) / len(xs)
+    else:
+        return threshold
+
+def aggregate_results(results_by_file, threshold):
     results_by_exp = []
     for i in range(0, len(results_by_file), 3):
         new_results = []
         # average the time every three files
         for j in range(len(results_by_file[i])):
             if results_by_file[i][j].time is not None:
-                avg_time = (results_by_file[i][j].time + results_by_file[i+1][j].time + results_by_file[i+2][j].time) / 3
+                avg_time = avg_if_not_timeout([results_by_file[i][j].time, results_by_file[i+1][j].time, results_by_file[i+2][j].time], threshold)
                 new_results.append(Result(results_by_file[i][j].name, avg_time))
             else:
                 new_results.append(Result(results_by_file[i][j].name, None))
@@ -64,12 +71,12 @@ def plot_cactus(files, output='ablation.pdf'):
         results = parse_csv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file)
+    results_by_exp = aggregate_results(results_by_file, 300)
     marker = itertools.cycle(('v', '^', '+', 'x', 'o'))
     for exp_result in results_by_exp:
         real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
-        y = range(1, len(real_results)+1)
-        x = sorted(real_results)
+        y = list(range(1, len(real_results)+1)) + [len(real_results)]
+        x = sorted(real_results) + [305]
         plt.plot(x, y, marker='^')
         plt.plot([], [], label='_nolegend_')
 
@@ -101,19 +108,19 @@ def plot_cactus_stackoverflow(files, output='ablation.pdf'):
         results = parse_tsv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file)
+    results_by_exp = aggregate_results(results_by_file, 600)
     marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
     for exp_result in results_by_exp:
         real_results = [result.time for result in exp_result if result.time is not None and result.time < 600]
-        y = range(1, len(real_results)+1)
-        x = sorted(real_results)
+        y = list(range(1, len(real_results)+1)) + [len(real_results)]
+        x = sorted(real_results) + [605]
         plt.plot(x, y, marker='^')
 
     plt.hlines(19, 0, 600, linestyles='dashed', color='gray', label="Total # of benchmarks")
     plt.xlim(-3, 600)
     plt.ylim(0, 20)
     plt.yticks([0, 5, 10, 15, 19])
-    plt.legend(["Hectare", "HplusAll", "Total # of benchmarks"], loc="lower right")
+    plt.legend(["Hectare", "HplusAll", "Total # of benchmarks"], loc="center right")
     plt.xlabel("Time (s)")
     plt.ylabel("# Benchmarks Solved")
 
@@ -137,12 +144,12 @@ def plot_cactus_hplus(files, output='eval_hplus.pdf'):
         results = parse_tsv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file)
+    results_by_exp = aggregate_results(results_by_file, 300)
     marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
     for exp_result in results_by_exp:
         real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
-        y = range(1, len(real_results)+1)
-        x = sorted(real_results)
+        y = list(range(1, len(real_results)+1)) + [len(real_results)]
+        x = sorted(real_results) + [305]
         plt.plot(x, y, marker='^')
 
     plt.hlines(45, 0, 300, linestyles='dashed', color='gray', label="Total # of benchmarks")
@@ -173,7 +180,7 @@ def process_scatter_data(files):
         results = parse_tsv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file)
+    results_by_exp = aggregate_results(results_by_file, 300)
     assert len(results_by_exp) == 2, 'Number of experiments must be 2.'
 
     def regularize(xs):

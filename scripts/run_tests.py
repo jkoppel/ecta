@@ -226,7 +226,7 @@ if __name__ == "__main__":
         else:
             benchmarks['stackoverflow'] = stackoverflow_benchmarks
 
-    for i in range(1):
+    for i in range(3):
         syn_results = []
         for suite, suite_benches in benchmarks.items():
             print("===============================================================")

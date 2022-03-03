@@ -451,8 +451,8 @@ prettyPrintAllTerms :: AblationType -> Term -> Node -> IO ()
 prettyPrintAllTerms ablation sol n = do
   putStrLn $ "Expected: " ++ show (pretty sol)
   let ts = case ablation of
-             NoEnumeration -> naiveDenotation n
-             NoOptimize    -> naiveDenotation n
+             NoEnumeration -> naiveDenotationBounded (Just 3) n
+             NoOptimize    -> naiveDenotationBounded (Just 3) n
              _             -> getAllTerms n
   checkSolution sol ts
 
