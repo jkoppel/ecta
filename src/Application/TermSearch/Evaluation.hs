@@ -20,7 +20,6 @@ import           Data.ECTA.Term
 import           Application.TermSearch.Dataset
 import           Application.TermSearch.TermSearch
 import           Application.TermSearch.Type
-import           Application.TermSearch.Utils
 
 runBenchmark :: Benchmark -> AblationType -> Int -> IO ()
 runBenchmark (Benchmark name depth sol args res) ablation limit = do
@@ -28,7 +27,7 @@ runBenchmark (Benchmark name depth sol args res) ablation limit = do
     putStrLn $ "Running benchmark " ++ Text.unpack name
     let argNodes = map (Bi.bimap Symbol typeToFta) args
     let resNode  = typeToFta res
-    let anyArg   = Node (map (uncurry constArg) argNodes)
+    let anyArg   = \i -> Node (map (($ i) . uncurry constArg) argNodes)
     let
         !filterNode = filterType
             (relevantTermsUptoK anyArg argNodes depth)

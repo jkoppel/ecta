@@ -155,6 +155,11 @@ stackoverflow_benchmarks = [
               '[("tcarg0", TCons "@@hplusTC@@Eq" [TVar "a"]), ("x", TVar "a"), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TCons "List" [TVar "a"]]'),
 ]
 
+lambda_benchmarks = [
+    Benchmark("id", 2, 'Term "lambda" []', '[]', 'TFun (TVar "a") (TVar "a")'),
+    Benchmark("lambdaApply", 3, 'Term "lambda" []', '[("f", TFun (TVar "a") (TVar "b"))]', 'TFun (TVar "a") (TVar "b")'),
+    Benchmark("map", 5, 'Term "app" []', '[("f", TFun (TVar "a") (TVar "b")), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TVar "b"]'),
+]
 
 class BenchmarkResult:
     def __init__(self, name, sol, time):
@@ -200,7 +205,7 @@ def run_benchmark(bench, ablation, limit):
 def build_argparser():
     argparser = argparse.ArgumentParser(description="Run benchmarks")
     argparser.add_argument(
-        '--suites', choices=['hplus', 'stackoverflow', 'all'], default='all', help="which suites to run")
+        '--suites', choices=['hplus', 'stackoverflow', 'lambda', 'all'], default='all', help="which suites to run")
     argparser.add_argument('--benchmarks', nargs='+',
                            help="which benchmarks to run")
     argparser.add_argument('--ablation', choices=['default', 'noReduction', 'noEnumeration', 'noOptimize'], default='default', help="which ablation to run")
@@ -225,6 +230,13 @@ if __name__ == "__main__":
                                            if bench.name in args.benchmarks]
         else:
             benchmarks['stackoverflow'] = stackoverflow_benchmarks
+
+    if 'lambda' in args.suites or 'all' in args.suites:
+        if args.benchmarks:
+            benchmarks['lambda'] = [bench for bench in lambda_benchmarks
+                                    if bench.name in args.benchmarks]
+        else:
+            benchmarks['lambda'] = lambda_benchmarks
 
     for i in range(1):
         syn_results = []

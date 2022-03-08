@@ -6,7 +6,8 @@
 
 module Data.ECTA.Internal.ECTA.Operations (
   -- * Traversal
-    pathsMatching
+    nodeMapChildren
+  , pathsMatching
   , mapNodes
   , crush
   , onNormalNodes
@@ -84,6 +85,12 @@ import Utility.HashJoin
 -----------------------
 ------ Traversal
 -----------------------
+
+nodeMapChildren :: (Edge -> Edge) -> Node -> Node
+nodeMapChildren _ EmptyNode = EmptyNode
+nodeMapChildren f n@(Mu _)  = nodeMapChildren f (unfoldOuterRec n)
+nodeMapChildren f (Node es) = Node (map f es)
+nodeMapChildren _ (Rec _)   = error "nodeMapChildren: unexpected Rec"
 
 -- | Warning: Linear in number of paths, exponential in size of graph.
 --   Only use for very small graphs.

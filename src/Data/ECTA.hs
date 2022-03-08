@@ -16,6 +16,7 @@ module Data.ECTA (
   , createMu
 
   -- * Operations
+  , nodeMapChildren
   , pathsMatching
   , mapNodes
   , refold
@@ -37,6 +38,7 @@ module Data.ECTA (
   , getAllTerms
   , getAllTruncatedTerms
   , naiveDenotation
+  , naiveDenotationBounded
 
 
   -- * Visualization / debugging

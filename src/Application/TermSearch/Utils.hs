@@ -51,12 +51,6 @@ mkDatatype s ns = Node [Edge (Symbol s) ns]
 ------- Functions and arguments
 --------------------
 
-constFunc :: Symbol -> Node -> Edge
-constFunc s t = Edge s [t]
-
-constArg :: Symbol -> Node -> Edge
-constArg = constFunc
-
 var1, var2, var3, var4, varAcc :: Node
 var1 = Node [Edge "var1" []]
 var2 = Node [Edge "var2" []]

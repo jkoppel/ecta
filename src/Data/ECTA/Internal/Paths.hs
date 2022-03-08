@@ -88,6 +88,12 @@ unPath (Path p) = p
 
 instance Hashable Path
 
+instance Semigroup Path where
+  p1 <> p2 = Path (unPath p1 <> unPath p2)
+
+instance Monoid Path where
+  mempty = EmptyPath
+
 path :: [Int] -> Path
 path = Path
 
@@ -363,6 +369,12 @@ instance Hashable EqConstraints
 
 instance Pretty EqConstraints where
   pretty ecs = "{" <> (Text.intercalate "," $ map pretty (getEclasses ecs)) <> "}"
+
+instance Semigroup EqConstraints where
+  (<>) = combineEqConstraints
+
+instance Monoid EqConstraints where
+  mempty = EmptyConstraints
 
 --------- Destructors and patterns
 

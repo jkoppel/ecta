@@ -29,6 +29,7 @@ flag profile-caches
 
 library
   exposed-modules:
+      Application.EqualitySaturation
       Application.SAT
       Application.TermSearch.Dataset
       Application.TermSearch.Evaluation
