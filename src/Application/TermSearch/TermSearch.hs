@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 
 module Application.TermSearch.TermSearch where
 
@@ -22,10 +21,16 @@ import           Data.ECTA.Term
 import           Data.Text.Extended.Pretty
 import           Utility.Fixpoint
 
+import           Application.EqualitySaturation ( At(..)
+                                                , UseVarAt(..)
+                                                , modEcs
+                                                , nodeModEcs
+                                                , useVar
+                                                , varPath
+                                                )
 import           Application.TermSearch.Dataset
 import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
-import           Application.EqualitySaturation ( copyLiftedEnvToChild, useVar, At(..), UseVarAt(..), nodeModEcs, modEcs, varPath )
 
 ------------------------------------------------------------------------------
 
@@ -48,7 +53,10 @@ tau = createMu
 
 allConstructors :: [(Text, Int)]
 allConstructors =
-  nubOrd (concatMap getConstructors (Map.keys hoogleComponents))
+  nubOrd
+      (  concatMap getConstructors (Map.keys hoogleComponents)
+      ++ [("Set", 1), ("Map", 2)]
+      )
     \\ [("Fun", 2)]
  where
   getConstructors :: TypeSkeleton -> [(Text, Int)]
@@ -57,22 +65,11 @@ allConstructors =
   getConstructors (TCons nm ts) =
     (nm, length ts) : concatMap getConstructors ts
 
--- envSize :: Int
--- envSize = 3
+envSize :: Int
+envSize = 3
 
 envPath :: Path
 envPath = path [1]
-
-anyEnvNode :: Int -> Node
-anyEnvNode sz = createMu (\n -> union (map (Node . (:[]) . constructorToEdge n) constructors))
-  where
-    mkAnyEnvNode :: Node -> Node
-    mkAnyEnvNode n = Node [Edge "env" $ replicate sz n]
-
-    constructorToEdge :: Node -> (Text, Int) -> Edge
-    constructorToEdge n (nm, arity) = Edge (Symbol nm) ([tau, mkAnyEnvNode n] <> replicate arity n)
-
-    constructors = map (\n -> (Text.pack $ show n, 0)) [0..sz - 1]
 
 generalize :: Node -> Node
 generalize n@(Node [_]) = Node
@@ -97,12 +94,11 @@ app lambdaCnt n1 n2 = Node
   [ mkEdge
       "app"
       [tau, anyEnv lambdaCnt, theArrowNode, n1, n2]
-      (mkEqConstraints
-        [ [path [2], path [3, 0, 0]]
-        , [path [4, 0], path [3, 0, 1]]
-        , [path [0], path [3, 0, 2]]
-        -- constraints for environment
-        , [path [1], path [3, 1], path [4, 1]]
+      (mkEqConstraints                            -- constraints for "app e1 e2"
+        [ [path [2]   , path [3, 0, 0]]           -- trick: arrow symbol to mark the type of e1 is a function type
+        , [path [4, 0], path [3, 0, 1]]           -- argument type of T(e1) equals to T(e2)
+        , [path [0]   , path [3, 0, 2]]           -- T(app e1 e2) equals to T(e1)
+        , [path [1]   , path [3, 1], path [4, 1]] -- environment remains the same before and after the application
         ]
       )
   ]
@@ -111,23 +107,34 @@ lambda :: Int -> Node -> Node
 lambda lambdaCnt n = Node
   [ mkEdge
       "lambda"
-      [tau, anyEnv (lambdaCnt + 1), theArrowNode, n]
-      (copyLiftedEnvToChild envPath lambdaCnt 2 <> mkEqConstraints [ [path [0, 0], path [2]]
-                                                                         , [path [0, 1], path [1, 0, 0]]
-                                                                         , [path [0, 2], path [3, 0]]])]
+      [tau, anyEnv lambdaCnt, theArrowNode, n]
+      (copyLiftedEnvToChild envPath (lambdaCnt + 1) 2 <> mkEqConstraints  -- constraints for "lambda x e"
+        [ [path [0, 0], path [2]]          -- lambda terms returns a function type, so the first part of T(lambda x e) is the arrow symbol
+        , [path [0, 1], path [3, 1, 0]]    -- T(x) equals to the argument type of T(lambda x e)
+        , [path [0, 2], path [3, 0]]       -- T(e) equals to the return type of T(lambda x e)
+        ]
+      )
+  ]
+ where
+    -- de Bruijn index operations
+  copyLiftedEnvToChild :: Path -> Int -> Int -> EqConstraints
+  copyLiftedEnvToChild ep sz childIdx = foldMap doCopyVar [1 .. sz - 1]
+   where
+    doCopyVar :: Int -> EqConstraints
+    doCopyVar targIdx = mkEqConstraints
+      [[varPath ep (targIdx - 1), path [childIdx + 1] <> varPath ep targIdx]]
 
 --------------------------------------------------------------------------------
 ------------------------------- Relevancy Encoding -----------------------------
 --------------------------------------------------------------------------------
 
-applyOperator :: Node
-applyOperator = Node
-  []
-  -- [ constFunc
-  --   "$"
-  --   (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
-  -- , constFunc "id" (generalize $ arrowType var1 var1)
-  -- ]
+applyOperator :: Int -> Node
+applyOperator lambdaCnt = Node $ map ($ lambdaCnt)
+  [ constFunc
+    "$"
+    (generalize $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+  , constFunc "id" (generalize $ arrowType var1 var1)
+  ]
 
 hoogleComps :: [Int -> Edge]
 hoogleComps =
@@ -141,63 +148,82 @@ hoogleComps =
 
 anyFunc :: Int -> Node
 -- anyFunc = Node hoogleComps
--- anyFunc lambdaCnt = Node [f31 lambdaCnt]
-anyFunc _ = Node []
+anyFunc lambdaCnt = Node
+  $ map ($ lambdaCnt) [f31, f10, f32, f33, f34, f35, f36, f37, f38, f39, f16]
+-- anyFunc _ = Node []
 
 filterType :: Node -> Node -> Node
 filterType n t =
   Node [mkEdge "filter" [t, n] (mkEqConstraints [[path [0], path [1, 0]]])]
 
 constructLambdaK :: (Int -> Node) -> Int -> Int -> Node
-constructLambdaK anyArg lambdaCnt k = lambda lambdaCnt (union (termsK anyArg False (lambdaCnt + 1) (k - 1)))
+constructLambdaK anyArg lambdaCnt k =
+  lambda lambdaCnt (union (termsK anyArg True (lambdaCnt + 1) (k - 1)))
 
 anyEnv :: Int -> Node
-anyEnv sz = Node [Edge "env" $ replicate sz $ anyEnvNode sz]
+anyEnv sz = Node [Edge "env" $ replicate sz tau]
 
 type Size = Int
 
 withEnvPropagation :: Path -> Int -> [UseVarAt] -> Node -> Node
-withEnvPropagation ep numChildren uvas n = nodeModEcs (<> foldMap copyEnvToChild normalChildren)
-                                                      $ foldr nodeUseVarFromEnv n uvas
-  where
-    varChildren = map childIdx uvas
-    normalChildren = [0..numChildren - 1] \\ varChildren
+withEnvPropagation ep numChildren uvas n =
+  nodeModEcs (<> foldMap copyEnvToChild normalChildren)
+    $ foldr nodeUseVarFromEnv n uvas
+ where
+  varChildren    = map childIdx uvas
+  normalChildren = [0 .. numChildren - 1] \\ varChildren
 
-    useVarFromEnv :: UseVarAt -> Edge -> Edge
-    useVarFromEnv uva e = modEcs (<> mkEqConstraints [[varPath ep (varIdx uva), path [childIdx uva]]]) e
+  useVarFromEnv :: UseVarAt -> Edge -> Edge
+  useVarFromEnv uva e = modEcs
+    (<> mkEqConstraints [[varPath ep (varIdx uva), path [childIdx uva]]])
+    e
 
-    nodeUseVarFromEnv :: UseVarAt -> Node -> Node
-    nodeUseVarFromEnv uva = nodeMapChildren (useVarFromEnv uva)
+  nodeUseVarFromEnv :: UseVarAt -> Node -> Node
+  nodeUseVarFromEnv uva = nodeMapChildren (useVarFromEnv uva)
 
-    copyEnvToChild :: Int -> EqConstraints
-    copyEnvToChild childIdx = mkEqConstraints [[ep, path [childIdx] <> ep]]
+  copyEnvToChild :: Int -> EqConstraints
+  copyEnvToChild childIdx = mkEqConstraints [[ep, path [childIdx] <> ep]]
+
+mkIthArg :: Int -> Int -> Node
+mkIthArg lambdaCnt i =
+  Node [Edge (Symbol $ Text.pack $ "_x" ++ show i) [tau, anyEnv lambdaCnt]]
+
+useLambdaArgs :: Int -> [Node]
+useLambdaArgs lambdaCnt = map
+  (\i -> withEnvPropagation envPath 1 [useVar i At 0] (mkIthArg lambdaCnt i))
+  [0 .. lambdaCnt - 1]
 
 termsK :: (Int -> Node) -> Bool -> Int -> Size -> [Node]
-termsK _      _     _         0 = []
-termsK anyArg False lambdaCnt 1 = [anyArg lambdaCnt, anyFunc lambdaCnt] ++ map (\i -> withEnvPropagation (path [1,0]) 1 [useVar i At 0] (anyEnvNode lambdaCnt)) [0..lambdaCnt - 1]
-termsK anyArg True  lambdaCnt 1 = [anyArg lambdaCnt, anyFunc lambdaCnt, applyOperator] ++ map (\i -> withEnvPropagation (path [1,0]) 1 [useVar i At 0] (anyEnvNode lambdaCnt)) [0..lambdaCnt - 1]
+termsK _ _ _ 0 = []
+termsK anyArg False lambdaCnt 1 =
+  [anyArg lambdaCnt, anyFunc lambdaCnt] ++ useLambdaArgs lambdaCnt
+termsK anyArg True lambdaCnt 1 =
+  [anyArg lambdaCnt, anyFunc lambdaCnt, applyOperator lambdaCnt]
+    ++ useLambdaArgs lambdaCnt
 -- termsK anyArg isArg maxDebruijn 2 =
 --   [ app anyListFunc (union [anyNonNilFunc, anyArg, applyOperator])
 --   , app fromJustFunc (union [anyNonNothingFunc, anyArg, applyOperator])
 --   , app (union [anyNonListFunc, anyArg]) (union (termsK anyArg True 1))
 --   ] ++ [constructLambdaK anyArg 1 | isArg]
-termsK anyArg isArg lambdaCnt k = constructLambdaK anyArg lambdaCnt k : map constructApp [1 .. (k - 1)]
-  -- if isArg
-  --   then constructLambdaK anyArg k : map constructApp [1 .. (k - 1)]
-  --   else map constructApp [1 .. (k - 1)]
+termsK anyArg isArg lambdaCnt k = if isArg
+  then constructLambdaK anyArg lambdaCnt k : map constructApp [1 .. (k - 1)]
+  else map constructApp [1 .. (k - 1)]
  where
   constructApp :: Int -> Node
-  constructApp i =
-    app lambdaCnt (union (termsK anyArg False lambdaCnt i)) (union (termsK anyArg True lambdaCnt (k - i)))
+  constructApp i = app lambdaCnt
+                       (union (termsK anyArg False lambdaCnt i))
+                       (union (termsK anyArg True lambdaCnt (k - i)))
 
 relevantTermK :: (Int -> Node) -> Bool -> Int -> Size -> [Argument] -> [Node]
-relevantTermK anyArg includeApplyOp lambdaCnt k []       = termsK anyArg includeApplyOp lambdaCnt k
-relevantTermK _      _              lambdaCnt 1 [(x, t)] = [Node [constArg x t lambdaCnt]]
+relevantTermK anyArg includeApplyOp lambdaCnt k [] =
+  termsK anyArg includeApplyOp lambdaCnt k
+relevantTermK _ _ lambdaCnt 1 [(x, t)] = [Node [constArg x t lambdaCnt]]
 relevantTermK anyArg includeApplyOp lambdaCnt k argNames
   | k < length argNames = []
   | otherwise = if includeApplyOp
-                  then constructLambda k argNames : concatMap (\i -> map (constructApp i) allSplits) [1 .. (k - 1)]
-                  else concatMap (\i -> map (constructApp i) allSplits) [1 .. (k - 1)]
+    then constructLambda k argNames
+      : concatMap (\i -> map (constructApp i) allSplits) [1 .. (k - 1)]
+    else concatMap (\i -> map (constructApp i) allSplits) [1 .. k - 1]
  where
   allSplits = map (`splitAt` argNames) [0 .. (length argNames)]
 
@@ -208,14 +234,16 @@ relevantTermK anyArg includeApplyOp lambdaCnt k argNames
     in  app lambdaCnt f x
 
   constructLambda :: Int -> [Argument] -> Node
-  constructLambda i args = lambda lambdaCnt (union $ relevantTermK anyArg False (lambdaCnt + 1) (i - 1) args)
+  constructLambda i args = lambda
+    lambdaCnt
+    (union $ relevantTermK anyArg True (lambdaCnt + 1) (i - 1) args)
 
 relevantTermsUptoK :: (Int -> Node) -> [Argument] -> Int -> Node
 relevantTermsUptoK anyArg args k = union
-  (map (union . relevantTermsForArgs) [k])
+  (map (union . relevantTermsForArgs) [1 .. k])
  where
   relevantTermsForArgs i =
-    concatMap (relevantTermK anyArg True 0 i) (permutations args)
+    concatMap (relevantTermK anyArg False 0 i) (permutations args)
 
 prettyTerm :: Term -> Term
 prettyTerm (Term "app" ns) = Term
@@ -230,11 +258,10 @@ dropTypes (Node es) = Node (map dropEdgeTypes es)
  where
   dropEdgeTypes (Edge "app" [_, _, _, a, b]) =
     Edge "app" [dropTypes a, dropTypes b]
-  dropEdgeTypes (Edge "lambda" [_, _, _, a]) =
-    Edge "lambda" [dropTypes a]
-  dropEdgeTypes (Edge "filter" [_, a]) = Edge "filter" [dropTypes a]
-  dropEdgeTypes (Edge s        [_]   ) = Edge s []
-  dropEdgeTypes e                      = e
+  dropEdgeTypes (Edge "lambda" [_, _, _, a]) = Edge "lambda" [dropTypes a]
+  dropEdgeTypes (Edge "filter" [_, a]      ) = Edge "filter" [dropTypes a]
+  dropEdgeTypes (Edge s        [_]         ) = Edge s []
+  dropEdgeTypes e                            = e
 dropTypes n = n
 
 getText :: Symbol -> Text
@@ -246,7 +273,8 @@ getText (Symbol s) = s
 
 fromJustFunc :: Int -> Node
 fromJustFunc lambdaCnt =
-  Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) $ map ($ lambdaCnt) hoogleComps
+  Node $ filter (\e -> edgeSymbol e `elem` maybeFunctions) $ map ($ lambdaCnt)
+                                                                 hoogleComps
 
 maybeFunctions :: [Symbol]
 maybeFunctions =
@@ -297,7 +325,8 @@ isMaybeFunction :: Symbol -> Bool
 isMaybeFunction (Symbol sym) = sym `elem` maybeReps
 
 anyListFunc :: Int -> Node
-anyListFunc lambdaCnt = Node $ filter (isListFunction . edgeSymbol) $ map ($ lambdaCnt) hoogleComps
+anyListFunc lambdaCnt =
+  Node $ filter (isListFunction . edgeSymbol) $ map ($ lambdaCnt) hoogleComps
 
 anyNonListFunc :: Int -> Node
 anyNonListFunc lambdaCnt = Node $ filter
@@ -308,7 +337,9 @@ anyNonListFunc lambdaCnt = Node $ filter
 
 anyNonNilFunc :: Int -> Node
 anyNonNilFunc lambdaCnt =
-  Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Nil")) $ map ($ lambdaCnt) hoogleComps
+  Node $ filter (\e -> edgeSymbol e /= Symbol (toMappedName "Nil")) $ map
+    ($ lambdaCnt)
+    hoogleComps
 
 anyNonNothingFunc :: Int -> Node
 anyNonNothingFunc lambdaCnt = Node $ filter
@@ -327,7 +358,7 @@ checkSolution target (s : solutions)
   | prettyTerm s == target = print $ pretty (prettyTerm s)
   | otherwise = do
     print $ pretty (prettyTerm s)
-    print s
+    -- print s
     checkSolution target solutions
 
 reduceFullyAndLog :: Node -> IO Node
@@ -525,7 +556,80 @@ f30 :: Int -> Edge
 f30 = constFunc "nil" (generalize $ listType var1)
 
 f31 :: Int -> Edge
-f31 = constFunc "map" (generalize $ arrowType (arrowType var1 var2) (arrowType (listType var1) (listType var2)))
+f31 = constFunc
+  "map"
+  (generalize $ arrowType (arrowType var1 var2)
+                          (arrowType (listType var1) (listType var2))
+  )
+
+-- | fromSet :: (k -> a) -> Set k -> Map k a
+f32 :: Int -> Edge
+f32 = constFunc
+  "Map.fromSet"
+  (generalize $ arrowType
+    (arrowType var1 var2)
+    (arrowType (constrType1 "Set" var1) (constrType2 "Map" var1 var2))
+  )
+
+-- | paritionWithKey :: (k -> a -> Bool) -> Map k a -> (Map k a, Map k a)
+f33 :: Int -> Edge
+f33 = constFunc
+  "Map.partitionWithKey"
+  (generalize $ arrowType
+    (arrowType var1 (arrowType var2 (constrType0 "Bool")))
+    (arrowType
+      (constrType2 "Map" var1 var2)
+      (constrType2 "Pair"
+                   (constrType2 "Map" var1 var2)
+                   (constrType2 "Map" var1 var2)
+      )
+    )
+  )
+
+-- | member :: Ord a => a -> Set a -> Bool
+f34 :: Int -> Edge
+f34 = constFunc
+  "Set.member"
+  (generalize $ arrowType
+    (constrType1 "@@hplusTC@@Ord" var1)
+    (arrowType var1 (arrowType (constrType1 "Set" var1) (constrType0 "Bool")))
+  )
+
+-- | map :: (a -> b) -> Map k a -> Map k b
+f35 :: Int -> Edge
+f35 = constFunc
+  "Map.map"
+  (generalize $ arrowType
+    (arrowType var2 var3)
+    (arrowType (constrType2 "Map" var1 var2) (constrType2 "Map" var1 var3))
+  )
+
+-- | elems :: Map k a -> [a]
+f36 :: Int -> Edge
+f36 = constFunc
+  "Map.elems"
+  (generalize $ arrowType (constrType2 "Map" var1 var2) (listType var2))
+
+-- | filter :: (a -> Bool) -> Map k a -> Map k a
+f37 :: Int -> Edge
+f37 = constFunc
+  "Map.filter"
+  (generalize $ arrowType
+    (arrowType var2 (constrType0 "Bool"))
+    (arrowType (constrType2 "Map" var1 var2) (constrType2 "Map" var1 var2))
+  )
+
+-- | null :: Map k a -> Bool
+f38 :: Int -> Edge
+f38 = constFunc
+  "Map.null"
+  (generalize $ arrowType (constrType2 "Map" var1 var2) (constrType0 "Bool"))
+
+-- | not :: Bool -> Bool
+f39 :: Int -> Edge
+f39 = constFunc
+  "not"
+  (generalize $ arrowType (constrType0 "Bool") (constrType0 "Bool"))
 
 --------------------------
 ------ Util functions
@@ -538,9 +642,9 @@ prettyPrintAllTerms :: AblationType -> Term -> Node -> IO ()
 prettyPrintAllTerms ablation sol n = do
   putStrLn $ "Expected: " ++ show (pretty sol)
   let ts = case ablation of
-             NoEnumeration -> naiveDenotationBounded (Just 3) n
-             NoOptimize    -> naiveDenotationBounded (Just 3) n
-             _             -> getAllTerms n
+        NoEnumeration -> naiveDenotationBounded (Just 3) n
+        NoOptimize    -> naiveDenotationBounded (Just 3) n
+        _             -> getAllTerms n
   checkSolution sol ts
 
 substTerm :: Term -> Term

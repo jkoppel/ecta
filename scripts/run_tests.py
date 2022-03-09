@@ -156,9 +156,24 @@ stackoverflow_benchmarks = [
 ]
 
 lambda_benchmarks = [
-    Benchmark("id", 2, 'Term "lambda" []', '[]', 'TFun (TVar "a") (TVar "a")'),
-    Benchmark("lambdaApply", 3, 'Term "lambda" []', '[("f", TFun (TVar "a") (TVar "b"))]', 'TFun (TVar "a") (TVar "b")'),
-    Benchmark("map", 5, 'Term "app" []', '[("f", TFun (TVar "a") (TVar "b")), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TVar "b"]'),
+    # the top three are for unit tests, they won't work because we don't allow top level lambdas
+    # Benchmark("id", 2, 'Term "lambda" [Term "_x0" []]', '[]', 'TFun (TVar "a") (TVar "a")'),
+    # Benchmark("lambdaApply", 3, 'Term "lambda" [Term "app" [Term "f" [], Term "_x0" []]]', '[("f", TFun (TVar "a") (TVar "b"))]', 'TFun (TVar "a") (TVar "b")'),
+    # Benchmark("partialMap", 4, 'Term "app" [Term "map" [], Term "lambda" [Term "app" [Term "f" [], Term "_x0" []]]]', '[("f", TFun (TVar "a") (TVar "b"))]', 'TFun (TCons "List" [TVar "a"]) (TCons "List" [TVar "b"])'),
+    Benchmark("map", 5, 'Term "app" [Term "app" [Term "map" [], Term "lambda" [Term "app" [Term "f" [], Term "_x0" []]]], Term "xs" []]', '[("f", TFun (TVar "a") (TVar "b")), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TVar "b"]'),
+    Benchmark("twoLambdas1", 4, 'Term "app" [Term "g" [], Term "lambda" [Term "lambda" [Term "_x1" []]]]', '[("g", TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "a"))) (TVar "c"))]', 'TVar "c"'),
+    Benchmark("twoLambdas2", 4, 'Term "app" [Term "g" [], Term "lambda" [Term "lambda" [Term "_x0" []]]]', '[("g", TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "b"))) (TVar "c"))]', 'TVar "c"'),
+    Benchmark("twoLambdas3", 4, 'Term "app" [Term "g" [], Term "lambda" [Term "lambda" [Term "x" []]]]', '[("g", TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c"))) (TVar "d")), ("x", TVar "c")]', 'TVar "d"'),
+    Benchmark("twoLambdas", 6, 'Term "app" [Term "g" [], Term "lambda" [Term "lambda" [Term "app" [Term "app" [Term "f" [], Term "_x1" []], Term "_x0" []]]]]', '[("f", TFun (TVar "a") (TFun (TVar "b") (TVar "c"))), ("g", TFun (TFun (TVar "a") (TFun (TVar "b") (TVar "c"))) (TVar "a"))]', 'TVar "a"'),
+    Benchmark("foldr", 8, 'Term "app" [Term "app" [Term "app" [Term "foldr" [], Term "lambda" [Term "lambda" [Term "app" [Term "app" [Term "f" [], Term "_x1" []], Term "_x0" []]]]], Term "base" []], Term "xs" []]', '[("f", TFun (TVar "a") (TFun (TVar "b") (TVar "b"))), ("base", TVar "b"), ("xs", TCons "List" [TVar "a"])]', 'TVar "b"'),
+    # Set k -> a -> Map k a
+    Benchmark("constMap", 4, 'Term "app" [Term "app" [Term "Map.fromSet" [], Term "lambda" [Term "val" []]], Term "keys"[]]', '[("keys", TCons "Set" [TVar "a"]), ("val", TVar "b")]', 'TCons "Map" [TVar "a", TVar "b"]'),
+    # Ord k => Set k -> Map k a -> (Map k a, Map k a)
+    Benchmark("partitionDomain", 8, 'Term "app" [Term "app" [Term "Map.partitionWithKey" [], Term "lambda" [Term "lambda" [Term "app" [Term "app" [Term "app" [Term "Set.member" [], Term "tcarg0" []], Term "_x1" []], Term "keys" []]]]], Term "m" []]', '[("tcarg0", TCons "@@hplusTC@@Ord" [TVar "a"]), ("keys", TCons "Set" [TVar "a"]), ("m", TCons "Map" [TVar "a", TVar "b"])]', 'TCons "Pair" [TCons "Map" [TVar "a", TVar "b"], TCons "Map" [TVar "a", TVar "b"]]'),
+    # Map k1 (Map k2 a) -> Map k1 [a]
+    Benchmark("mergeMaps", 8, 'Term "app" [Term "app" [Term "Map.map" [], Term "Map.elems" []], Term "app" [Term "app" [Term "Map.filter" [], Term "lambda" [Term "app" [Term "not" [], Term "app" [Term "Map.null" [], Term "_x0" []]]]], Term "es" []]]', '[("es", TCons "Map" [TVar "a", TCons "Map" [TVar "b", TVar "c"]])]', 'TCons "Map" [TVar "a", TCons "List" [TVar "c"]]'),
+    # [a] -> (a -> k) -> [(k, a)]
+    Benchmark("toAssociative", 7, 'Term "app" [Term "app" [Term "map" [], Term "lambda" [Term "app" [Term "app" [Term "(,)" [], Term "app" [Term "f" [], Term "_x0" []]], Term "_x0" []]]], Term "xs" []]', '[("f", TFun (TVar "a") (TVar "b")), ("xs", TCons "List" [TVar "a"])]', 'TCons "List" [TCons "Pair" [TVar "b", TVar "a"]]'),
 ]
 
 class BenchmarkResult:

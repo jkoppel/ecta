@@ -41,7 +41,6 @@ runBenchmark (Benchmark name depth sol args res) ablation limit = do
                 prettyPrintAllTerms ablation (substTerm sol) filterNode
             _           -> do
                 reducedNode <- reduceFullyAndLog filterNode
-                -- let reducedNode = reduceFully filterNode
                 let foldedNode = refold reducedNode
                 prettyPrintAllTerms ablation (substTerm sol) foldedNode
 
