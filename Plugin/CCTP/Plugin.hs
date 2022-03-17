@@ -19,6 +19,9 @@ import qualified Data.Map as Map
 import Data.Text (pack, unpack, Text)
 import Data.Maybe (fromMaybe)
 import Data.Tuple (swap)
+import Data.List (sortOn, groupBy)
+import Data.Function (on)
+import qualified Data.Monoid as M
 
 plugin :: Plugin
 plugin =
@@ -35,28 +38,30 @@ plugin =
 
 
 pAnyFunc :: Node
-pAnyFunc = Node (map ($ 0) hoogleComps)
+pAnyFunc = Node (map ($ 1) hoogleComps)
 
 
+invertMap :: Ord b => Map.Map a b -> Map.Map b [a]
+invertMap = toMap . groupBy ((==) `on` fst) . sortOn fst . map swap . Map.toList
+  where toMap = Map.fromList . map (\((a,r):rs) -> (a,r:map snd rs))
 
-invGroupMapping :: Map.Map Text Text
-invGroupMapping = Map.fromList $ map swap $ Map.toList groupMapping
+invGroupMapping :: Map.Map Text [Text]
+invGroupMapping = invertMap groupMapping
 
-invSubstTerm :: Term -> Term
-invSubstTerm (Term (Symbol sym) ts) =
-  Term (Symbol $ fromMaybe sym (Map.lookup sym invGroupMapping)) (map invSubstTerm ts)
+invSkel :: Map.Map Text [TypeSkeleton]
+invSkel = invertMap hoogleComponents
 
-toPrint :: Term -> Term
-toPrint (Term (Symbol s) [ta,rt]) | unpack s == "filter" = invSubstTerm rt
-toPrint t = invSubstTerm t
+prettyMatch :: Term -> [Text]
+prettyMatch (Term (Symbol t) _) = map (M.<> tsk) $ invGroupMapping Map.! t
+  where tsk = pack $ " :: " ++ unwords (map show $ invSkel Map.! t)
+
 
 ectaPlugin :: TypedHole -> TcM [HoleFit]
 ectaPlugin TyH{..} | Just hole <- tyHCt,
                      ty <- ctPred hole = do
       case ghcTypeToSkeleton ty of
          Just t | resNode <- typeToFta t -> do
-             --liftIO $ putStrLn $ "looking for type: `" ++ show t ++ "`"
              let res = getAllTerms $ refold $ reduceFully $ filterType pAnyFunc resNode
-             return $ map (RawHoleFit . text . show  . toPrint) res
+             return $ map (RawHoleFit . text . show ) $ concatMap (prettyMatch . prettyTerm) res
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []

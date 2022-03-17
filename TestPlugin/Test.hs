@@ -3,7 +3,7 @@
 module Main (main) where
 
 
-f :: Bool -> Bool
+f :: Bool -> Bool -> Bool
 f = _
 
 main :: IO ()
