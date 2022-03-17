@@ -1,0 +1,28 @@
+name: cct-plugin
+cabal-version: 1.24
+build-type: Simple
+version: 0.0.1
+author: Matthías Páll Gissurarson
+maintainer: mpg@mpg.is
+synopsis: Hole-fit Synthesis using Hectare
+description:
+
+  The CCT plugin uses the state-of-the-art HECTARE synthesiszer
+  to synthesize valid hole-fits.
+
+category: Compiler Plugin
+license: MIT
+license-file: LICENSE
+
+library
+  default-language: Haskell2010
+  build-depends: base >= 4 && < 5,
+                 ghc > 8.10 && < 9,
+                 text,
+                 containers,
+                 compact-coupled-terms
+  exposed-modules:
+    CCTP.Plugin,
+    CCTP.Utils
+
+

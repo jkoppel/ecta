@@ -1,6 +1,7 @@
 .idea/
 .stack-work/
 *~
+dist-newstyle/
 
 *.pkl
 *.csv
