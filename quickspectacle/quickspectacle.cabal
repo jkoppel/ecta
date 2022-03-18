@@ -1,0 +1,41 @@
+cabal-version: 3.0
+name: quickspectacle
+build-type: Simple
+version: 0.0.1
+author: Matthías Páll Gissurarson
+maintainer: mpg@mpg.is
+synopsis: ECTA-based QuickSpec
+description:
+
+  QuickSpectacle is a rewrite of QuickSpec based on the state-of-the-art ECTA (equality-constrained tree automata)
+  technique for fun and profit (?).
+
+category: Compiler Plugin
+license: MIT
+license-file: LICENSE
+
+common deps
+  default-language: Haskell2010
+  build-depends: base >= 4 && < 5,
+                 ghc > 8.10 && < 9,
+                 text,
+                 containers,
+                 compact-coupled-terms
+
+
+library
+  import: deps
+  hs-source-dirs: src
+  exposed-modules:
+    QuickSpectacle,
+    QuickSpectacle.Types
+
+
+executable quickspectacle
+  import: deps
+  hs-source-dirs: exe
+  build-depends: quickspectacle
+  main-is: Main.hs
+
+
+
