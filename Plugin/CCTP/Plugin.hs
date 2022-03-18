@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 module CCTP.Plugin (plugin) where
 
 import GhcPlugins
@@ -23,18 +24,24 @@ import Data.List (sortOn, groupBy)
 import Data.Function (on)
 import qualified Data.Monoid as M
 import MonadUtils (concatMapM)
+import TcRnMonad (writeTcRef, newTcRef, readTcRef, mapMaybeM)
+import TcEnv (tcLookupId, tcLookupIdMaybe)
 
 plugin :: Plugin
 plugin =
   defaultPlugin
-    { holeFitPlugin = \_ ->
+    { holeFitPlugin = \opts ->
         Just $
-          fromPureHFPlugin
-            ( HoleFitPlugin
-                { candPlugin = \_ c -> return [],
-                  fitPlugin = \h _ -> ectaPlugin h
-                }
-            )
+          HoleFitPluginR {
+            hfPluginInit = newTcRef [],
+            hfPluginRun = \ref ->
+                  ( HoleFitPlugin
+                   { candPlugin = \_ c -> writeTcRef ref c >> return [],
+                     fitPlugin = \h _ -> readTcRef ref >>= ectaPlugin opts h
+                                  }
+                              ),
+            hfPluginStop = const (return ())
+          }
     }
 
 
@@ -52,24 +59,45 @@ invGroupMapping = invertMap groupMapping
 invSkel :: Map.Map Text TypeSkeleton
 invSkel = Map.map head $ invertMap hoogleComponents
 
-prettyMatch :: Term -> TcM [Text]
-prettyMatch (Term (Symbol t) _) =
+prettyMatch :: Map.Map Text TypeSkeleton -> Map.Map Text [Text] -> Term -> TcM [Text]
+prettyMatch skels groups (Term (Symbol t) _) =
   do ty <- skeletonToType tsk
      let str = case ty of
                Just t  -> pack (" :: " ++  showSDocUnsafe (ppr t))
                _ -> pack (" :: " ++ show tsk)
      return $ map (M.<> str) terms
-  where tsk = invSkel Map.! t
-        terms = invGroupMapping Map.! t
+  where tsk = skels Map.! t
+        terms = groups Map.! t
 
+candsToComps :: [HoleFitCandidate] -> TcM [(Text, TypeSkeleton)]
+candsToComps = mapMaybeM candToTN
+  where candToTN :: HoleFitCandidate -> TcM (Maybe (Text, TypeSkeleton))
+        candToTN cand =
+              fmap (fmap (nm,) . (>>= typeToSkeleton)) (
+                case cand of
+                   IdHFCand id -> return $ Just $ idType id
+                   NameHFCand nm -> fmap idType <$> tcLookupIdMaybe nm
+                   GreHFCand GRE{..} -> fmap idType <$> tcLookupIdMaybe gre_name)
+          where nm = pack $ occNameString $ occName cand
 
-ectaPlugin :: TypedHole -> TcM [HoleFit]
-ectaPlugin TyH{..} | Just hole <- tyHCt,
-                     ty <- ctPred hole = do
+ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
+ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
+                            ty <- ctPred hole = do
+      scopeComps <- candsToComps scope
+      let (scopeNode, skels, groups) =
+            if "useHPlusComps" `elem` opts
+            then let scopeNode = pAnyFunc
+                     skels = invSkel
+                     groups = invGroupMapping
+                 in (scopeNode, skels, groups)
+            else let scopeNode = Node . map (($ 0) . uncurry parseHoogleComponent) $ scopeComps
+                     skels = Map.fromList scopeComps
+                     groups = Map.fromList $ map (\(t,_) -> (t,[t])) scopeComps
+                 in (scopeNode, skels, groups)
       case typeToSkeleton ty of
          Just t | resNode <- typeToFta t -> do
-             let res = getAllTerms $ refold $ reduceFully $ filterType pAnyFunc resNode
-             ppterms <- concatMapM (prettyMatch . prettyTerm) res
+             let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
+             ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
              return $ map (RawHoleFit . text . unpack) ppterms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
