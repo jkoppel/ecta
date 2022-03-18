@@ -22,6 +22,7 @@ import Data.Tuple (swap)
 import Data.List (sortOn, groupBy)
 import Data.Function (on)
 import qualified Data.Monoid as M
+import MonadUtils (concatMapM)
 
 plugin :: Plugin
 plugin =
@@ -48,20 +49,27 @@ invertMap = toMap . groupBy ((==) `on` fst) . sortOn fst . map swap . Map.toList
 invGroupMapping :: Map.Map Text [Text]
 invGroupMapping = invertMap groupMapping
 
-invSkel :: Map.Map Text [TypeSkeleton]
-invSkel = invertMap hoogleComponents
+invSkel :: Map.Map Text TypeSkeleton
+invSkel = Map.map head $ invertMap hoogleComponents
 
-prettyMatch :: Term -> [Text]
-prettyMatch (Term (Symbol t) _) = map (M.<> tsk) $ invGroupMapping Map.! t
-  where tsk = pack $ " :: " ++ unwords (map show $ invSkel Map.! t)
+prettyMatch :: Term -> TcM [Text]
+prettyMatch (Term (Symbol t) _) =
+  do ty <- skeletonToType tsk
+     let str = case ty of
+               Just t  -> pack (" :: " ++  showSDocUnsafe (ppr t))
+               _ -> pack (" :: " ++ show tsk)
+     return $ map (M.<> str) terms
+  where tsk = invSkel Map.! t
+        terms = invGroupMapping Map.! t
 
 
 ectaPlugin :: TypedHole -> TcM [HoleFit]
 ectaPlugin TyH{..} | Just hole <- tyHCt,
                      ty <- ctPred hole = do
-      case ghcTypeToSkeleton ty of
+      case typeToSkeleton ty of
          Just t | resNode <- typeToFta t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType pAnyFunc resNode
-             return $ map (RawHoleFit . text . show ) $ concatMap (prettyMatch . prettyTerm) res
+             ppterms <- concatMapM (prettyMatch . prettyTerm) res
+             return $ map (RawHoleFit . text . unpack) ppterms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
