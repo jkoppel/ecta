@@ -19,10 +19,13 @@ import GHC.IO.Unsafe
 import Data.IORef
 import TcRnMonad (newUnique, getTopEnv, getLocalRdrEnv, getGlobalRdrEnv)
 import TcEnv (tcLookupTyCon)
+import Data.Char (isAlpha)
 
+ -- The old "global variable" trick, as we are creating new type variables
+ -- from scratch, but we want all 'a's to refer to the same variabel, etc.
 tyVarMap :: IORef (Map Text TyVar)
 {-# NOINLINE tyVarMap #-}
-tyVarMap = unsafePerformIO (newIORef Map.empty) -- The old "global variable" trick
+tyVarMap = unsafePerformIO (newIORef Map.empty)
 
 skeletonToType :: TypeSkeleton -> TcM (Maybe Type)
 skeletonToType (TVar t) = Just <$>
@@ -81,7 +84,11 @@ typeToSkeletonText ty = Just $ pack $ showSDocUnsafe $ ppr ty
 
 -- TODO: make sure it's one of the supported ones
 tyVarToSkeletonText :: Outputable a => a -> Maybe Text
-tyVarToSkeletonText ty = Just $ pack $ showSDocUnsafe $ ppr ty
+tyVarToSkeletonText ty = Just $ pack $ stripNumbers $ showSDocUnsafe $ ppr ty
+  -- by default, the variables are given a number (e.g. a1).
+  -- we just strip them off for now.
+  where stripNumbers :: String -> String
+        stripNumbers = takeWhile isAlpha
 
 
 
