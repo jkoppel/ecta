@@ -7,7 +7,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Dynamic (dynTypeRep)
 import Application.TermSearch.Type (TypeSkeleton(..), AblationType (Default))
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import qualified Data.Bifunctor as Bi
 import Application.TermSearch.Dataset (typeToFta)
 import Data.ECTA.Term (Symbol(..), Term (Term))
@@ -23,10 +23,11 @@ import Data.ECTA.Paths (mkEqConstraints, path, Pathable (getPath))
 
 sig :: Sig
 sig = mconcat
-    [ con "return" (return :: A -> [A])
-    , con "(>>=)" ((>>=) :: [A] -> (A -> [A]) -> [A])
-    , con "xs" ([] :: [A])
-    , con "x" (A undefined :: A)
+    [ con "return" (return :: Int -> [Int])
+    , con "(>>=)" ((>>=) :: [Int] -> (Int -> [Int]) -> [Int])
+    , con "xs" ([] :: [Int])
+    , con "x" (0 :: Int)
+    , con "f" (const [] :: Int -> [Int])
     ]
 
 sigList :: Sig -> [(Text, TypeSkeleton)]
@@ -35,8 +36,8 @@ sigList sig = Map.toList $ Map.map (typeRepToTypeSkeleton . dynTypeRep) sig
 tk :: Node -> Int -> [Node]
 tk _ 0 = []
 tk anyArg 1 = [anyArg]
-tk anyArg n = [union $ mapp (union nl1) anyArg:nl1]
- where nl1 = tk anyArg (n-1)
+tk anyArg n = [union [mapp nl1 nl1,nl1]]
+ where nl1 = union $ tk anyArg (n-1)
 
 mapp :: Node -> Node -> Node
 mapp n1 n2 = Node [
@@ -50,6 +51,13 @@ mapp n1 n2 = Node [
     )]
 
 
+pp (Term (Symbol t) []) = t
+pp (Term (Symbol "app") (arg:rest)) =
+    "(" <> wparifreq <> " " <> mconcat (map pp rest) <> ")"
+  where parg = pp arg
+        wparifreq = if length (words $ unpack parg) > 1
+                    then "(" <> parg <> ")"
+                    else parg
 
 
 main :: IO ()
@@ -57,7 +65,7 @@ main = do
           let argNodes =  map (Bi.bimap Symbol typeToFta) $ sigList sig
               anyArg = Node $
                  map (\(s,t) -> Edge (Symbol s) [typeToFta t]) $ sigList sig
-          let t = typeRepToTypeSkeleton (someTypeRep (Proxy :: Proxy [A]))
+          let t = typeRepToTypeSkeleton (someTypeRep (Proxy :: Proxy [Int]))
               resNode = typeToFta t
               -- !filterNode = filterType () resNode
             --   tk = relevantTermsUptoK anyArg [] 6
@@ -66,6 +74,5 @@ main = do
           print argNodes
           print anyArg
           print $ mapp anyArg anyArg
-          mapM_ (print . prettyTerm ) $
-            concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 4)
-          --mapM_ (print  ) $ (getAllTerms  ) $ app 0 anyArg anyArg
+          mapM_ (putStrLn . unpack . pp . prettyTerm ) $
+            concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 5)
