@@ -80,6 +80,7 @@ library:
     - raw-strings-qq
     - text
     - vector-instances
+    - quickspec
   ghc-options:
   - -Wall
 

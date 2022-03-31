@@ -48,7 +48,7 @@ import Prelude hiding ( round )
 
 import Data.Function ( on )
 import Data.Hashable ( Hashable )
-import Data.List ( isSubsequenceOf, nub, sort, sortBy )
+import Data.List ( isSubsequenceOf, nub, sort, sortBy, subsequences, (\\) )
 import Data.Monoid ( Any(..) )
 import Data.Semigroup ( Max(..) )
 import qualified Data.Text as Text
@@ -66,6 +66,7 @@ import Utility.Fixpoint
 
 -------------------------------------------------------
 
+import Test.QuickCheck hiding ( classes )
 
 -----------------------------------------------------------------------
 --------------------------- Misc / general ----------------------------
@@ -463,3 +464,24 @@ subsumptionOrderedEclasses ecs = case ecs of
 unsafeSubsumptionOrderedEclasses :: EqConstraints -> [PathEClass]
 unsafeSubsumptionOrderedEclasses (EqConstraints pecs) = sortBy completedSubsumptionOrdering pecs
 unsafeSubsumptionOrderedEclasses  EqContradiction     = error $ "unsafeSubsumptionOrderedEclasses: unexpected EqContradiction"
+
+
+---------------------------------------------------------------------
+------------------ Playing with QuickSpec ---------------------------
+---------------------------------------------------------------------
+
+------- Copied from PathSpec
+instance Arbitrary Path where
+  arbitrary = path <$> listOf (chooseInt (0, 4))
+  shrink = map Path . shrink . unPath
+
+------- Copied from PathSpec
+instance Arbitrary PathTrie where
+  arbitrary = do paths <- suchThat arbitrary (\ps -> not (isContradicting [ps]))
+                 return $ toPathTrie $ nub paths
+
+  shrink EmptyPathTrie              = []
+  shrink TerminalPathTrie           = []
+  shrink (PathTrieSingleChild _ pt) = [pt]
+  shrink (PathTrie vec)             = let l = Vector.toList vec
+                                      in l ++ (map (PathTrie . Vector.fromList) (subsequences l \\ [l]))

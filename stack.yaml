@@ -41,6 +41,8 @@ packages:
 #
 extra-deps:
 - language-dot-0.1.1
+- quickspec-2.1.5
+- twee-lib-2.2
 - git: https://github.com/jkoppel/equivalence.git
   commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
 

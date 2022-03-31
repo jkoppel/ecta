@@ -12,6 +12,20 @@ packages:
   original:
     hackage: language-dot-0.1.1
 - completed:
+    hackage: quickspec-2.1.5@sha256:1d1cc020fa9075cb5fafd4056fe1d930d5763b954fa8200e57ce6aba057544b2,3557
+    pantry-tree:
+      size: 3032
+      sha256: 36e7cd88a0fe800a0b0ea216c0c3ea96db02e25fd34ef53653f6d5008730476c
+  original:
+    hackage: quickspec-2.1.5
+- completed:
+    hackage: twee-lib-2.2@sha256:9fe9327505d8f450a94f2fc9eea74b292901b7992d520aa1dd4f0410fbe0e594,2112
+    pantry-tree:
+      size: 1487
+      sha256: 0356be78a4720251536932d2253f75eb1f97b26c61260e566b5e8e05642d5349
+  original:
+    hackage: twee-lib-2.2
+- completed:
     name: equivalence
     version: 0.3.5
     git: https://github.com/jkoppel/equivalence.git

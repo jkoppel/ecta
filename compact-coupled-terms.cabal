@@ -103,6 +103,7 @@ library
     , lens
     , mtl
     , pretty-simple
+    , quickspec
     , raw-strings-qq
     , text
     , time
