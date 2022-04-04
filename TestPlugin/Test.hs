@@ -3,6 +3,7 @@
 module Main (main) where
 import Data.Maybe (mapMaybe)
 
+import Prelude (Bool(..), not, Eq(..), putStrLn)
 
 f :: Bool -> Bool -> Bool
 f = _
@@ -13,8 +14,5 @@ s = _
 h :: Bool -> Bool
 h = _
 
-g :: (a -> Maybe b) -> [a] -> [b]
-g = _
 
-main :: IO ()
 main = putStrLn "hello, ecta"

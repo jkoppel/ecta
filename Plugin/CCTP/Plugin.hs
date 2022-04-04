@@ -25,12 +25,13 @@ import Data.Function (on)
 import qualified Data.Monoid as M
 import MonadUtils (concatMapM)
 import TcRnMonad (writeTcRef, newTcRef, readTcRef, mapMaybeM, getTopEnv)
-import TcEnv (tcLookupId, tcLookupIdMaybe)
+import TcEnv (tcLookupId, tcLookupIdMaybe, tcLookup)
 import qualified Data.Bifunctor as Bi
 import TcRnDriver (tcRnGetInfo)
 import GHC (ClsInst)
 import InstEnv (ClsInst(ClsInst, is_tvs, is_cls_nm, is_tys))
 import Language.Dot.Pretty (renderDot)
+import ConLike (ConLike(RealDataCon))
 
 
 plugin :: Plugin
@@ -78,9 +79,14 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
                 c2t cand =
                   case cand of
                     IdHFCand id -> return $ Just $ idType id
-                    NameHFCand nm -> fmap idType <$> tcLookupIdMaybe nm
-                    GreHFCand GRE{..} -> fmap idType <$> tcLookupIdMaybe gre_name
+                    NameHFCand nm -> tcTyThingTypeMaybe <$> tcLookup nm
+                    GreHFCand GRE{..} -> tcTyThingTypeMaybe  <$> tcLookup gre_name
         extract (a, (b,c)) = ((a,b), c)
+        tcTyThingTypeMaybe :: TcTyThing -> Maybe Type
+        tcTyThingTypeMaybe (ATcId tttid _) = Just $ idType tttid
+        tcTyThingTypeMaybe (AGlobal (AnId ttid)) =Just $ idType ttid
+        tcTyThingTypeMaybe (AGlobal (AConLike (RealDataCon con))) = Just $ idType $ dataConWorkId con
+        tcTyThingTypeMaybe _ =  Nothing
 
 
 instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
@@ -98,10 +104,6 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                             ty <- ctPred hole = do
       (fun_comps, scons) <- fmap (nubBy eqType . concat) . unzip <$> candsToComps scope
       -- TODO: like in the Hoogle comp: if we encounter a requirement
-      -- like "Functor a" or similar, we can use ":info" on "Functor"
-      -- to generate "Functor []", "Functor Maybe" etc. from scope.
-      -- We can use the lookupInsts :: TyThing -> TcM ([ClsInsts], [FamInsts]),
-      -- where the insts
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
