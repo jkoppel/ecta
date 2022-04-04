@@ -1,15 +1,14 @@
 {-# OPTIONS_GHC -fplugin CCTP.Plugin -fno-max-valid-hole-fits #-}
+module Test (main) where
 
-module Main (main) where
-import Data.Maybe (mapMaybe)
+import TestConstraint
+import Prelude (Bool(..), not, putStrLn, undefined)
 
-import Prelude (Bool(..), not, Eq(..), putStrLn)
+s :: TestConstraint a => a -> Bool -> Bool
+s = undefined
 
 f :: Bool -> Bool -> Bool
-f = _
-
-s :: Eq a => a -> Bool -> Bool
-s = _
+f = undefined
 
 h :: Bool -> Bool
 h = _
