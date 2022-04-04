@@ -20,6 +20,7 @@ library
                  ghc > 8.10 && < 9,
                  text,
                  containers,
+                 language-dot,
                  compact-coupled-terms
   exposed-modules:
     CCTP.Plugin,
