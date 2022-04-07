@@ -101,9 +101,15 @@ instToTerm _ =  Nothing
 
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
-                            ty <- ctPred hole = do
+                                 ty <- ctPred hole = do
+      -- We need the generalize (and tau) function here as well to make
+      -- the candiateComponents work with type variables that can
+      -- be instantiated.
       (fun_comps, scons) <- fmap (nubBy eqType . concat) . unzip <$> candsToComps scope
-      -- TODO: like in the Hoogle comp: if we encounter a requirement
+      -- The constraints are there and added to the graph... but we have to
+      -- be more precise when we add them to the machine. Any time a
+      -- function requires a constraint to hold for one of it's variables,
+      -- we have to add a path equality to the ECTA.
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
@@ -124,7 +130,7 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
 
-             let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 2)
+             let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 3)
             --  liftIO $ mapM_ (putStrLn . unpack . pp . prettyTerm ) $
             --             concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 2)
 
