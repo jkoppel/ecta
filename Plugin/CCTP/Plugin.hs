@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings #-}
 module CCTP.Plugin (plugin) where
 
 import GhcPlugins hiding ((<>))
@@ -12,7 +13,7 @@ import CCTP.Utils
 
 import Application.TermSearch.Dataset
 import Application.TermSearch.Type
-import Application.TermSearch.TermSearch
+import Application.TermSearch.TermSearch hiding (allConstructors, generalize)
 import Data.ECTA
 import Data.ECTA.Term
 
@@ -20,7 +21,7 @@ import qualified Data.Map as Map
 import Data.Text (pack, unpack, Text)
 import Data.Maybe (fromMaybe, mapMaybe, isJust, fromJust)
 import Data.Tuple (swap)
-import Data.List (sortOn, groupBy, nub, nubBy)
+import Data.List (sortOn, groupBy, nub, nubBy, (\\))
 import Data.Function (on)
 import qualified Data.Monoid as M
 import MonadUtils (concatMapM)
@@ -32,6 +33,9 @@ import GHC (ClsInst)
 import InstEnv (ClsInst(ClsInst, is_tvs, is_cls_nm, is_tys))
 import Language.Dot.Pretty (renderDot)
 import ConLike (ConLike(RealDataCon))
+import Data.ECTA.Paths (Path, mkEqConstraints)
+import Application.TermSearch.Utils
+import Data.Containers.ListUtils (nubOrd)
 
 
 plugin :: Plugin
@@ -99,6 +103,48 @@ instToTerm ClsInst{..} | [] <- is_tvs,
         args = map typeToSkeleton is_tys
 instToTerm _ =  Nothing
 
+globalTyVars :: [Node]
+globalTyVars = [var1, var2, var3, var4, varAcc]
+
+type Comps = [(Text,TypeSkeleton)]
+mtau :: Comps -> Node
+mtau comps = createMu
+  (\n -> union
+    (  (arrowType n n:globalTyVars)
+    ++ map (Node . (: []) . constructorToEdge n) usedConstructors
+    )
+  )
+ where
+  constructorToEdge :: Node -> (Text, Int) -> Edge
+  constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
+
+  usedConstructors = allConstructors comps
+
+generalize :: Comps -> Node -> Node
+generalize comps n@(Node [_]) = Node
+  [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
+ where
+  vars                = globalTyVars
+  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then mtau comps else x) n
+  (Node [Edge s ns']) = nWithVarsRemoved
+
+  pathsForVar :: Node -> [Path]
+  pathsForVar v = pathsMatching (== v) n
+generalize _ n = n -- error $ "cannot generalize: " ++ show n
+
+
+allConstructors :: Comps -> [(Text, Int)]
+allConstructors comps =
+  nubOrd (concatMap (getConstructors . snd) comps
+  ++ [("Bool", 1), ("Map", 2)]) \\ [("Fun", 2)]
+ where
+  getConstructors :: TypeSkeleton -> [(Text, Int)]
+  getConstructors (TVar _    ) = []
+  getConstructors (TFun t1 t2) = getConstructors t1 ++ getConstructors t2
+  getConstructors (TCons nm ts) =
+    (nm, length ts) : concatMap getConstructors ts
+
+
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                  ty <- ctPred hole = do
@@ -118,8 +164,8 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                        . tyConAppTyCon) constraints
       let scope_comps = fun_comps ++ instance_comps
       let (scopeNode, anyArg, skels, groups) =
-            let argNodes = map (Bi.bimap Symbol typeToFta) scope_comps
-                anyArg = Node $
+            let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) scope_comps
+                anyArg = generalize scope_comps $ Node $
                    map (\(s,t) -> Edge (Symbol s) [typeToFta t]) scope_comps
                 scopeNode = anyArg
                 skels = Map.fromList scope_comps
@@ -129,11 +175,7 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
          Just (t, cons) | resNode <- typeToFta t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
-
              let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 3)
-            --  liftIO $ mapM_ (putStrLn . unpack . pp . prettyTerm ) $
-            --             concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 2)
-
              liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
              return $ map (RawHoleFit . text . unpack) $ ppterms ++ moreTerms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"

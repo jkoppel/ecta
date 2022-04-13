@@ -2,7 +2,7 @@
 module Test (main) where
 
 import TestConstraint
-import Prelude (Bool(..), not, putStrLn, undefined)
+import Prelude (Bool(..), not, putStrLn, undefined, id)
 
 s :: TestConstraint a => a -> Bool -> Bool
 s = undefined
@@ -12,6 +12,11 @@ f = undefined
 
 h :: Bool -> Bool
 h = _
+
+g :: a -> a
+g = id
+
+-- h = s TestConstraint[Bool] True
 
 
 main = putStrLn "hello, ecta"
