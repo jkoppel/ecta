@@ -22,12 +22,17 @@ import Data.IORef
 import TcRnMonad (newUnique, getTopEnv, getLocalRdrEnv, getGlobalRdrEnv)
 import TcEnv (tcLookupTyCon)
 import Data.Char (isAlpha)
-import Data.ECTA (Node (Node), mkEdge)
+import Data.ECTA (Node (Node), mkEdge, Edge (Edge), pathsMatching, mapNodes, createMu)
 import Data.ECTA.Term
-import Application.TermSearch.Utils (theArrowNode, arrowType, var1, var2, var3, var4)
+import Application.TermSearch.Utils (theArrowNode, arrowType, var1, var2, var3, var4, varAcc, mkDatatype)
 import Data.ECTA (union)
-import Data.ECTA.Paths (getPath, mkEqConstraints, path)
+import Data.ECTA.Paths (getPath, mkEqConstraints, path, Path)
 import Debug.Trace (traceShow)
+import qualified Data.Monoid as M
+import Data.List (groupBy, sortOn)
+import Data.Function (on)
+import Data.Tuple (swap)
+import Data.Containers.ListUtils (nubOrd)
 
  -- The old "global variable" trick, as we are creating new type variables
  -- from scratch, but we want all 'a's to refer to the same variabel, etc.
@@ -141,3 +146,73 @@ pp (Term (Symbol "app") (arg:rest)) =
 
 --   where Just (fta, ftb) = splitFunTy_maybe ty
 --         tyStr = showSDocUnsafe $ ppr (fta, ftb)
+
+
+allConstructors :: Comps -> [(Text, Int)]
+allConstructors comps = nubOrd (concatMap (getConstructors . snd) comps)
+ where
+  getConstructors :: TypeSkeleton -> [(Text, Int)]
+  getConstructors (TVar _    ) = []
+  getConstructors (TFun t1 t2) = getConstructors t1 ++ getConstructors t2
+  getConstructors (TCons nm ts) =
+    (nm, length ts) : concatMap getConstructors ts
+
+type Comps = [(Text,TypeSkeleton)]
+
+mtau :: Comps -> Node
+mtau comps = createMu
+  (\n -> union
+    (  (arrowType n n:globalTyVars)
+    ++ map (Node . (: []) . constructorToEdge n) usedConstructors
+    )
+  )
+ where
+  constructorToEdge :: Node -> (Text, Int) -> Edge
+  constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
+
+  usedConstructors = allConstructors comps
+
+globalTyVars :: [Node]
+globalTyVars = [var1, var2, var3, var4, varAcc]
+
+generalize :: Comps -> Node -> Node
+generalize comps n@(Node [_]) = Node
+  [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
+ where
+  vars                = globalTyVars
+  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then mtau comps else x) n
+  (Node [Edge s ns']) = nWithVarsRemoved
+
+  pathsForVar :: Node -> [Path]
+  pathsForVar v = pathsMatching (== v) n
+generalize _ n = n -- error $ "cannot generalize: " ++ show n
+
+invertMap :: Ord b => Map.Map a b -> Map.Map b [a]
+invertMap = toMap . groupBy ((==) `on` fst) . sortOn fst . map swap . Map.toList
+  where toMap = Map.fromList . map (\((a,r):rs) -> (a,r:map snd rs))
+
+
+prettyMatch :: Map.Map Text TypeSkeleton -> Map.Map Text [Text] -> Term -> TcM [Text]
+prettyMatch skels groups (Term (Symbol t) _) =
+  do ty <- skeletonToType tsk
+     let str = case ty of
+               Just t  -> pack (" :: " ++  showSDocUnsafe (ppr t))
+               _ -> pack (" :: " ++ show tsk)
+     return $ map (M.<> str) terms
+  where tsk = skels Map.! t
+        terms = groups Map.! t
+
+mtypeToFta :: TypeSkeleton -> Node
+mtypeToFta (TVar "a"  ) = var1
+mtypeToFta (TVar "b"  ) = var2
+mtypeToFta (TVar "c"  ) = var3
+mtypeToFta (TVar "d"  ) = var4
+mtypeToFta (TVar "acc") = varAcc
+-- TODO: lift this restriction
+mtypeToFta (TVar v) =
+  error
+    $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got "
+    ++ show v
+mtypeToFta (TFun  t1    t2      ) = arrowType (mtypeToFta t1) (mtypeToFta t2)
+mtypeToFta (TCons "Fun" [t1, t2]) = arrowType (mtypeToFta t1) (mtypeToFta t2)
+mtypeToFta (TCons s     ts      ) = mkDatatype s (map mtypeToFta ts)

@@ -36,6 +36,7 @@ import ConLike (ConLike(RealDataCon))
 import Data.ECTA.Paths (Path, mkEqConstraints)
 import Application.TermSearch.Utils
 import Data.Containers.ListUtils (nubOrd)
+import Debug.Trace
 
 
 plugin :: Plugin
@@ -58,22 +59,6 @@ plugin =
 
 pAnyFunc :: Node
 pAnyFunc = Node (map ($ 1) hoogleComps)
-
-
-invertMap :: Ord b => Map.Map a b -> Map.Map b [a]
-invertMap = toMap . groupBy ((==) `on` fst) . sortOn fst . map swap . Map.toList
-  where toMap = Map.fromList . map (\((a,r):rs) -> (a,r:map snd rs))
-
-
-prettyMatch :: Map.Map Text TypeSkeleton -> Map.Map Text [Text] -> Term -> TcM [Text]
-prettyMatch skels groups (Term (Symbol t) _) =
-  do ty <- skeletonToType tsk
-     let str = case ty of
-               Just t  -> pack (" :: " ++  showSDocUnsafe (ppr t))
-               _ -> pack (" :: " ++ show tsk)
-     return $ map (M.<> str) terms
-  where tsk = skels Map.! t
-        terms = groups Map.! t
 
 candsToComps :: [HoleFitCandidate] -> TcM [((Text, TypeSkeleton), [Type])]
 candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
@@ -103,48 +88,6 @@ instToTerm ClsInst{..} | [] <- is_tvs,
         args = map typeToSkeleton is_tys
 instToTerm _ =  Nothing
 
-globalTyVars :: [Node]
-globalTyVars = [var1, var2, var3, var4, varAcc]
-
-type Comps = [(Text,TypeSkeleton)]
-mtau :: Comps -> Node
-mtau comps = createMu
-  (\n -> union
-    (  (arrowType n n:globalTyVars)
-    ++ map (Node . (: []) . constructorToEdge n) usedConstructors
-    )
-  )
- where
-  constructorToEdge :: Node -> (Text, Int) -> Edge
-  constructorToEdge n (nm, arity) = Edge (Symbol nm) (replicate arity n)
-
-  usedConstructors = allConstructors comps
-
-generalize :: Comps -> Node -> Node
-generalize comps n@(Node [_]) = Node
-  [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
- where
-  vars                = globalTyVars
-  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then mtau comps else x) n
-  (Node [Edge s ns']) = nWithVarsRemoved
-
-  pathsForVar :: Node -> [Path]
-  pathsForVar v = pathsMatching (== v) n
-generalize _ n = n -- error $ "cannot generalize: " ++ show n
-
-
-allConstructors :: Comps -> [(Text, Int)]
-allConstructors comps =
-  nubOrd (concatMap (getConstructors . snd) comps
-  ++ [("Bool", 1), ("Map", 2)]) \\ [("Fun", 2)]
- where
-  getConstructors :: TypeSkeleton -> [(Text, Int)]
-  getConstructors (TVar _    ) = []
-  getConstructors (TFun t1 t2) = getConstructors t1 ++ getConstructors t2
-  getConstructors (TCons nm ts) =
-    (nm, length ts) : concatMap getConstructors ts
-
-
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                  ty <- ctPred hole = do
@@ -165,14 +108,14 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
       let scope_comps = fun_comps ++ instance_comps
       let (scopeNode, anyArg, skels, groups) =
             let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) scope_comps
-                anyArg = generalize scope_comps $ Node $
-                   map (\(s,t) -> Edge (Symbol s) [typeToFta t]) scope_comps
+                anyArg = Node $
+                   map (\(s,t) -> Edge (Symbol s) [generalize scope_comps $ typeToFta t]) scope_comps
                 scopeNode = anyArg
                 skels = Map.fromList scope_comps
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
             in (scopeNode, anyArg, skels, groups)
       case typeToSkeleton ty of
-         Just (t, cons) | resNode <- typeToFta t -> do
+         Just (t, cons) | resNode <- generalize scope_comps $ typeToFta t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
              let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 3)
