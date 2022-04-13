@@ -74,6 +74,9 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
         tcTyThingTypeMaybe :: TcTyThing -> Maybe Type
         tcTyThingTypeMaybe (ATcId tttid _) = Just $ idType tttid
         tcTyThingTypeMaybe (AGlobal (AnId ttid)) =Just $ idType ttid
+        tcTyThingTypeMaybe (AGlobal (ATyCon ttid)) | t <- mkTyConApp ttid [],
+                                                    (tcReturnsConstraintKind . tcTypeKind) t
+                                                    = Just t
         tcTyThingTypeMaybe (AGlobal (AConLike (RealDataCon con))) = Just $ idType $ dataConWorkId con
         tcTyThingTypeMaybe _ =  Nothing
 
@@ -81,8 +84,8 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
 instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
 instToTerm ClsInst{..} | [] <- is_tvs,
                          all isJust args,
-                         jargs <- map (fst . fromJust) args =
-  Just (clsstr <> tystr,TCons clsstr jargs )
+                         jargs <- map (fst . fromJust) args = traceShowId $
+  Just ("@" <> clsstr <> tystr,TCons clsstr jargs )
   where clsstr =  pack $  showSDocUnsafe $ ppr is_cls_nm
         tystr = pack $ showSDocUnsafe $ ppr is_tys
         args = map typeToSkeleton is_tys
@@ -91,15 +94,13 @@ instToTerm _ =  Nothing
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                  ty <- ctPred hole = do
-      -- We need the generalize (and tau) function here as well to make
-      -- the candiateComponents work with type variables that can
-      -- be instantiated.
       (fun_comps, scons) <- fmap (nubBy eqType . concat) . unzip <$> candsToComps scope
       -- The constraints are there and added to the graph... but we have to
       -- be more precise when we add them to the machine. Any time a
       -- function requires a constraint to hold for one of it's variables,
       -- we have to add a path equality to the ECTA.
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
+      liftIO $ print fun_comps
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
@@ -118,7 +119,7 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
          Just (t, cons) | resNode <- generalize scope_comps $ typeToFta t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
-             let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 3)
+             let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 4)
              liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
              return $ map (RawHoleFit . text . unpack) $ ppterms ++ moreTerms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"

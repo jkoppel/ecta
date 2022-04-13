@@ -100,9 +100,9 @@ typeToSkeleton ty | (cons, args@(_:_)) <- splitAppTys ty,
                        (aks, acs) <- unzip argsks =
     Just (TCons const aks, cons:concat acs)
 typeToSkeleton ty | (cons, []) <- splitAppTys ty,
-                       Just const <- typeToSkeletonText cons
+                     Just const <- typeToSkeletonText cons
     -- These are the ones we don't handle so far
-    = Just (TCons const [], [])
+    = Just (TCons const [], [cons])
 
 -- TODO: Filter out lifted rep etc.
 typeToSkeletonText :: Outputable a => a -> Maybe Text
@@ -135,13 +135,19 @@ mapp n1 n2 = Node [
     )]
 
 
-pp (Term (Symbol t) []) = t
-pp (Term (Symbol "app") (arg:rest)) =
-    "(" <> wparifreq <> " " <> mconcat (map pp rest) <> ")"
-  where parg = pp arg
-        wparifreq = if length (words $ unpack parg) > 1
-                    then "(" <> parg <> ")"
-                    else parg
+pp = mconcat . (pp' False)
+ where
+  pp' :: Bool -> Term -> [Text]
+  pp' _ (Term (Symbol t) []) | ('@':str) <- unpack t = []
+  pp' _ (Term (Symbol t) [])  = [t]
+  pp' par (Term (Symbol "app") (arg:rest)) | res@(_:_) <- concatMap (pp' True) rest =
+      [rpar <> wparifreq <> " " <> mconcat (concatMap (pp' True) rest) <> lpar]
+                                         | otherwise = [wparifreq]
+    where parg = pp arg
+          (rpar,lpar) = if par then ("(", ")") else ("","")
+          wparifreq = if length (words $ unpack parg) > 1
+                      then "(" <> parg <> ")"
+                      else parg
 
 
 --   where Just (fta, ftb) = splitFunTy_maybe ty
