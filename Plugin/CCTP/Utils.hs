@@ -21,7 +21,7 @@ import GHC.IO.Unsafe
 import Data.IORef
 import TcRnMonad (newUnique, getTopEnv, getLocalRdrEnv, getGlobalRdrEnv)
 import TcEnv (tcLookupTyCon)
-import Data.Char (isAlpha)
+import Data.Char (isAlpha, isAscii)
 import Data.ECTA (Node (Node), mkEdge, Edge (Edge), pathsMatching, mapNodes, createMu)
 import Data.ECTA.Term
 import Application.TermSearch.Utils (theArrowNode, arrowType, var1, var2, var3, var4, varAcc, mkDatatype)
@@ -135,17 +135,18 @@ mapp n1 n2 = Node [
     )]
 
 
-pp = mconcat . (pp' False)
+pp :: Term -> Text
+pp = mconcat . pp' False
  where
   pp' :: Bool -> Term -> [Text]
-  pp' _ (Term (Symbol t) []) | ('@':str) <- unpack t = []
+  pp' _ (Term (Symbol t) []) | ('@':str) <- unpack t = [pack str]
   pp' _ (Term (Symbol t) [])  = [t]
   pp' par (Term (Symbol "app") (arg:rest)) | res@(_:_) <- concatMap (pp' True) rest =
       [rpar <> wparifreq <> " " <> mconcat (concatMap (pp' True) rest) <> lpar]
-                                         | otherwise = [wparifreq]
+                                           | otherwise = [wparifreq]
     where parg = pp arg
           (rpar,lpar) = if par then ("(", ")") else ("","")
-          wparifreq = if length (words $ unpack parg) > 1
+          wparifreq = if length (words $ unpack parg) > 1 || (not $ isAscii $ head $ unpack parg)
                       then "(" <> parg <> ")"
                       else parg
 

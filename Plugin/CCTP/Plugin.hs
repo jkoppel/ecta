@@ -30,7 +30,7 @@ import TcEnv (tcLookupId, tcLookupIdMaybe, tcLookup)
 import qualified Data.Bifunctor as Bi
 import TcRnDriver (tcRnGetInfo)
 import GHC (ClsInst)
-import InstEnv (ClsInst(ClsInst, is_tvs, is_cls_nm, is_tys))
+import InstEnv (ClsInst(ClsInst, is_tvs, is_cls_nm, is_tys), is_dfun)
 import Language.Dot.Pretty (renderDot)
 import ConLike (ConLike(RealDataCon))
 import Data.ECTA.Paths (Path, mkEqConstraints)
@@ -81,15 +81,30 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
         tcTyThingTypeMaybe _ =  Nothing
 
 
+-- Behaves a bit weird though, multiple instances being generated:
+-- == (Eq[[a]] Eq[Integer])
+-- == (Eq[[a]] Eq[BigNat])
+-- == (Eq[[a]] Eq[SrcLoc])
+-- == (Eq[[a]] Eq[Word])
+-- == (Eq[[a]] Eq[TyCon])
+-- == (Eq[[a]] Eq[TrName])
+-- == (Eq[[a]] Eq[Ordering])
+-- == (Eq[[a]] Eq[Module])
+-- == (Eq[[a]] Eq[Int])
+-- == (Eq[[a]] Eq[Float])
+-- == (Eq[[a]] Eq[Double])
+-- == (Eq[[a]] Eq[Char])
+-- == (Eq[[a]] Eq[Bool])
+-- == (Eq[[a]] Eq[()])
+-- what to do?
 instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
-instToTerm ClsInst{..} | [] <- is_tvs,
-                         all isJust args,
-                         jargs <- map (fst . fromJust) args = traceShowId $
-  Just ("@" <> clsstr <> tystr,TCons clsstr jargs )
+instToTerm ClsInst{..} | -- length is_tvs <= 1, -- uncomment if you want explosion!
+                        Just (tyskel,args) <- typeToSkeleton $ idType is_dfun
+                        = traceShowId $
+  Just ("@" <> clsstr <> tystr, tyskel )
   where clsstr =  pack $  showSDocUnsafe $ ppr is_cls_nm
         tystr = pack $ showSDocUnsafe $ ppr is_tys
-        args = map typeToSkeleton is_tys
-instToTerm _ =  Nothing
+instToTerm _ = Nothing
 
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
@@ -124,3 +139,11 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
              return $ map (RawHoleFit . text . unpack) $ ppterms ++ moreTerms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
+-- all terms of size k where xs, ys are used etc.
+-- only apply terms that have not used the variable to the variable or
+-- terms that have already used the variable to any term.
+
+-- reprsent Eq a => Eq [a] as a function Eq a -> Eq [a]
+
+-- implement derived generator functions
+-- relevanttermsk.
