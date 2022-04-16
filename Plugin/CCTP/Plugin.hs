@@ -116,12 +116,15 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
       -- we have to add a path equality to the ECTA.
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
       liftIO $ print fun_comps
+      let givens = concatMap (map idType . ic_given) tyHImplics
+          g2c g = fmap ("@(" <>(pack $ showSDocUnsafe $ ppr g) <> ")",) $ fmap fst $ typeToSkeleton g
+          given_comps = mapMaybe g2c givens
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
                                        . liftIO  . tcRnGetInfo hsc_env . getName
                                        . tyConAppTyCon) constraints
-      let scope_comps = fun_comps ++ instance_comps
+      let scope_comps = fun_comps ++ instance_comps ++ given_comps
       let (scopeNode, anyArg, skels, groups) =
             let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) scope_comps
                 anyArg = Node $
@@ -131,7 +134,8 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
             in (scopeNode, anyArg, skels, groups)
       case typeToSkeleton ty of
-         Just (t, cons) | resNode <- generalize scope_comps $ typeToFta t -> do
+         -- todo: the t here is missing the given constraints! 
+         Just (t, cons) | resNode <- typeToFta $ traceShowId t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
              let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 4)

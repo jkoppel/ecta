@@ -13,8 +13,8 @@ f = undefined
 eql :: Eq a => [a] -> [a] -> Bool
 eql = _
 
-prop_reverse :: [Int] -> Bool
-prop_reverse xs = _
+--prop_reverse :: [Int] -> Bool
+--prop_reverse xs = _
 -- prop_reverse xs = xs == reverse (reverse xs)
 
 

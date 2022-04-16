@@ -146,14 +146,8 @@ pp = mconcat . pp' False
                                            | otherwise = [wparifreq]
     where parg = pp arg
           (rpar,lpar) = if par then ("(", ")") else ("","")
-          wparifreq = if length (words $ unpack parg) > 1 || (not $ isAscii $ head $ unpack parg)
-                      then "(" <> parg <> ")"
-                      else parg
-
-
---   where Just (fta, ftb) = splitFunTy_maybe ty
---         tyStr = showSDocUnsafe $ ppr (fta, ftb)
-
+          wparifreq = if length (words $ unpack parg) > 1
+                      then "(" <> parg <> ")" else parg
 
 allConstructors :: Comps -> [(Text, Int)]
 allConstructors comps = nubOrd (concatMap (getConstructors . snd) comps)
