@@ -29,7 +29,7 @@ import Data.ECTA (union)
 import Data.ECTA.Paths (getPath, mkEqConstraints, path, Path)
 import Debug.Trace (traceShow)
 import qualified Data.Monoid as M
-import Data.List (groupBy, sortOn)
+import Data.List (groupBy, sortOn, permutations)
 import Data.Function (on)
 import Data.Tuple (swap)
 import Data.Containers.ListUtils (nubOrd)
@@ -117,11 +117,48 @@ tyVarToSkeletonText ty = Just $ pack $ stripNumbers $ showSDocUnsafe $ ppr ty
         stripNumbers = takeWhile isAlpha
 
 
-tk :: Node -> Int -> [Node]
-tk _ 0 = []
-tk anyArg 1 = [anyArg]
-tk anyArg n = [union [mapp nl1 nl1,nl1]]
- where nl1 = union $ tk anyArg (n-1)
+constFunc :: Symbol -> Node -> Edge
+constFunc s t = Edge s [t]
+
+applyOperator :: Comps -> Node
+applyOperator comps = Node
+  [ constFunc
+    "$"
+    (generalize comps $ arrowType (arrowType var1 var2) (arrowType var1 var2))
+  , constFunc "id" (generalize comps  $ arrowType var1 var1)
+  ]
+
+tk :: Comps -> Node -> Bool -> Int -> [Node]
+tk _ _ _ 0 = []
+tk _ anyArg False 1 = [anyArg]
+tk comps anyArg True 1 = [anyArg, applyOperator comps]
+tk comps anyArg _ k = map constructApp [1 .. (k-1)]
+ where
+   constructApp :: Int -> Node
+   constructApp i =
+      mapp (union $ tk comps anyArg False i) (union $ tk comps anyArg True (k-i))
+
+tkUpToK :: Comps -> Node -> Bool -> Int -> [Node]
+tkUpToK comps anyArg includeApp k = concatMap (tk comps anyArg includeApp) [1..k]
+
+-- type Argument = (Symbol, Node)
+rtk :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
+rtk [] comps anyArg includeApplyOp k = tk comps anyArg False k
+rtk [(s,t)] _ _ _ 1 = [Node [constFunc s t]] -- If we have one arg we use it
+rtk args _ _ _ k | k < length args = []
+rtk args comps anyArg _ k = concatMap (\i -> map (constructApp i) allSplits) [1..(k-1)]
+  where allSplits = map (`splitAt` args) [0.. (length args)]
+        constructApp :: Int -> ([Argument], [Argument]) -> Node
+        constructApp i (xs, ys) =
+          let f = union $ rtk xs comps anyArg False i
+              x = union $ rtk ys comps anyArg True (k-i)
+          in mapp f x
+
+rtkOfSize :: [Argument] -> Comps -> Node -> Bool -> Int -> Node
+rtkOfSize args comps anyArg includeApp k = union $ concatMap (\a -> rtk a comps anyArg includeApp k) $ permutations args
+
+rtkUpToK :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
+rtkUpToK args comps anyArg includeApp k =  map (rtkOfSize args comps anyArg includeApp) [1..k]
 
 mapp :: Node -> Node -> Node
 mapp n1 n2 = Node [

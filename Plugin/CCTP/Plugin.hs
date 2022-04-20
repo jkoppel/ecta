@@ -37,6 +37,7 @@ import Data.ECTA.Paths (Path, mkEqConstraints)
 import Application.TermSearch.Utils
 import Data.Containers.ListUtils (nubOrd)
 import Debug.Trace
+import Data.Either (partitionEithers)
 
 
 plugin :: Plugin
@@ -60,11 +61,13 @@ plugin =
 pAnyFunc :: Node
 pAnyFunc = Node (map ($ 1) hoogleComps)
 
-candsToComps :: [HoleFitCandidate] -> TcM [((Text, TypeSkeleton), [Type])]
+candsToComps :: [HoleFitCandidate] -> TcM [((Either Text Text, TypeSkeleton), [Type])]
 candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
-  where candToTN :: HoleFitCandidate -> TcM (Maybe (Text, (TypeSkeleton, [Type])))
+  where candToTN :: HoleFitCandidate -> TcM (Maybe (Either Text Text, (TypeSkeleton, [Type])))
         candToTN cand = fmap (fmap (nm,) . (>>= typeToSkeleton)) (c2t cand)
-          where nm = pack $ occNameString $ occName cand
+          where nm = (case cand of
+                      IdHFCand _ -> Left
+                      _ -> Right) $ pack $ occNameString $ occName cand
                 c2t cand =
                   case cand of
                     IdHFCand id -> return $ Just $ idType id
@@ -110,6 +113,9 @@ ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [Hol
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                  ty <- ctPred hole = do
       (fun_comps, scons) <- fmap (nubBy eqType . concat) . unzip <$> candsToComps scope
+      let (local_comps, global_comps) = partitionEithers $ map to_e fun_comps
+          to_e (Left t,ts) = Left (t,ts)
+          to_e (Right t, ts) = Right (t,ts)
       -- The constraints are there and added to the graph... but we have to
       -- be more precise when we add them to the machine. Any time a
       -- function requires a constraint to hold for one of it's variables,
@@ -119,28 +125,31 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
       let givens = concatMap (map idType . ic_given) tyHImplics
           g2c g = fmap ("@(" <>(pack $ showSDocUnsafe $ ppr g) <> ")",) $ fmap fst $ typeToSkeleton g
           given_comps = mapMaybe g2c givens
+      liftIO $ putStrLn "local_comps"
+      liftIO $ print local_comps
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
                                        . liftIO  . tcRnGetInfo hsc_env . getName
                                        . tyConAppTyCon) constraints
-      let scope_comps = fun_comps ++ instance_comps ++ given_comps
-      let (scopeNode, anyArg, skels, groups) =
-            let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) scope_comps
+      let scope_comps = local_comps ++ global_comps ++ instance_comps ++ given_comps
+      let (scopeNode, anyArg, argNodes, skels, groups) =
+            let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) local_comps
                 anyArg = Node $
                    map (\(s,t) -> Edge (Symbol s) [generalize scope_comps $ typeToFta t]) scope_comps
                 scopeNode = anyArg
                 skels = Map.fromList scope_comps
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
-            in (scopeNode, anyArg, skels, groups)
+            in (scopeNode, anyArg, argNodes, skels, groups)
       case typeToSkeleton ty of
-         -- todo: the t here is missing the given constraints! 
+         -- todo: the t here is missing the given constraints!
          Just (t, cons) | resNode <- typeToFta $ traceShowId t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
-             let moreTerms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tk anyArg 4)
+             --let more_terms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tkUpToK scope_comps anyArg True 6)
+             let even_more_terms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (rtkUpToK (take 1 argNodes) scope_comps anyArg True 6)
              liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
-             return $ map (RawHoleFit . text . unpack) $ ppterms ++ moreTerms
+             return $ map (RawHoleFit . text . unpack) $ ppterms  ++ even_more_terms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
 -- all terms of size k where xs, ys are used etc.
