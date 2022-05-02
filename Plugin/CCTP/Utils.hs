@@ -33,6 +33,7 @@ import Data.List (groupBy, sortOn, permutations)
 import Data.Function (on)
 import Data.Tuple (swap)
 import Data.Containers.ListUtils (nubOrd)
+import Data.List (subsequences)
 
  -- The old "global variable" trick, as we are creating new type variables
  -- from scratch, but we want all 'a's to refer to the same variabel, etc.
@@ -160,6 +161,17 @@ rtkOfSize args comps anyArg includeApp k = union $ concatMap (\a -> rtk a comps 
 rtkUpToK :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
 rtkUpToK args comps anyArg includeApp k =  map (rtkOfSize args comps anyArg includeApp) [1..k]
 
+rtkUpToKAtLeastN :: [Argument] -> Comps -> Node -> Bool -> Int -> Int -> [Node]
+-- TODO: probably a nicer way to do this
+rtkUpToKAtLeastN args comps anyArg includeApp n k =
+  concatMap (\as -> rtkUpToK as comps anyArg includeApp k)
+    $ concatMap (flip combinations args) [n..(length args)]
+
+combinations :: Int -> [a] -> [[a]]
+combinations k ns = filter ((k==).length) $ subsequences ns
+
+
+
 mapp :: Node -> Node -> Node
 mapp n1 n2 = Node [
     mkEdge "app"
@@ -237,8 +249,13 @@ prettyMatch skels groups (Term (Symbol t) _) =
                Just t  -> pack (" :: " ++  showSDocUnsafe (ppr t))
                _ -> pack (" :: " ++ show tsk)
      return $ map (M.<> str) terms
-  where tsk = skels Map.! t
-        terms = groups Map.! t
+  where tsk = case skels Map.!? t of
+                Just r -> r
+                _ -> skels Map.! (pack $ tail $ unpack t) -- for generalization
+        terms = case groups Map.!? t of
+                  Just r -> r
+                  _ -> groups Map.! (pack $ tail $ unpack t)
+            
 
 mtypeToFta :: TypeSkeleton -> Node
 mtypeToFta (TVar "a"  ) = var1

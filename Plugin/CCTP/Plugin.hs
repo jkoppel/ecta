@@ -84,22 +84,6 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
         tcTyThingTypeMaybe _ =  Nothing
 
 
--- Behaves a bit weird though, multiple instances being generated:
--- == (Eq[[a]] Eq[Integer])
--- == (Eq[[a]] Eq[BigNat])
--- == (Eq[[a]] Eq[SrcLoc])
--- == (Eq[[a]] Eq[Word])
--- == (Eq[[a]] Eq[TyCon])
--- == (Eq[[a]] Eq[TrName])
--- == (Eq[[a]] Eq[Ordering])
--- == (Eq[[a]] Eq[Module])
--- == (Eq[[a]] Eq[Int])
--- == (Eq[[a]] Eq[Float])
--- == (Eq[[a]] Eq[Double])
--- == (Eq[[a]] Eq[Char])
--- == (Eq[[a]] Eq[Bool])
--- == (Eq[[a]] Eq[()])
--- what to do?
 instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
 instToTerm ClsInst{..} | -- length is_tvs <= 1, -- uncomment if you want explosion!
                         Just (tyskel,args) <- typeToSkeleton $ idType is_dfun
@@ -127,6 +111,8 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
           given_comps = mapMaybe g2c givens
       liftIO $ putStrLn "local_comps"
       liftIO $ print local_comps
+      liftIO $ print "givens"
+      liftIO $ print given_comps 
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
@@ -134,9 +120,12 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                                        . tyConAppTyCon) constraints
       let scope_comps = local_comps ++ global_comps ++ instance_comps ++ given_comps
       let (scopeNode, anyArg, argNodes, skels, groups) =
-            let argNodes = map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) local_comps
-                anyArg = Node $
-                   map (\(s,t) -> Edge (Symbol s) [generalize scope_comps $ typeToFta t]) scope_comps
+            let argNodes = ngnodes (given_comps ++ local_comps)
+                    --map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) $ local_comps ++ given_comps
+                addSyms st tt = map (Bi.bimap (Symbol . st) (tt . typeToFta))
+                gnodes = addSyms id (generalize scope_comps)
+                ngnodes = addSyms id id
+                anyArg = Node $ map (\(s,t) -> Edge s [t]) $ gnodes scope_comps
                 scopeNode = anyArg
                 skels = Map.fromList scope_comps
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
@@ -146,9 +135,17 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
          Just (t, cons) | resNode <- typeToFta $ traceShowId t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
-             --let more_terms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (tkUpToK scope_comps anyArg True 6)
-             let even_more_terms = map (pp . prettyTerm) $ concatMap (getAllTerms . refold . reduceFully . flip filterType resNode ) (rtkUpToK (take 1 argNodes) scope_comps anyArg True 6)
-             liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
+             -- let even_more_terms =
+             --      map (pp . prettyTerm) $
+             --        concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
+
+             let even_more_terms =
+                  map (pp . prettyTerm) $
+                    concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
+                              (rtkUpToKAtLeastN argNodes scope_comps anyArg True 1 5)
+             liftIO $ print "givens"
+             liftIO $ print given_comps 
+             -- liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
              return $ map (RawHoleFit . text . unpack) $ ppterms  ++ even_more_terms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
