@@ -118,31 +118,27 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
                                        . liftIO  . tcRnGetInfo hsc_env . getName
                                        . tyConAppTyCon) constraints
-      let scope_comps = local_comps ++ global_comps ++ instance_comps ++ given_comps
+      let local_scope_comps = local_comps ++ given_comps
+          global_scope_comps = global_comps ++ instance_comps
+          scope_comps = local_scope_comps ++ global_scope_comps
       let (scopeNode, anyArg, argNodes, skels, groups) =
-            let argNodes = ngnodes (given_comps ++ local_comps)
-                    --map (Bi.bimap Symbol (generalize scope_comps . typeToFta)) $ local_comps ++ given_comps
+            let argNodes = ngnodes local_scope_comps
                 addSyms st tt = map (Bi.bimap (Symbol . st) (tt . typeToFta))
-                gnodes = addSyms id (generalize scope_comps)
+                gnodes = addSyms id (generalize global_scope_comps)
                 ngnodes = addSyms id id
-                anyArg = Node $ map (\(s,t) -> Edge s [t]) $ gnodes scope_comps
+                anyArg = Node $ map (\(s,t) -> Edge s [t]) $ gnodes global_scope_comps
                 scopeNode = anyArg
-                skels = Map.fromList scope_comps
+                skels = Map.fromList $ scope_comps
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
             in (scopeNode, anyArg, argNodes, skels, groups)
       case typeToSkeleton ty of
-         -- todo: the t here is missing the given constraints!
          Just (t, cons) | resNode <- typeToFta $ traceShowId t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
-             -- let even_more_terms =
-             --      map (pp . prettyTerm) $
-             --        concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
-
              let even_more_terms =
                   map (pp . prettyTerm) $
                     concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
-                              (rtkUpToKAtLeastN argNodes scope_comps anyArg True 1 5)
+                              (rtkUpToKAtLeastN argNodes scope_comps anyArg True 1 6)
              liftIO $ print "givens"
              liftIO $ print given_comps 
              -- liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
