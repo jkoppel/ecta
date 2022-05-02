@@ -87,8 +87,7 @@ candsToComps = mapMaybeM (fmap (fmap extract) . candToTN)
 instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
 instToTerm ClsInst{..} | -- length is_tvs <= 1, -- uncomment if you want explosion!
                         Just (tyskel,args) <- typeToSkeleton $ idType is_dfun
-                        = traceShowId $
-  Just ("@" <> clsstr <> tystr, tyskel )
+                        = Just ("@" <> clsstr <> tystr, tyskel )
   where clsstr =  pack $  showSDocUnsafe $ ppr is_cls_nm
         tystr = pack $ showSDocUnsafe $ ppr is_tys
 instToTerm _ = Nothing
@@ -105,14 +104,9 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
       -- function requires a constraint to hold for one of it's variables,
       -- we have to add a path equality to the ECTA.
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
-      liftIO $ print fun_comps
       let givens = concatMap (map idType . ic_given) tyHImplics
           g2c g = fmap ("@(" <>(pack $ showSDocUnsafe $ ppr g) <> ")",) $ fmap fst $ typeToSkeleton g
           given_comps = mapMaybe g2c givens
-      liftIO $ putStrLn "local_comps"
-      liftIO $ print local_comps
-      liftIO $ print "givens"
-      liftIO $ print given_comps 
       hsc_env <- getTopEnv
       instance_comps <- mapMaybe instToTerm . concat <$>
                              mapMaybeM (fmap (fmap (\(_,_,c,_,_) -> c) . snd)
@@ -133,25 +127,19 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
             in (scopeNode, anyArg, argNodes, skels, groups)
       case typeToSkeleton ty of
-         Just (t, cons) | resNode <- typeToFta $ traceShowId t -> do
+         Just (t, cons) | resNode <- typeToFta t -> do
              let res = getAllTerms $ refold $ reduceFully $ filterType scopeNode resNode
              ppterms <- concatMapM (prettyMatch skels groups . prettyTerm ) res
              let even_more_terms =
                   map (pp . prettyTerm) $
                     concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
                               (rtkUpToKAtLeast1 argNodes scope_comps anyArg True 7)
-             liftIO $ print "givens"
-             liftIO $ print given_comps 
-             -- liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
              return $ map (RawHoleFit . text . unpack) $ ppterms  ++ even_more_terms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
 
 
 -- TODO:
--- 1. fix printing of sections, i.e. (: xs) should be printed as ((:) xs)
---   and (== Eq[A]) .. should be ((Eq[a])) (basically if termname needs
---   parenthesis then add it.
--- 2. remove explicit dictionary applications when printing, i.e.
+-- 1. remove explicit dictionary applications when printing, i.e.
 --    (== Eq[Int]) should be just (==)
--- 3. I think we need to add type applications, i.e. [] @a or similar, let's see.
+-- 2. I think we need to add type applications, i.e. [] @a or similar, let's see.

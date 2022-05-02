@@ -1,7 +1,6 @@
 packages: ./
           Plugin/
           TestPlugin/
-          quickspectacle/
 
 source-repository-package
     type: git
