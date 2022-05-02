@@ -2,11 +2,15 @@
 module Test (main) where
 
 import TestConstraint
-import Prelude (Bool(..), putStrLn, undefined, Eq((==)), Int, reverse)
+import Prelude (Bool(..), putStrLn, undefined, Eq((==)), Int, reverse, Maybe(..))
+import Data.Maybe (mapMaybe)
 
 
 eql :: Eq a => [a] -> [a] -> Bool
 eql = _
+
+myMapMaybe :: (a -> Maybe b) -> [a] -> [b]
+myMapMaybe f xs = _
 
 prop_reverse :: [Int] -> Bool
 prop_reverse xs = _

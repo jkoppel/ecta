@@ -126,7 +126,8 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
                 addSyms st tt = map (Bi.bimap (Symbol . st) (tt . typeToFta))
                 gnodes = addSyms id (generalize global_scope_comps)
                 ngnodes = addSyms id id
-                anyArg = Node $ map (\(s,t) -> Edge s [t]) $ gnodes global_scope_comps
+                anyArg = Node $ map (\(s,t) -> Edge s [t]) $ 
+                        (gnodes global_scope_comps) ++ argNodes
                 scopeNode = anyArg
                 skels = Map.fromList $ scope_comps
                 groups = Map.fromList $ map (\(t,_) -> (t,[t])) scope_comps
@@ -138,18 +139,19 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
              let even_more_terms =
                   map (pp . prettyTerm) $
                     concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
-                              (rtkUpToKAtLeast1 argNodes scope_comps anyArg True 6)
+                              (rtkUpToKAtLeast1 argNodes scope_comps anyArg True 7)
              liftIO $ print "givens"
              liftIO $ print given_comps 
              -- liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
              return $ map (RawHoleFit . text . unpack) $ ppterms  ++ even_more_terms
          _ ->  do liftIO $ putStrLn $  "Could not skeleton `" ++ showSDocUnsafe (ppr ty) ++"`"
                   return []
--- all terms of size k where xs, ys are used etc.
--- only apply terms that have not used the variable to the variable or
--- terms that have already used the variable to any term.
 
--- reprsent Eq a => Eq [a] as a function Eq a -> Eq [a]
 
--- implement derived generator functions
--- relevanttermsk.
+-- TODO:
+-- 1. fix printing of sections, i.e. (: xs) should be printed as ((:) xs)
+--   and (== Eq[A]) .. should be ((Eq[a])) (basically if termname needs
+--   parenthesis then add it.
+-- 2. remove explicit dictionary applications when printing, i.e.
+--    (== Eq[Int]) should be just (==)
+-- 3. I think we need to add type applications, i.e. [] @a or similar, let's see.

@@ -161,20 +161,9 @@ rtkOfSize args comps anyArg includeApp k = union $ concatMap (\a -> rtk a comps 
 rtkUpToK :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
 rtkUpToK args comps anyArg includeApp k =  map (rtkOfSize args comps anyArg includeApp) [1..k]
 
--- rtkUpToKAtLeastN :: [Argument] -> Comps -> Node -> Bool -> Int -> Int -> [Node]
--- -- TODO: probably a nicer way to do this
--- rtkUpToKAtLeastN args comps anyArg includeApp n k =
---   concatMap (\as -> rtkUpToK as comps anyArg includeApp k)
---     $ concatMap (flip combinations args) [n..(length args)]
--- combinations :: Int -> [a] -> [[a]]
--- combinations k ns = filter ((k==).length) $ subsequences ns
-
 rtkUpToKAtLeast1 :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
--- TODO: probably a nicer way to do this
 rtkUpToKAtLeast1 args comps anyArg includeApp k =
-  concatMap (\as -> rtkUpToK as comps anyArg includeApp k)
-    $ map (:[]) args
-
+  concatMap (\as -> rtkUpToK as comps anyArg includeApp k) $ map (:[]) args
 
 
 
