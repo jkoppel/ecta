@@ -142,7 +142,7 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
              let even_more_terms =
                   map (pp . prettyTerm) $
                     concatMap (getAllTerms . refold . reduceFully . flip filterType resNode )
-                              (rtkUpToKAtLeastN argNodes scope_comps anyArg True 1 5)
+                              (rtkUpToKAtLeast1 argNodes scope_comps anyArg True 5)
              liftIO $ print "givens"
              liftIO $ print given_comps 
              -- liftIO $ writeFile "scope-node.dot" $ renderDot $ toDot scopeNode
