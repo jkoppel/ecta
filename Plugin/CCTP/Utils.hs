@@ -156,7 +156,8 @@ rtk args comps anyArg _ k = concatMap (\i -> map (constructApp i) allSplits) [1.
           in mapp f x
 
 rtkOfSize :: [Argument] -> Comps -> Node -> Bool -> Int -> Node
-rtkOfSize args comps anyArg includeApp k = union $ concatMap (\a -> rtk a comps anyArg includeApp k) $ permutations args
+rtkOfSize args comps anyArg includeApp k =
+    union $ concatMap (\a -> rtk a comps anyArg includeApp k) $ permutations args
 
 rtkUpToK :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
 rtkUpToK args comps anyArg includeApp k =  map (rtkOfSize args comps anyArg includeApp) [1..k]
@@ -164,7 +165,6 @@ rtkUpToK args comps anyArg includeApp k =  map (rtkOfSize args comps anyArg incl
 rtkUpToKAtLeast1 :: [Argument] -> Comps -> Node -> Bool -> Int -> [Node]
 rtkUpToKAtLeast1 args comps anyArg includeApp k =
   concatMap (\as -> rtkUpToK as comps anyArg includeApp k) $ map (:[]) args
-
 
 
 mapp :: Node -> Node -> Node
