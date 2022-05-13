@@ -178,12 +178,35 @@ mapp n1 n2 = Node [
         ]
     )]
 
+        
+chunks :: Int -> [a] -> [[a]]
+chunks _ [] = []
+chunks n xs = f:chunks n nxt
+  where (f,nxt) = splitAt n xs
+
+removeDicts :: Term -> Term
+removeDicts t = cleanup $ maybe t id $ rd t
+ where rd (Term (Symbol t) args) | up@('<':'@':_) <- unpack t,
+                                   '>':'@':_ <- reverse up = Nothing
+                                 | args' <- mapMaybe rd args =
+                                   if null args' && t == "app"
+                                   then Nothing
+                                   else Just $ Term (Symbol t) args'
+       cleanup (Term (Symbol "app") [arg]) = cleanup arg
+       cleanup (Term (Symbol t) args) = Term (Symbol t) $ map cleanup args
+
+
 
 pp :: Term -> Text
-pp = mconcat . pp' False
+pp = parIfReq . mconcat . pp' False . removeDicts
  where
+  parIfReq :: Text -> Text
+  parIfReq t | (s:_) <- unpack t,
+              s /= '(',
+              not (isAlpha s) = "(" <> t <> ")"
+             | otherwise = t
+
   pp' :: Bool -> Term -> [Text]
-  pp' _ (Term (Symbol t) []) | ('@':str) <- unpack t = [pack str]
   pp' _ (Term (Symbol t) [])  = [t]
   pp' par (Term (Symbol "app") (arg:rest)) | res@(_:_) <- concatMap (pp' True) rest =
       [rpar <> wparifreq <> " " <> mconcat (concatMap (pp' True) rest) <> lpar]

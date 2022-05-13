@@ -88,10 +88,19 @@ instToTerm :: ClsInst -> Maybe (Text, TypeSkeleton)
 instToTerm ClsInst{..} | -- length is_tvs <= 1, -- uncomment if you want explosion!
                         Just (tyskel,args) <- typeToSkeleton $ idType is_dfun
                         = traceShowId $
-  Just ("@" <> clsstr <> tystr, tyskel )
+  Just (toDictStr $ clsstr <> tystr, tyskel )
   where clsstr =  pack $  showSDocUnsafe $ ppr is_cls_nm
         tystr = pack $ showSDocUnsafe $ ppr is_tys
 instToTerm _ = Nothing
+
+toDictStr :: Text -> Text
+toDictStr t = spToUnderscore $ "<@" <> t <> "@>"
+
+spToUnderscore :: Text -> Text
+spToUnderscore = pack . sp . unpack
+  where sp (' ':str) = '_':sp str
+        sp (s:str) = s:sp str
+        sp [] = []
 
 ectaPlugin :: [CommandLineOption] -> TypedHole -> [HoleFitCandidate] -> TcM [HoleFit]
 ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
@@ -107,7 +116,8 @@ ectaPlugin opts TyH{..} scope  | Just hole <- tyHCt,
       let constraints = filter (tcReturnsConstraintKind . tcTypeKind) scons
       liftIO $ print fun_comps
       let givens = concatMap (map idType . ic_given) tyHImplics
-          g2c g = fmap ("@(" <>(pack $ showSDocUnsafe $ ppr g) <> ")",) $ fmap fst $ typeToSkeleton g
+          g2c g = fmap (toDictStr (pack $ showSDocUnsafe $ ppr g),)
+                      $ fmap fst $ typeToSkeleton g
           given_comps = mapMaybe g2c givens
       liftIO $ putStrLn "local_comps"
       liftIO $ print local_comps
