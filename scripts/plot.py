@@ -71,17 +71,17 @@ def plot_cactus(files, output='ablation.pdf'):
         results = parse_csv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file, 300)
+    results_by_exp = aggregate_results(results_by_file, 600)
     marker = itertools.cycle(('v', '^', '+', 'x', 'o'))
     for exp_result in results_by_exp:
-        real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
+        real_results = [result.time for result in exp_result if result.time is not None and result.time < 600]
         y = list(range(1, len(real_results)+1)) + [len(real_results)]
-        x = sorted(real_results) + [305]
+        x = sorted(real_results) + [605]
         plt.plot(x, y, marker='^')
         plt.plot([], [], label='_nolegend_')
 
-    plt.hlines(45, 0, 300, linestyles='dashed', color='gray', label="Total # of benchmarks")
-    plt.xlim(-3, 300)
+    plt.hlines(45, 0, 600, linestyles='dashed', color='gray', label="Total # of benchmarks")
+    plt.xlim(-3, 600)
     plt.ylim(0, 47)
     plt.yticks(range(0, 50, 5))
     plt.legend(["Hectare", "Hectare-StaticOnly", "Hectare-DynamicOnly", "Total # of benchmarks"], loc="lower right")
@@ -97,14 +97,14 @@ def plot_cactus(files, output='ablation.pdf'):
     plt.close()
 
 def plot_cactus_stackoverflow(files, output='ablation.pdf'):
-    assert len(files) % 3 == 0, 'Number of files must be a multiple of 3.'
+    assert len(files) % 2 == 0, 'Number of files must be a multiple of 2.'
 
     results_by_file = []
-    for file in files[:3]:
+    for file in files[:len(files)//2]:
         results = parse_csv(file)
         results_by_file.append(results)
 
-    for file in files[3:]:
+    for file in files[len(files)//2:]:
         results = parse_tsv(file)
         results_by_file.append(results)
 
@@ -133,27 +133,27 @@ def plot_cactus_stackoverflow(files, output='ablation.pdf'):
     plt.close()
 
 def plot_cactus_hplus(files, output='eval_hplus.pdf'):
-    assert len(files) % 3 == 0, 'Number of files must be a multiple of 3.'
+    assert len(files) % 2 == 0, 'Number of files must be a multiple of 2.'
 
     results_by_file = []
-    for file in files[:3]:
+    for file in files[:len(files)//2]:
         results = parse_csv(file)
         results_by_file.append(results)
 
-    for file in files[3:]:
+    for file in files[len(files)//2:]:
         results = parse_tsv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file, 300)
+    results_by_exp = aggregate_results(results_by_file, 600)
     marker = itertools.cycle(('v', '^', '+', 'x', 'o')) 
     for exp_result in results_by_exp:
-        real_results = [result.time for result in exp_result if result.time is not None and result.time < 300]
+        real_results = [result.time for result in exp_result if result.time is not None and result.time < 600]
         y = list(range(1, len(real_results)+1)) + [len(real_results)]
-        x = sorted(real_results) + [305]
+        x = sorted(real_results) + [605]
         plt.plot(x, y, marker='^')
 
-    plt.hlines(45, 0, 300, linestyles='dashed', color='gray', label="Total # of benchmarks")
-    plt.xlim(-3, 300)
+    plt.hlines(45, 0, 600, linestyles='dashed', color='gray', label="Total # of benchmarks")
+    plt.xlim(-3, 600)
     plt.ylim(0, 46)
     plt.yticks(range(0, 46, 5))
     plt.legend(["Hectare", "Hoogle+", "Total # of benchmarks"], loc="lower right")
@@ -169,22 +169,22 @@ def plot_cactus_hplus(files, output='eval_hplus.pdf'):
     plt.close()
 
 def process_scatter_data(files):
-    assert len(files) == 6, 'Number of files must be 6.'
+    assert len(files) % 2 == 0, 'Number of files must be even.'
 
     results_by_file = []
-    for file in files[:3]:
+    for file in files[:len(files)//2]:
         results = parse_csv(file)
         results_by_file.append(results)
 
-    for file in files[3:]:
+    for file in files[len(files)//2:]:
         results = parse_tsv(file)
         results_by_file.append(results)
 
-    results_by_exp = aggregate_results(results_by_file, 300)
+    results_by_exp = aggregate_results(results_by_file, 600)
     assert len(results_by_exp) == 2, 'Number of experiments must be 2.'
 
     def regularize(xs):
-        return [min(x.time, 300) for x in xs if x.time is not None]
+        return [min(x.time, 600) for x in xs if x.time is not None]
 
     x = regularize(results_by_exp[0])
     y = regularize(results_by_exp[1])
@@ -195,9 +195,9 @@ def plot_scatter(files, output='scatter.pdf'):
 
     # plt.figure(figsize=(4,5))
     plt.scatter(x, y)
-    plt.plot([0, 300], [0, 300], 'k--')
-    plt.xlim(-3, 303)
-    plt.ylim(-3, 303)
+    plt.plot([0, 600], [0, 600], 'k--')
+    plt.xlim(-3, 603)
+    plt.ylim(-3, 603)
 
     plt.xlabel("Hectare Time (s)")
     plt.ylabel("Hoogle+ Time (s)")
@@ -217,14 +217,14 @@ def plot_scatter_broken(files, output='baseline_broken.pdf'):
     fig.subplots_adjust(wspace=0.05)  # adjust space between axes
 
     ax1.set_xlim(0, 7)
-    ax2.set_xlim(7, 303)
-    ax1.set_ylim(-3, 303)
+    ax2.set_xlim(7, 603)
+    ax1.set_ylim(-3, 603)
     ax1.set_xlabel("Hectare Time (s)", loc="right")
     ax1.set_ylabel("Hoogle+ Time (s)")
     ax1.scatter(x, y)
     ax2.scatter(x, y)
-    ax1.plot([0, 300], [0, 300], 'k--')
-    ax2.plot([0, 300], [0, 300], 'k--')
+    ax1.plot([0, 600], [0, 600], 'k--')
+    ax2.plot([0, 600], [0, 600], 'k--')
 
     # set border lines
     ax1.spines.right.set_visible(False)
@@ -255,15 +255,15 @@ def plot_scatter_zoomin(files, output='baseline_zoomin.pdf'):
                                        'width_ratios': [3, 1]})
     # fig.subplots_adjust(wspace=0.05)  # adjust space between axes
 
-    ax1.set_xlim(-3, 303)
+    ax1.set_xlim(-3, 603)
     ax2.set_xlim(0, 7)
-    ax1.set_ylim(-3, 303)
+    ax1.set_ylim(-3, 603)
     ax1.set_xlabel("Hectare Time (s)", loc="right")
     ax1.set_ylabel("Hoogle+ Time (s)")
     ax1.scatter(x, y)
     ax2.scatter(x, y)
-    ax1.plot([0, 300], [0, 300], 'k--')
-    ax2.plot([0, 300], [0, 300], 'k--')
+    ax1.plot([0, 600], [0, 600], 'k--')
+    ax2.plot([0, 600], [0, 600], 'k--')
     ax2.xaxis.set_ticks([0,3,7])
 
     # set border lines

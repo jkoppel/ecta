@@ -247,11 +247,17 @@ reduceFully = fixUnbounded (withoutRedundantEdges . reducePartially)
 checkSolution :: Term -> [Term] -> IO ()
 checkSolution _ [] = return ()
 checkSolution target (s : solutions)
-  | prettyTerm s == target = print $ pretty (prettyTerm s)
+  | prettyTerm s == target = do
+    mapM_ (print . pretty) (decodeTerm (prettyTerm s))
   | otherwise = do
     -- print $ pretty (prettyTerm s)
     -- print (s)
     checkSolution target solutions
+
+decodeTerm :: Term -> [Term]
+decodeTerm (Term (Symbol sym) ts) = 
+  [Term (Symbol s) ts' | s   <- decodeName sym
+                       , ts' <- sequence (map decodeTerm ts)]
 
 reduceFullyAndLog :: Node -> IO Node
 reduceFullyAndLog = go 0
@@ -446,6 +452,10 @@ f30 = constFunc "nil" (generalize $ listType var1)
 
 toMappedName :: Text -> Text
 toMappedName x = fromMaybe x (Map.lookup x groupMapping)
+
+decodeName :: Text -> [Text]
+decodeName x = let res = Map.keys (Map.filter (== x) groupMapping)
+               in if null res then [x] else res
 
 prettyPrintAllTerms :: AblationType -> Term -> Node -> IO ()
 prettyPrintAllTerms ablation sol n = do

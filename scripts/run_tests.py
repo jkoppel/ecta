@@ -205,6 +205,7 @@ def build_argparser():
                            help="which benchmarks to run")
     argparser.add_argument('--ablation', choices=['default', 'noReduction', 'noEnumeration', 'noOptimize'], default='default', help="which ablation to run")
     argparser.add_argument('--timeout', type=int, default=300, help="timeout for each benchmark")
+    argparser.add_argument('--repeat', type=int, default=1, help="how many times to repeat the experiments")
     return argparser
 
 
@@ -226,7 +227,7 @@ if __name__ == "__main__":
         else:
             benchmarks['stackoverflow'] = stackoverflow_benchmarks
 
-    for i in range(3):
+    for i in range(args.repeat):
         syn_results = []
         for suite, suite_benches in benchmarks.items():
             print("===============================================================")

@@ -1134,6 +1134,3 @@ augumentedComponents =
 -- groupMapping :: Map Text Text
 -- groupMapping = snd (mkGroups $ hooglePlusComponents ++ augumentedComponents)
 
-hoogleComponents = fst (mkGroups hooglePlusComponents)
-groupMapping = snd (mkGroups hooglePlusComponents)
-
