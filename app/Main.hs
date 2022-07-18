@@ -17,24 +17,14 @@ import Data.Persistent.UnionFind
 import Application.TermSearch.Evaluation
 import Application.TermSearch.Type
 
+import qualified Data.Interned.Extended.HashTableBased as Interned
+import Data.Interned.Extended.HashTableBased ( cache )
+import Data.Text.Extended.Pretty
+import qualified Data.Memoization as Memoization
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()
 printAllEdgeSymbols n = print $ nub $ crush (onNormalNodes $ \(Node es) -> map edgeSymbol es) n
-
-printCacheStatsForReduction :: Node -> IO ()
-printCacheStatsForReduction n = do
-    let n' = reducePartially n
-    Text.putStrLn $ "Nodes: "        <> Text.pack (show (nodeCount   n'))
-    Text.putStrLn $ "Edges: "        <> Text.pack (show (edgeCount   n'))
-    Text.putStrLn $ "Max indegree: " <> Text.pack (show (maxIndegree n'))
-#ifdef PROFILE_CACHES
-    Memoization.printAllCacheMetrics
-    Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Node))
-    Text.putStrLn =<< (pretty <$> Interned.getMetrics (cache @Edge))
-    Text.putStrLn ""
-#endif
-    hFlush stdout
 
 
 getTermsNoOccursCheck :: Node -> [Term]
