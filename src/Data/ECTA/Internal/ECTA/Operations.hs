@@ -78,6 +78,8 @@ import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin
 
+import Debug.Trace
+
 ------------------------------------------------------------------------------------
 
 
@@ -307,7 +309,7 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
 ------------
 
 intersect :: Node -> Node -> Node
-intersect l r = intersectOpen (emptyIntersectionDom, l, r)
+intersect = memo2 (NameTag "intersect") $ \l r -> nodeDropRedundantEdges $ intersectOpen (emptyIntersectionDom, l, r)
 
 ------ Intersection internals
 
@@ -549,7 +551,7 @@ reducePartially' = memo2 (NameTag "reducePartially'") go
 {-# NOINLINE reducePartially' #-}
 
 reduceEdgeIntersection :: EqConstraints -> Edge -> Edge
-reduceEdgeIntersection = memo2 (NameTag "reduceEdgeIntersection") go
+reduceEdgeIntersection = go -- memo2 (NameTag "reduceEdgeIntersection") go
   where
    go :: EqConstraints -> Edge -> Edge
    go ecs e = mkEdge (edgeSymbol e)
