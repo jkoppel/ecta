@@ -101,7 +101,7 @@ instance Pretty MemoCacheTag where
 --------------
 
 #ifdef PROFILE_CACHES
-memoCaches :: HT.BasicHashTable MemoCacheTag MemoCache
+memoCaches :: HT.CuckooHashTable MemoCacheTag MemoCache
 memoCaches = unsafePerformIO $ HT.new
 {-# NOINLINE memoCaches #-}
 #endif
@@ -146,7 +146,7 @@ printAllCacheMetrics = do metrics <- getAllCacheMetrics
 
 memoIO :: forall a b. (Eq a, Hashable a) => MemoCacheTag -> (a -> b) -> IO (a -> IO b)
 memoIO tag f = do
-    ht :: HT.BasicHashTable a b <- HT.new
+    ht :: HT.CuckooHashTable a b <- HT.new
     cache <- initMetrics tag (AnyHashTable ht)
     let f' x = do bumpQueryCount cache
                   v <- HT.lookup ht x

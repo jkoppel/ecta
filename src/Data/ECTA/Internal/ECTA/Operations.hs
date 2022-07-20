@@ -78,7 +78,6 @@ import Data.Memoization ( MemoCacheTag(..), memo, memo2 )
 import Utility.Fixpoint
 import Utility.HashJoin
 
-import Debug.Trace
 
 ------------------------------------------------------------------------------------
 
@@ -309,7 +308,7 @@ intersectEdgeSameSymbol = memo2 (NameTag "intersectEdgeSameSymbol") go
 ------------
 
 intersect :: Node -> Node -> Node
-intersect = memo2 (NameTag "intersect") $ \l r -> nodeDropRedundantEdges $ intersectOpen (emptyIntersectionDom, l, r)
+intersect = memo2 (NameTag "intersect") $ \l r -> intersectOpen (emptyIntersectionDom, l, r)
 
 ------ Intersection internals
 
@@ -337,7 +336,7 @@ emptyIntersectionDom = ID Map.empty Set.empty
 
 intersectOpen :: (IntersectionDom, Node, Node) -> Node
 {-# NOINLINE intersectOpen #-}
-intersectOpen = memo (NameTag "intersectOpen") (\(dom, l, r) -> onNode dom l r)
+intersectOpen = memo (NameTag "intersectOpen") (\(dom, l, r) -> refold $ nodeDropRedundantEdges $ onNode dom l r)
   where
     onNode :: IntersectionDom -> Node -> Node -> Node
     onNode !dom l r =

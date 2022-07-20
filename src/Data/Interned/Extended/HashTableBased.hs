@@ -37,7 +37,7 @@ type Id = Int
 -- | Tried using the BasicHashtable size function to remove need for this IORef
 -- ( see https://github.com/gregorycollins/hashtables/pull/68 ), but it was slower
 data Cache t = Cache { fresh :: !(IORef Id)
-                     , content :: !(HT.BasicHashTable (Description t) t)
+                     , content :: !(HT.CuckooHashTable (Description t) t)
 #ifdef PROFILE_CACHES
                      , queryCount :: !(IORef Int)
                      , missCount  :: !(IORef Int)

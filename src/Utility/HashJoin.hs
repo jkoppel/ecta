@@ -10,7 +10,7 @@ import Control.Monad ( forM_, void )
 import Control.Monad.ST ( ST, runST )
 import Data.Foldable ( foldrM )
 
-import qualified Data.HashTable.ST.Basic as HT
+import qualified Data.HashTable.ST.Cuckoo as HT
 
 -------------------------------------
 --- Hash join / clustering / nub

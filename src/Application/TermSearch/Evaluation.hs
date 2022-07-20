@@ -17,7 +17,7 @@ import           System.Timeout
 
 import qualified Data.Bifunctor                as Bi
 import qualified Data.Text                     as Text
-import qualified Data.Text.IO as Text
+import qualified Data.Text.IO                  as Text
 
 import           Data.ECTA
 import           Data.ECTA.Term
@@ -28,9 +28,9 @@ import           Application.TermSearch.Type
 import           Application.TermSearch.Utils
 
 import qualified Data.Interned.Extended.HashTableBased as Interned
-import Data.Interned.Extended.HashTableBased ( cache )
-import Data.Text.Extended.Pretty
-import qualified Data.Memoization as Memoization
+import           Data.Interned.Extended.HashTableBased ( cache )
+import qualified Data.Memoization                      as Memoization
+import           Data.Text.Extended.Pretty
 
 printCacheStatsForReduction :: Node -> IO Node
 printCacheStatsForReduction n = do
@@ -71,11 +71,8 @@ runBenchmark (Benchmark name size sol args res) ablation limit = do
           NoOptimize  -> do
               prettyPrintAllTerms ablation (substTerm sol) filterNode
           _           -> do
-            --   reducedNode <- reduceFullyAndLog filterNode
-              reducedNode <- printCacheStatsForReduction filterNode
+              reducedNode <- reduceFullyAndLog filterNode
+              -- reducedNode <- printCacheStatsForReduction filterNode
               -- let reducedNode = reduceFully filterNode
               let foldedNode = refold reducedNode
               prettyPrintAllTerms ablation (substTerm sol) foldedNode
-
-runEval :: IO ()
-runEval = undefined -- mapM_ runBenchmark hoogleplusBenchmarks
