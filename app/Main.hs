@@ -17,10 +17,6 @@ import Data.Persistent.UnionFind
 import Application.TermSearch.Evaluation
 import Application.TermSearch.Type
 
-import qualified Data.Interned.Extended.HashTableBased as Interned
-import Data.Interned.Extended.HashTableBased ( cache )
-import Data.Text.Extended.Pretty
-import qualified Data.Memoization as Memoization
 ----------------------------------------------------------
 
 printAllEdgeSymbols :: Node -> IO ()
