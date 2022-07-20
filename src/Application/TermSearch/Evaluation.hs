@@ -2,8 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Application.TermSearch.Evaluation
-    ( runEval
-    , runBenchmark
+    ( runBenchmark
     ) where
 
 import           Control.Monad                  ( forM_ )
