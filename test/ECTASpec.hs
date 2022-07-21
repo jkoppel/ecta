@@ -19,7 +19,7 @@ import Data.ECTA.Internal.ECTA.Operations
 import Data.ECTA.Internal.ECTA.Type
 import Data.ECTA.Internal.Paths
 import Data.ECTA.Term
-import TermSearch
+import Application.TermSearch.TermSearch
 
 import Test.Generators.ECTA ()
 
@@ -52,7 +52,7 @@ doubleNodeSymbols (Node es) = Node $ map doubleEdgeSymbol es
 doubleNodeSymbols n         = error $ "doubleNodeSymbols: unexpected " <> show n
 
 testBigNode :: Node
-testBigNode = uptoDepth4
+testBigNode = union $ termsK EmptyNode True 4
 
 _testUnreducedConstraint :: Edge
 _testUnreducedConstraint = mkEdge "foo" [Node [Edge "A" [], Edge "B" []], Node [Edge "B" [], Edge "C" []]] (mkEqConstraints [[path [0], path [1]]])
@@ -121,8 +121,12 @@ spec = do
     it "intersect distributes over union" $
       property $ \n1 n2 n3 -> intersect n1 (union [n2, n3]) == union [intersect n1 n2, intersect n1 n3]
 
-    it "intersect is idempotent" $
-      property $ \n1 -> intersect n1 n1 == n1
+    -- intersect is NOT idempotent now because we eagerly dropRedundantEdges.
+    -- Example: (Node [(Edge "f" [(Node [(Edge "a" [])])]),(Edge "f" [(Node [(Edge "a" []),(Edge "b" [])])])])
+    -- `intersect` returns (Node [(Edge "f" [(Node [(Edge "a" [])])])])
+    --
+    -- it "intersect is idempotent" $
+    --   property $ \n1 -> intersect n1 n1 == refold n1 -- Note: we eagerly refold recursive nodes to prevent ECTA grows too large
 
   describe "intersection examples" $ do
 
@@ -143,8 +147,9 @@ spec = do
 
     -- Intersection examples with Mu nodes
 
+    -- Note: `intersect` eagerly refolds recursive nodes
     it "intersect (one-step loop) with (its own unfolding: step, one-step)" $
-      intersect intTest7 intTest8 `shouldBe` intTest8
+      intersect intTest7 intTest8 `shouldBe` refold intTest8
 
     it "intersect (one-step loop) with (two-step loop)" $
       intersect intTest7 intTest9 `shouldBe` intTest9
@@ -159,10 +164,10 @@ spec = do
       intersect intTest8 intTest10 `shouldBe` intTest10
 
     it "intersect (two-step loop) with (one step, two-step loop)" $
-      intersect intTest9 intTest10 `shouldBe` intTest8
+      intersect intTest9 intTest10 `shouldBe` refold intTest8
 
-    it "intersect with nested Mus" $
-      intersect intTest11 intTest12 `shouldBe` (Node [Edge "f" [createMu $ \r -> Node [Edge "f" [r]]]])
+    it "intersect with nested Mus" $ do
+      intersect intTest11 intTest12 `shouldBe` refold (Node [Edge "f" [createMu $ \r -> Node [Edge "f" [r]]]])
 
   describe "reduction" $ do
     it "reduction preserves naiveDenotation" $
@@ -171,8 +176,8 @@ spec = do
     it "reducing a single constraint is idempotent 1" $
       property $ \e -> let ns  = edgeChildren e
                            ecs = edgeEcs e
-                           ns' = reduceEqConstraints ecs ns
-                       in  ns' == reduceEqConstraints ecs ns'
+                           ns' = reduceEqConstraints ecs EmptyConstraints ns
+                       in  ns' == reduceEqConstraints ecs EmptyConstraints ns'
 
     it "reducing a single constraint is idempotent 2" $
       property $ \e1 e2 -> let maybeE'  = intersectEdge e1 e2
@@ -180,8 +185,8 @@ spec = do
                                  let Just e' = maybeE'
                                      ns  = edgeChildren e'
                                      ecs = edgeEcs e'
-                                     ns' = reduceEqConstraints ecs ns
-                                 in  ns' == reduceEqConstraints ecs ns'
+                                     ns' = reduceEqConstraints ecs EmptyConstraints ns
+                                 in  ns' == reduceEqConstraints ecs EmptyConstraints ns'
 
     --   TODO (6/29/21): Need a better way to visualize the type nodes. Cannot figure out why this fails.
     --   Reversing the order that eclasses are processed seems to make no difference.
@@ -189,13 +194,13 @@ spec = do
     it "reducing a constraint is idempotent: buggy input 6/27/21" $
       forAllShrink bug062721NonIdempotentEqConstraintReductionGen shrink
                                                                    (\ns -> let ecs = fst bug062721NonIdempotentEqConstraintReduction
-                                                                               ns' = reduceEqConstraints ecs ns
-                                                                           in ns' == reduceEqConstraints ecs ns')
+                                                                               ns' = reduceEqConstraints ecs EmptyConstraints ns
+                                                                           in ns' == reduceEqConstraints ecs EmptyConstraints ns')
      -}
 
     -- TODO: I've become less convinced this can actually be done in one pass. But this test passes.
     it "leaf reduction means, for everything at a path, there is something matching at the other paths" $
-      property $ \e -> let e' = reduceEdgeIntersection e
+      property $ \e -> let e' = reduceEdgeIntersection EmptyConstraints e
                            ns = edgeChildren e' in
                       (e' /= emptyEdge && edgeEcs e' /= EmptyConstraints) ==>
                          and [intersect n1 n2 /= EmptyNode | ec <- unsafeGetEclasses (edgeEcs e')
@@ -211,11 +216,10 @@ spec = do
     it "recursive terms are unrolled to the depth of the constraints and no more" $
       let ecs  = (mkEqConstraints [[path [0,0,0,0], path [1,0,0]]])
           ns   = [infiniteFNode, infiniteFNode]
-          ns'  = reduceEqConstraints ecs ns
-          ns'' = reduceEqConstraints ecs ns'
+          ns'  = reduceEqConstraints ecs EmptyConstraints ns
+          ns'' = reduceEqConstraints ecs EmptyConstraints ns'
           f    = \n -> Node [Edge "f" [n]]
-      in (ns' == ns'') && ns' == [f $ f $ f $ f infiniteFNode, f $ f $ f $ infiniteFNode]
-         `shouldBe` True
+      in (ns' == ns'') && ns' == [f $ f $ f infiniteFNode, f $ f infiniteFNode] `shouldBe` True
 
     it "refold folds the simplest unrolled input" $
       refold (Node [Edge "f" [infiniteFNode]]) `shouldBe` infiniteFNode

@@ -6,7 +6,7 @@ import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as HashSet
 import Test.Hspec
 
-import SAT
+import Application.SAT
 
 -----------------------------------------------------------------
 
