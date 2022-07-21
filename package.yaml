@@ -1,10 +1,10 @@
-name:                compact-coupled-terms
-version:             0.1.0.0
-github:              "githubuser/compact-coupled-terms"
+name:                ecta
+version:             1.0.0.0
+github:              "jkoppel/ecta"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2021 Author name here"
+author:              "Jimmy Koppel"
+maintainer:          "darmanithird@gmail.com"
+copyright:           "2021 Jimmy Koppel"
 
 extra-source-files:
 - README.md
@@ -17,7 +17,7 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/compact-coupled-terms#readme>
+description:         Please see the README on GitHub at <https://github.com/jkoppel/ecta#readme>
 
 dependencies:
 - base
@@ -85,7 +85,7 @@ library:
   - -Wall
 
 executables:
-  compact-coupled-terms-exe:
+  hectare:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -94,7 +94,7 @@ executables:
     - -with-rtsopts=-N
     - -Wall
     dependencies:
-    - compact-coupled-terms
+    - ecta
 
 tests:
   unit-tests:
@@ -107,7 +107,7 @@ tests:
     - -Wall
     - -Wno-orphans
     dependencies:
-      - compact-coupled-terms
+      - ecta
       - equivalence
       - hspec
       - QuickCheck
@@ -125,5 +125,5 @@ benchmarks:
     - -with-rtsopts=-N
     - -O2
     dependencies:
-      - compact-coupled-terms
+      - ecta
       - criterion

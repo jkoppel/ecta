@@ -4,14 +4,14 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           compact-coupled-terms
-version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/compact-coupled-terms#readme>
-homepage:       https://github.com/githubuser/compact-coupled-terms#readme
-bug-reports:    https://github.com/githubuser/compact-coupled-terms/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2021 Author name here
+name:           ecta
+version:        1.0.0.0
+description:    Please see the README on GitHub at <https://github.com/jkoppel/ecta#readme>
+homepage:       https://github.com/jkoppel/ecta#readme
+bug-reports:    https://github.com/jkoppel/ecta/issues
+author:         Jimmy Koppel
+maintainer:     darmanithird@gmail.com
+copyright:      2021 Jimmy Koppel
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -21,7 +21,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/compact-coupled-terms
+  location: https://github.com/jkoppel/ecta
 
 flag profile-caches
   manual: True
@@ -55,7 +55,7 @@ library
       Utility.Fixpoint
       Utility.HashJoin
   other-modules:
-      Paths_compact_coupled_terms
+      Paths_ecta
   hs-source-dirs:
       src
   default-extensions:
@@ -114,10 +114,10 @@ library
     cpp-options: -D PROFILE_CACHES
   default-language: Haskell2010
 
-executable compact-coupled-terms-exe
+executable hectare
   main-is: Main.hs
   other-modules:
-      Paths_compact_coupled_terms
+      Paths_ecta
   hs-source-dirs:
       app
   default-extensions:
@@ -152,8 +152,8 @@ executable compact-coupled-terms-exe
   build-depends:
       base
     , cmdargs
-    , compact-coupled-terms
     , containers
+    , ecta
     , hashable
     , language-dot
     , mtl
@@ -178,7 +178,7 @@ test-suite unit-tests
       SATSpec
       Test.Generators.ECTA
       Utility.HashJoinSpec
-      Paths_compact_coupled_terms
+      Paths_ecta
   hs-source-dirs:
       test
   default-extensions:
@@ -214,8 +214,8 @@ test-suite unit-tests
       QuickCheck
     , base
     , cmdargs
-    , compact-coupled-terms
     , containers
+    , ecta
     , equivalence
     , hashable
     , hspec
@@ -238,7 +238,7 @@ benchmark mainbench
   main-is: Benchmarks.hs
   other-modules:
       TestData
-      Paths_compact_coupled_terms
+      Paths_ecta
   hs-source-dirs:
       benchmarks
   default-extensions:
@@ -273,9 +273,9 @@ benchmark mainbench
   build-depends:
       base
     , cmdargs
-    , compact-coupled-terms
     , containers
     , criterion
+    , ecta
     , hashable
     , language-dot
     , mtl
