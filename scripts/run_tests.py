@@ -3,7 +3,7 @@ import re
 import sys
 from subprocess import Popen, PIPE
 
-RUN_CMD = ["stack", "exec", "--", "compact-coupled-terms-exe"]
+RUN_CMD = ["stack", "exec", "--", "hectare"]
 PICKLE_FILE = "results.pkl"
 CSV_FILE = "results.csv"
 
