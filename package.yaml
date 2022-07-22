@@ -66,7 +66,7 @@ flags:
     default: false
 when:
     condition: flag(profile-caches)
-    cpp-options: -D PROFILE_CACHES
+    cpp-options: -DPROFILE_CACHES
 library:
   source-dirs: src
   dependencies:
