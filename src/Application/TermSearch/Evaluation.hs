@@ -70,8 +70,11 @@ runBenchmark (Benchmark name size sol args res) ablation limit = do
           NoOptimize  -> do
               prettyPrintAllTerms ablation (substTerm sol) filterNode
           _           -> do
+#ifdef PROFILE_CACHES
+              reducedNode <- printCacheStatsForReduction filterNode
+#else
               reducedNode <- reduceFullyAndLog filterNode
-              -- reducedNode <- printCacheStatsForReduction filterNode
+#endif
               -- let reducedNode = reduceFully filterNode
               let foldedNode = refold reducedNode
               prettyPrintAllTerms ablation (substTerm sol) foldedNode

@@ -111,7 +111,7 @@ library
     , vector
     , vector-instances
   if flag(profile-caches)
-    cpp-options: -D PROFILE_CACHES
+    cpp-options: -DPROFILE_CACHES
   default-language: Haskell2010
 
 executable hectare
@@ -164,7 +164,7 @@ executable hectare
     , unordered-containers
     , vector
   if flag(profile-caches)
-    cpp-options: -D PROFILE_CACHES
+    cpp-options: -DPROFILE_CACHES
   default-language: Haskell2010
 
 test-suite unit-tests
@@ -228,7 +228,7 @@ test-suite unit-tests
     , unordered-containers
     , vector
   if flag(profile-caches)
-    cpp-options: -D PROFILE_CACHES
+    cpp-options: -DPROFILE_CACHES
   default-language: Haskell2010
   build-tool-depends:
     hspec-discover:hspec-discover
@@ -286,5 +286,5 @@ benchmark mainbench
     , unordered-containers
     , vector
   if flag(profile-caches)
-    cpp-options: -D PROFILE_CACHES
+    cpp-options: -DPROFILE_CACHES
   default-language: Haskell2010
