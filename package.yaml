@@ -1,5 +1,5 @@
 name:                ecta
-version:             1.0.0.0
+version:             1.0.0.3
 github:              "jkoppel/ecta"
 license:             BSD3
 author:              "Jimmy Koppel"
@@ -20,11 +20,11 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/jkoppel/ecta#readme>
 
 dependencies:
-- base
+- base >=4.13 && < 5
 - cmdargs
 - containers
 - hashable
-- language-dot
+- language-dot == 0.1.1
 - mtl
 - pipes
 - pretty-simple
@@ -71,7 +71,7 @@ library:
   source-dirs: src
   dependencies:
     - array
-    - equivalence
+    - equivalence >= 0.4.1
     - extra
     - fgl
     - hashtables
