@@ -41,8 +41,7 @@ packages:
 #
 extra-deps:
 - language-dot-0.1.1
-- git: https://github.com/jkoppel/equivalence.git
-  commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
+- equivalence-0.4.1
 
 # Turn on sse42 if you're insane. It brought a workload from 0.1918ms (avg across 12 trials) to 0.1911ms. Its price: lack of portability.
 #flags:

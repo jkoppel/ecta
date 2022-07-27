@@ -12,16 +12,12 @@ packages:
   original:
     hackage: language-dot-0.1.1
 - completed:
-    name: equivalence
-    version: 0.3.5
-    git: https://github.com/jkoppel/equivalence.git
+    hackage: equivalence-0.4.1@sha256:0edb9853a870f4bf98614f555e2bdc35360c197dd6f6685774fc97fe9ecd4480,2503
     pantry-tree:
-      size: 650
-      sha256: c72ef05800f3ba00f16b51bd7d90b994c6b98030f17f4a0755f10862ebb073ec
-    commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
+      size: 501
+      sha256: c32d61b50bd4f80d3a5b0768b96b2d96e39703b96bf9c904971c2d0e9025c33f
   original:
-    git: https://github.com/jkoppel/equivalence.git
-    commit: e58c9c0b369f9b8105744cc0342f2e69929b11bf
+    hackage: equivalence-0.4.1
 snapshots:
 - completed:
     size: 587393

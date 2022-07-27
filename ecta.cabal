@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           ecta
-version:        1.0.0.0
+version:        1.0.0.3
 description:    Please see the README on GitHub at <https://github.com/jkoppel/ecta#readme>
 homepage:       https://github.com/jkoppel/ecta#readme
 bug-reports:    https://github.com/jkoppel/ecta/issues
@@ -89,17 +89,17 @@ library
   ghc-options: -Wall
   build-depends:
       array
-    , base
+    , base >=4.13 && <5
     , cmdargs
     , containers
-    , equivalence
+    , equivalence >=0.4.1
     , extra
     , fgl
     , hashable
     , hashtables
     , ilist
     , intern
-    , language-dot
+    , language-dot ==0.1.1
     , lens
     , mtl
     , pipes
@@ -150,12 +150,12 @@ executable hectare
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
-      base
+      base >=4.13 && <5
     , cmdargs
     , containers
     , ecta
     , hashable
-    , language-dot
+    , language-dot ==0.1.1
     , mtl
     , pipes
     , pretty-simple
@@ -212,14 +212,14 @@ test-suite unit-tests
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-orphans
   build-depends:
       QuickCheck
-    , base
+    , base >=4.13 && <5
     , cmdargs
     , containers
     , ecta
     , equivalence
     , hashable
     , hspec
-    , language-dot
+    , language-dot ==0.1.1
     , mtl
     , pipes
     , pretty-simple
@@ -271,13 +271,13 @@ benchmark mainbench
       ViewPatterns
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
-      base
+      base >=4.13 && <5
     , cmdargs
     , containers
     , criterion
     , ecta
     , hashable
-    , language-dot
+    , language-dot ==0.1.1
     , mtl
     , pipes
     , pretty-simple
