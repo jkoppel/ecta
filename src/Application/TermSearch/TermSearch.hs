@@ -53,12 +53,15 @@ allConstructors =
 
 generalize :: Node -> Node
 generalize n@(Node [_]) = Node
-  [mkEdge s ns' (mkEqConstraints $ map pathsForVar vars)]
+  [mkEdge s ns' (mkEqConstraints $ map pathsForVar $ nodeVars n)]
  where
-  vars                = [var1, var2, var3, var4, varAcc]
-  nWithVarsRemoved    = mapNodes (\x -> if x `elem` vars then tau else x) n
+  nWithVarsRemoved    = mapNodes (\x -> if isVar x then tau else x) n
   (Node [Edge s ns']) = nWithVarsRemoved
 
+  -- Support all variable names.
+  nodeVars :: Node -> [Node]
+  nodeVars root =  crush (onNormalNodes $ \(Node es) ->
+                     filter isVar (map (\e -> Node [e]) es)) root
   pathsForVar :: Node -> [Path]
   pathsForVar v = pathsMatching (== v) n
 generalize n = error $ "cannot generalize: " ++ show n
