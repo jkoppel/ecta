@@ -11,15 +11,7 @@ import           Application.TermSearch.Utils
 
 
 typeToFta :: TypeSkeleton -> Node
-typeToFta (TVar "a"  ) = var1
-typeToFta (TVar "b"  ) = var2
-typeToFta (TVar "c"  ) = var3
-typeToFta (TVar "d"  ) = var4
-typeToFta (TVar "acc") = varAcc
-typeToFta (TVar v) =
-  error
-    $ "Current implementation only supports function signatures with type variables a, b, c, d, and acc, but got "
-    ++ show v
+typeToFta (TVar v) = genVar v
 typeToFta (TFun  t1    t2      ) = arrowType (typeToFta t1) (typeToFta t2)
 typeToFta (TCons "Fun" [t1, t2]) = arrowType (typeToFta t1) (typeToFta t2)
 typeToFta (TCons s     ts      ) = mkDatatype s (map typeToFta ts)

@@ -12,6 +12,7 @@ import           Data.ECTA.Paths
 import           Data.ECTA.Term
 
 import           Application.TermSearch.Type
+import Debug.Trace
 
 --------------------------------------------------------------------------------
 ------------------------------- Type Constructors ------------------------------
@@ -63,6 +64,25 @@ var2 = Node [Edge "var2" []]
 var3 = Node [Edge "var3" []]
 var4 = Node [Edge "var4" []]
 varAcc = Node [Edge "acc" []]
+
+varPrefix :: Text
+varPrefix = "__gen_var_"
+
+-- Maintain compatibility by special-casing the common ones, otherwise
+-- using the prefix
+genVar :: Text -> Node
+genVar "a" = var1
+genVar "b" = var2
+genVar "c" = var3
+genVar "d" = var4
+genVar "acc" = varAcc
+genVar s = Node [Edge (Symbol $ varPrefix <>s) []]
+
+isVar :: Node -> Bool
+isVar x | x `elem` vars = True
+    where vars = [var1, var2, var3, var4, varAcc]
+isVar (Node [Edge (Symbol t) []]) = varPrefix `Text.isPrefixOf` t
+isVar _ = False
 
 --------------------------------------------------------------------------------
 
