@@ -12,7 +12,6 @@ import           Data.ECTA.Paths
 import           Data.ECTA.Term
 
 import           Application.TermSearch.Type
-import Debug.Trace
 
 --------------------------------------------------------------------------------
 ------------------------------- Type Constructors ------------------------------
